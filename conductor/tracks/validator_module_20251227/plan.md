@@ -12,7 +12,7 @@
 
 ## Phase 2: Core Validation Logic
 
-- [~] Task: Write failing tests for the `Validate` method, covering success and failure scenarios for `apisix test` output.
+- [x] Task: Write failing tests for the `Validate` method, covering success and failure scenarios for `apisix test` output. a18ae26
     - [x] Sub-task: Use the mock `CommandRunner` to simulate `apisix test` returning success. 18b128b
     - [x] Sub-task: Use the mock `CommandRunner` to simulate `apisix test` returning a failure with specific error output. 18b128b
 - [ ] Task: Implement the `Validate` method to:
