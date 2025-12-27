@@ -3,7 +3,7 @@
 ## Phase 1: Module Structure and `apisix` Command Execution Abstraction
 
 - [x] Task: Design and create the `validator` module directory and initial file structure. 0df813a
-- [ ] Task: Define the `Validator` interface or struct with a `Validate` method.
+- [x] Task: Define the `Validator` interface or struct with a `Validate` method. 68867ef
 - [ ] Task: Abstract the `apisix test` command execution.
     - [ ] Sub-task: Create an interface (e.g., `CommandRunner`) for executing external commands.
     - [ ] Sub-task: Implement a concrete `CommandRunner` that calls `exec.Command` for `apisix test`.
