@@ -18,7 +18,7 @@
 - [~] Task: Implement the `Validate` method to:
     - [x] Sub-task: Accept a file path. 68867ef
     - [x] Sub-task: Utilize the `CommandRunner` to execute `apisix test` with the provided file. 20b49b6
-    - [ ] Sub-task: Parse the exit code and stderr output from `apisix test`.
+    - [x] Sub-task: Parse the exit code and stderr output from `apisix test`. 20b49b6
     - [ ] Sub-task: Return a boolean indicating validity and an error if validation fails.
 - [ ] Task: Conductor - User Manual Verification 'Core Validation Logic' (Protocol in workflow.md)
 
