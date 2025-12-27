@@ -1,6 +1,13 @@
 package validator
 
-import "io"
+import (
+	"io"
+)
+
+// CommandRunner defines an interface for running external commands.
+type CommandRunner interface {
+	RunCommand(name string, args ...string) ([]byte, error)
+}
 
 // Validator defines the interface for validating APISIX configurations.
 type Validator interface {
@@ -8,11 +15,13 @@ type Validator interface {
 }
 
 // New creates a new Validator.
-func New() Validator {
-	return &validator{}
+func New(runner CommandRunner) Validator { // Modified to accept CommandRunner
+	return &validator{runner: runner}
 }
 
-type validator struct{}
+type validator struct {
+	runner CommandRunner
+}
 
 // Validate validates an APISIX configuration file.
 // It returns true if the configuration is valid, false otherwise,
