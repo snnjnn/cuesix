@@ -9,7 +9,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-// CompilerError is a custom error type for errors originating from the compiler module.
+// CompilerError is a custom error type for wrapping underlying errors.
 type CompilerError struct {
 	Msg string
 	Err error
@@ -26,6 +26,18 @@ func (e *CompilerError) Unwrap() error {
 	return e.Err
 }
 
+// Sentinel errors for the compiler.
+const (
+	ErrNoFilesFound = CompilerErrorString("no files found to compile")
+)
+
+// CompilerErrorString is a simple string-based error type for constant errors.
+type CompilerErrorString string
+
+func (e CompilerErrorString) Error() string {
+	return string(e)
+}
+
 // Source defines a source of CUE/YAML files for the compiler.
 type Source struct {
 	FS      fs.FS
@@ -37,22 +49,41 @@ type Source struct {
 func Compile(sources ...Source) (cue.Value, []string, error) {
 	ctx := cuecontext.New()
 	var allFiles []string
+	var allValues []cue.Value
 
 	for _, source := range sources {
 		files, err := findFiles(source)
 		if err != nil {
 			return cue.Value{}, nil, &CompilerError{Msg: "failed to find files", Err: err}
 		}
-		allFiles = append(allFiles, files...)
+		for _, file := range files {
+			content, err := fs.ReadFile(source.FS, file)
+			if err != nil {
+				return cue.Value{}, nil, &CompilerError{Msg: fmt.Sprintf("failed to read file %s", file), Err: err}
+			}
+			val := ctx.CompileBytes(content, cue.Filename(file))
+			if err := val.Err(); err != nil {
+				return cue.Value{}, nil, &CompilerError{Msg: fmt.Sprintf("failed to compile file %s", file), Err: err}
+			}
+			allValues = append(allValues, val)
+			allFiles = append(allFiles, file)
+		}
 	}
 
 	if len(allFiles) == 0 {
-		return cue.Value{}, nil, &CompilerError{Msg: "no files found to compile"}
+		return cue.Value{}, nil, ErrNoFilesFound
 	}
 
-	// For now, just return an empty cue.Value to make the file discovery tests pass.
-	// The actual compilation will be implemented in a later task.
-	return ctx.CompileString(""), allFiles, nil
+	value := ctx.CompileString("")
+	for _, v := range allValues {
+		value = value.Unify(v)
+	}
+
+	if err := value.Err(); err != nil {
+		return cue.Value{}, allFiles, &CompilerError{Msg: "failed to unify CUE values", Err: err}
+	}
+
+	return value, allFiles, nil
 }
 
 func findFiles(source Source) ([]string, error) {
