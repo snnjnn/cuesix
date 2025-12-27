@@ -1,6 +1,6 @@
 # Plan: Implement Validator Module
 
-## Phase 1: Module Structure and `apisix` Command Execution Abstraction
+## Phase 1: Module Structure and `apisix` Command Execution Abstraction [checkpoint: a6dd04d]
 
 - [x] Task: Design and create the `validator` module directory and initial file structure. 0df813a
 - [x] Task: Define the `Validator` interface or struct with a `Validate` method. 68867ef
