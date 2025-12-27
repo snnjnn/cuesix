@@ -2,8 +2,10 @@ package dispatcher
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -151,5 +153,98 @@ func TestDispatcherSkipsWhenUnchanged(t *testing.T) {
 	err = <-errCh
 	if err != nil && err != context.Canceled {
 		t.Fatalf("unexpected Run error: %v", err)
+	}
+}
+
+func TestDispatcherReturnsCompilerError(t *testing.T) {
+	comp := &stubCompiler{err: errors.New("compile fail")}
+	cache := &stubCache{}
+	validator := &stubValidator{}
+	reloader := &stubReloader{}
+
+	disp, err := New(Config{
+		Compiler:   comp,
+		Cache:      cache,
+		Validator:  validator,
+		Reloader:   reloader,
+		Filesystems: []fs.FS{os.DirFS(".")},
+		Cooldown:   0,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- disp.Run(ctx)
+	}()
+
+	disp.Notify()
+
+	select {
+	case runErr := <-errCh:
+		if runErr == nil {
+			t.Fatalf("expected error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for error")
+	}
+}
+
+func TestDispatcherReturnsValidationError(t *testing.T) {
+	comp := &stubCompiler{result: map[string]any{"a": 1}}
+	tempDir := t.TempDir()
+	tempPath := filepath.Join(tempDir, "temp.yaml")
+	if err := os.WriteFile(tempPath, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+	cache := &stubCache{path: tempPath}
+	validator := &stubValidator{ok: false}
+	reloader := &stubReloader{}
+
+	disp, err := New(Config{
+		Compiler:   comp,
+		Cache:      cache,
+		Validator:  validator,
+		Reloader:   reloader,
+		Filesystems: []fs.FS{os.DirFS(".")},
+		Cooldown:   0,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	err = disp.handle(context.Background())
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	if reloader.calls != 0 {
+		t.Fatalf("expected reloader not to be called")
+	}
+}
+
+func TestWaitForCooldownRespectsLastDequeued(t *testing.T) {
+	comp := &stubCompiler{}
+	cache := &stubCache{}
+	validator := &stubValidator{}
+	reloader := &stubReloader{}
+
+	disp, err := New(Config{
+		Compiler:   comp,
+		Cache:      cache,
+		Validator:  validator,
+		Reloader:   reloader,
+		Filesystems: []fs.FS{os.DirFS(".")},
+		Cooldown:   50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+
+	disp.lastDequeued = time.Now().Add(-60 * time.Millisecond)
+	if err := disp.waitForCooldown(context.Background()); err != nil {
+		t.Fatalf("unexpected cooldown error: %v", err)
 	}
 }
