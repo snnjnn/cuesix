@@ -12,9 +12,9 @@ This phase focuses on building the core functionality of the compiler: discoveri
 - [x] **Task:** Implement the file discovery logic. [3c0782a]
     - [x] **Sub-task:** Write failing tests in `internal/compiler/compiler_test.go` that cover various scenarios for including and excluding files based on glob patterns.
     - [x] **Sub-task:** Implement the file discovery logic within the main compile function to make the tests pass.
--   [ ] **Task:** Implement the CUE unification logic.
-    -   [ ] **Sub-task:** Write failing tests that provide multiple CUE file contents and verify they are unified correctly into a single `cue.Value`. Include a test case for `@embed` directive support.
-    -   [ ] **Sub-task:** Implement the CUE unification logic to make the tests pass.
+- [~] **Task:** Implement the CUE unification logic.
+    - [x] **Sub-task:** Write failing tests that provide multiple CUE file contents and verify they are unified correctly into a single `cue.Value`. Include a test case for `@embed` directive support.
+    - [x] **Sub-task:** Implement the CUE unification logic to make the tests pass. [7c58ba8]
 -   [ ] **Task:** Conductor - User Manual Verification 'Core Compiler Implementation' (Protocol in workflow.md)
 
 ---
