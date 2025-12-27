@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"bytes"
 	"io"
 )
 
@@ -15,7 +16,10 @@ type Validator interface {
 }
 
 // New creates a new Validator.
-func New(runner CommandRunner) Validator { // Modified to accept CommandRunner
+func New(runner CommandRunner) Validator {
+	if runner == nil {
+		runner = NewSystemCommandRunner() // Use systemCommandRunner if none provided
+	}
 	return &validator{runner: runner}
 }
 
@@ -27,6 +31,14 @@ type validator struct {
 // It returns true if the configuration is valid, false otherwise,
 // an io.ReadCloser for any error output (e.g., stderr from apisix test), and an error.
 func (v *validator) Validate(configPath string) (bool, io.ReadCloser, error) {
-	// TODO: Implement actual validation logic using apisix test
-	return false, nil, nil
+	outputBytes, err := v.runner.RunCommand("apisix", "test", "-c", configPath)
+
+	if err != nil {
+		// If command returns an error, it means apisix test failed.
+		// We return false, and the error output.
+		return false, io.NopCloser(bytes.NewReader(outputBytes)), err
+	}
+
+	// If command returns no error, it means apisix test succeeded.
+	return true, io.NopCloser(bytes.NewReader(outputBytes)), nil
 }
