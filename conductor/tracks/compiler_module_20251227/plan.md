@@ -8,7 +8,7 @@ This plan outlines the phases and tasks required to implement the compiler modul
 
 This phase focuses on building the core functionality of the compiler: discovering files and unifying them into a `cue.Value`.
 
--   [ ] **Task:** Define the `Source` struct and the custom `CompilerError` type in a new `internal/compiler/compiler.go` file.
+- [x] **Task:** Define the `Source` struct and the custom `CompilerError` type in a new `internal/compiler/compiler.go` file. [b18ccc9]
 -   [ ] **Task:** Implement the file discovery logic.
     -   [ ] **Sub-task:** Write failing tests in `internal/compiler/compiler_test.go` that cover various scenarios for including and excluding files based on glob patterns.
     -   [ ] **Sub-task:** Implement the file discovery logic within the main compile function to make the tests pass.
