@@ -15,8 +15,8 @@
 - [x] Task: Write failing tests for the `Validate` method, covering success and failure scenarios for `apisix test` output. a18ae26
     - [x] Sub-task: Use the mock `CommandRunner` to simulate `apisix test` returning success. 18b128b
     - [x] Sub-task: Use the mock `CommandRunner` to simulate `apisix test` returning a failure with specific error output. 18b128b
-- [ ] Task: Implement the `Validate` method to:
-    - [ ] Sub-task: Accept a file path.
+- [~] Task: Implement the `Validate` method to:
+    - [x] Sub-task: Accept a file path. 68867ef
     - [ ] Sub-task: Utilize the `CommandRunner` to execute `apisix test` with the provided file.
     - [ ] Sub-task: Parse the exit code and stderr output from `apisix test`.
     - [ ] Sub-task: Return a boolean indicating validity and an error if validation fails.
