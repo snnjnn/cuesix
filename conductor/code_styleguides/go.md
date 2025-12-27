@@ -46,3 +46,48 @@ This document summarizes key rules and best practices from the official "Effecti
 - **`panic`:** Reserved for truly exceptional, unrecoverable situations. Generally, libraries should not panic.
 
 *Source: [Effective Go](https://go.dev/doc/effective_go)*
+
+## Error Handling
+
+- **Do not match on error strings.** Code that uses `err.Error() == "some string"` is brittle and should be avoided.
+- **Use distinct error types for different conditions.** This allows callers to use type assertions or `errors.As` to handle specific error cases programmatically.
+- **For simple, static errors, define constant sentinel errors.** For errors that do not need to wrap an underlying cause and have a static message, define them as constants of a custom error type.
+
+### Example: Sentinel Errors
+
+`go
+// Sentinel errors for the compiler.
+const (
+	ErrNoFilesFound = CompilerErrorString("no files found to compile")
+)
+
+// CompilerErrorString is a simple string-based error type for constant errors.
+type CompilerErrorString string
+
+func (e CompilerErrorString) Error() string {
+	return string(e)
+}
+`
+
+### Example: Wrapped Errors
+
+For errors that should include context from an underlying error, use a struct that implements the `error` interface and wraps the original error.
+
+`go
+// CompilerError is a custom error type for wrapping underlying errors.
+type CompilerError struct {
+	Msg string
+	Err error
+}
+
+func (e *CompilerError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("compiler error: %s: %v", e.Msg, e.Err)
+	}
+	return fmt.Sprintf("compiler error: %s", e.Msg)
+}
+
+func (e *CompilerError) Unwrap() error {
+	return e.Err
+}
+`

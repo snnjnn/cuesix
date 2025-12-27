@@ -1,6 +1,7 @@
 package validator_test
 
 import (
+	"errors"
 	"io"
 	"testing"
 
@@ -45,7 +46,7 @@ func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
 		t.Fatal("New() should not return nil")
 	}
 
-	valid, _, err := v.Validate("/path/to/valid/config.yaml")
+	valid, err := v.Validate("/path/to/valid/config.yaml")
 	
 	// In the Red Phase, we expect this to fail because the dummy implementation returns false and nil error.
 	// The eventual expectation is valid=true, err=nil.
@@ -69,11 +70,18 @@ func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
 		t.Fatal("New() should not return nil")
 	}
 
-	valid, _, err := v.Validate("/path/to/invalid/config.yaml")
+	valid, err := v.Validate("/path/to/invalid/config.yaml")
 
 	// In the Red Phase, we expect this to fail because the dummy implementation returns false and nil error.
 	// The eventual expectation is valid=false, err!=nil.
 	if valid || err == nil {
 		t.Errorf("Expected valid=false, err!=nil for a syntactically invalid config, got valid=%t, err=%v", valid, err)
+	}
+	var validationErr *validator.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if string(validationErr.Output) != "error output" {
+		t.Fatalf("expected output to be captured, got %q", string(validationErr.Output))
 	}
 }

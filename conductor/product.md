@@ -1,12 +1,12 @@
 # Initial Concept
 
-A small Go service that compiles APISIX standalone configuration from CUE/YAML fragments, validates it, and triggers APISIX reloads.
+A small Go service that compiles APISIX standalone configuration from YAML fragments, validates it, and triggers APISIX reloads.
 
 # Product Guide: cuesix
 
 ## 1. Vision
 
-`cuesix` is a small, efficient Go service designed to streamline the management of APISIX standalone configurations. It acts as a robust automation layer that bridges the gap between configuration-as-code (using CUE/YAML) and live APISIX deployments, ensuring consistency, validity, and reliability.
+`cuesix` is a small, efficient Go service designed to streamline the management of APISIX standalone configurations. It acts as a robust automation layer that bridges the gap between configuration-as-code (using YAML fragments with APISIX-aware merge rules) and live APISIX deployments, ensuring consistency, validity, and reliability.
 
 ## 2. Goals
 
@@ -26,7 +26,7 @@ The primary users for the `cuesix` service are:
 
 `cuesix` provides a set of core functionalities to achieve its goals:
 
--   **Configuration Compilation:** Compiles APISIX configurations from source fragments written in CUE and/or YAML.
+-   **Configuration Compilation:** Compiles APISIX configurations from source YAML fragments using APISIX-aware merge rules (keyed lists for resources like consumers and id-based lists for core resources).
 -   **Validation Engine:** Validates the correctness of the generated APISIX configuration before it is applied.
 -   **Automated Reloads:** Triggers a reload of the APISIX service via its HTTP API upon a successful configuration change.
 -   **Request Handling:** Efficiently throttles and coalesces incoming compile requests to manage load and prevent redundant operations.

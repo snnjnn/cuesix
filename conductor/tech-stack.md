@@ -14,7 +14,7 @@
 
 -   **Build System:** Go's native toolchain (`go build`, `go mod`)
 -   **Containerization:** Docker (as indicated by the presence of `Dockerfile`)
--   **Configuration Management:** CUE/YAML for APISIX configurations
+-   **Configuration Management:** YAML fragments merged with a custom APISIX-aware algorithm (keyed and id-based list merging, no id autogeneration)
 
 ## 4. Architectural Considerations
 

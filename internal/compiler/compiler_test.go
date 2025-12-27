@@ -1,105 +1,183 @@
 package compiler
 
 import (
-	"sort"
 	"testing"
+	"testing/fstest"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/spf13/afero"
 )
 
-func TestCompile_FileDiscovery(t *testing.T) {
-	// Create an in-memory filesystem using Afero
-	aferoFS := afero.NewMemMapFs()
-	_ = aferoFS.MkdirAll("data", 0755)
-	_ = aferoFS.MkdirAll("internal", 0755)
-	_ = afero.WriteFile(aferoFS, "a.cue", []byte("a: 1"), 0644)
-	_ = afero.WriteFile(aferoFS, "b.cue", []byte("b: 2"), 0644)
-	_ = afero.WriteFile(aferoFS, "c.yaml", []byte("c: 3"), 0644)
-	_ = afero.WriteFile(aferoFS, "data/d.cue", []byte("d: 4"), 0644)
-	_ = afero.WriteFile(aferoFS, "data/e.yml", []byte("e: 5"), 0644)
-	_ = afero.WriteFile(aferoFS, "ignore_me.cue", []byte("ignore: 6"), 0644)
-	_ = afero.WriteFile(aferoFS, "internal/f.cue", []byte("f: 7"), 0644)
-	memFS := afero.NewIOFS(aferoFS) // Wrap with IOFS for fs.FS compatibility
+func TestMergeListOptionalIDKeepsItems(t *testing.T) {
+	rule := MergingRule{
+		Path:             "/routes",
+		Kind:             KindList,
+		IDAttr:           "id",
+		IDOptional:       true,
+		AllowMergeSameID: false,
+	}
 
-	tests := []struct {
-		name      string
-		sources   []Source
-		wantFiles []string
-		wantErr   bool
-	}{
-		{
-			name: "Basic include all .cue files",
-			sources: []Source{
-				{FS: memFS, Include: []string{"*.cue"}},
+	left := []any{
+		map[string]any{"uri": "/a"},
+		map[string]any{"id": "1", "uri": "/b"},
+	}
+	right := []any{
+		map[string]any{"uri": "/c"},
+		map[string]any{"id": "2", "uri": "/d"},
+	}
+
+	merged, err := mergeList(left, right, rule)
+	if err != nil {
+		t.Fatalf("mergeList returned error: %v", err)
+	}
+
+	want := []any{
+		map[string]any{"uri": "/a"},
+		map[string]any{"id": "1", "uri": "/b"},
+		map[string]any{"uri": "/c"},
+		map[string]any{"id": "2", "uri": "/d"},
+	}
+
+	if diff := cmp.Diff(want, merged); diff != "" {
+		t.Fatalf("unexpected merge result (-want +got):\n%s", diff)
+	}
+}
+
+func TestMergeListSameIDWithChildList(t *testing.T) {
+	rule := MergingRule{
+		Path:             "/consumers",
+		Kind:             KindList,
+		IDAttr:           "username",
+		IDOptional:       false,
+		AllowMergeSameID: true,
+		Children: map[string]MergingRule{
+			"credentials": {
+				Path:             "/consumers/credentials",
+				Kind:             KindList,
+				IDAttr:           "credential_id",
+				IDOptional:       false,
+				AllowMergeSameID: false,
 			},
-			wantFiles: []string{"a.cue", "b.cue", "ignore_me.cue"},
-		},
-		{
-			name: "Include specific file",
-			sources: []Source{
-				{FS: memFS, Include: []string{"a.cue"}},
-			},
-			wantFiles: []string{"a.cue"},
-		},
-		{
-			name: "Include .cue and .yaml files",
-			sources: []Source{
-				{FS: memFS, Include: []string{"*.cue", "*.yaml"}},
-			},
-			wantFiles: []string{"a.cue", "b.cue", "c.yaml", "ignore_me.cue"},
-		},
-		{
-			name: "Include and exclude specific file",
-			sources: []Source{
-				{FS: memFS, Include: []string{"*.cue"}, Exclude: []string{"b.cue"}},
-			},
-			wantFiles: []string{"a.cue", "ignore_me.cue"},
-		},
-		{
-			name: "Include all, exclude specific directory",
-			sources: []Source{
-				{FS: memFS, Include: []string{"**/*.cue"}, Exclude: []string{"internal/*"}},
-			},
-			wantFiles: []string{"a.cue", "b.cue", "data/d.cue", "ignore_me.cue"},
-		},
-		{
-			name: "Multiple sources, different includes",
-			sources: []Source{
-				{FS: memFS, Include: []string{"a.cue"}},
-				{FS: memFS, Include: []string{"data/*.cue"}},
-			},
-			wantFiles: []string{"a.cue", "data/d.cue"},
-		},
-		{
-			name: "No matching files",
-			sources: []Source{
-				{FS: memFS, Include: []string{"*.txt"}},
-			},
-			wantErr: true, // Expect 'no files found' error
-		},
-		{
-			name: "Empty include patterns",
-			sources: []Source{
-				{FS: memFS, Include: []string{}},
-			},
-			wantErr: true, // Expect 'no files found' error
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, files, err := Compile(tt.sources...)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("Compile() error = %v, wantErr %v", err, tt.wantErr)
-			}
+	left := []any{
+		map[string]any{
+			"username": "alice",
+			"desc":     "primary",
+			"credentials": []any{
+				map[string]any{
+					"credential_id": "c1",
+					"plugins": map[string]any{
+						"key-auth": map[string]any{"key": "one"},
+					},
+				},
+			},
+		},
+	}
 
-			sort.Strings(files)
-			sort.Strings(tt.wantFiles)
+	right := []any{
+		map[string]any{
+			"username": "alice",
+			"credentials": []any{
+				map[string]any{
+					"credential_id": "c2",
+					"plugins": map[string]any{
+						"key-auth": map[string]any{"key": "two"},
+					},
+				},
+			},
+		},
+	}
 
-			if !cmp.Equal(files, tt.wantFiles) {
-				t.Errorf("Compile() discovered files diff: %s", cmp.Diff(tt.wantFiles, files))
-			}
-		})
+	merged, err := mergeList(left, right, rule)
+	if err != nil {
+		t.Fatalf("mergeList returned error: %v", err)
+	}
+
+	want := []any{
+		map[string]any{
+			"username": "alice",
+			"desc":     "primary",
+			"credentials": []any{
+				map[string]any{
+					"credential_id": "c1",
+					"plugins": map[string]any{
+						"key-auth": map[string]any{"key": "one"},
+					},
+				},
+				map[string]any{
+					"credential_id": "c2",
+					"plugins": map[string]any{
+						"key-auth": map[string]any{"key": "two"},
+					},
+				},
+			},
+		},
+	}
+
+	if diff := cmp.Diff(want, merged); diff != "" {
+		t.Fatalf("unexpected merge result (-want +got):\n%s", diff)
+	}
+}
+
+func TestCompileMergesFilesystems(t *testing.T) {
+	fsOne := fstest.MapFS{
+		"one.yaml": {
+			Data: []byte(`
+consumers:
+  - username: alice
+    desc: primary
+    credentials:
+      - credential_id: c1
+        plugins:
+          key-auth:
+            key: one
+`),
+		},
+	}
+	fsTwo := fstest.MapFS{
+		"two.yaml": {
+			Data: []byte(`
+consumers:
+  - username: alice
+    credentials:
+      - credential_id: c2
+        plugins:
+          key-auth:
+            key: two
+`),
+		},
+	}
+
+	merged, err := Compile(fsOne, fsTwo)
+	if err != nil {
+		t.Fatalf("Compile returned error: %v", err)
+	}
+
+	want := map[string]any{
+		"consumers": []any{
+			map[string]any{
+				"username": "alice",
+				"desc":     "primary",
+				"credentials": []any{
+					map[string]any{
+						"credential_id": "c1",
+						"plugins": map[string]any{
+							"key-auth": map[string]any{"key": "one"},
+						},
+					},
+					map[string]any{
+						"credential_id": "c2",
+						"plugins": map[string]any{
+							"key-auth": map[string]any{"key": "two"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if diff := cmp.Diff(want, merged); diff != "" {
+		t.Fatalf("unexpected compile result (-want +got):\n%s", diff)
 	}
 }

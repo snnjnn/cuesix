@@ -1,0 +1,16 @@
+# Build output
+/bin/
+/out/
+/dist/
+
+# Temp files
+/tmp/
+*.tmp
+*.log
+
+# Local env
+.env
+
+# Editor
+.idea/
+.vscode/

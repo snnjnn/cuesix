@@ -2,7 +2,7 @@
 
 El objetivo de la aplicación es procesar ficheros de configuración que contienen secciones parciales de la configuración completa de un api gateway apisix, en modo standalone.
 
-Los ficheros de entrada pueden estar en formato yaml o cuelang. La aplicación usa cue (cuelang versión 0.15 o superior) para unificar todos los ficheros .cue y .yaml en un solo fichero yaml para apisix.
+Los ficheros de entrada pueden estar en formato yaml. La aplicación usa un algoritmo de unificación específico de APISIX para combinar los fragmentos, considerando que recursos como routes, ssls y upstreams son listas con reglas de fusión distintas según el tipo.
 
 El fichero generado se almacena en primer lugar en un directorio temporal, y se utiliza `apisix test` para comprobar su validez.
 
@@ -21,7 +21,8 @@ La aplicación se divide en los siguientes componentes:
 
 1. Listener: recibe las llamadas a /compile, y las encola.
 2. dispatcher: desencola las llamadas y ejecuta el proceso de compilación. Implementa el throttling.
-3. compiler: utiliza `cue` para combinar todos los ficheros de entrada y generar la salida temporal.
+3. compiler: aplica el algoritmo de unificación de APISIX sobre los ficheros de entrada y genera la salida temporal.
 4. cache: valida que la configuración compilada sea diferente a la anterior
 5. validator: valida la config temporal generada.
 6. reloader: reemplaza la config real de apisix y solicita la recarga.
+7. plugin: Los plugins realizan algún tipo de preproceso en la configuración compilada, antes de generar el yaml.
