@@ -152,6 +152,7 @@ Input and runtime mode:
 APISIX paths and validation:
 - `--apisix-home` / `CUESIX_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).
 - `--apisix-mirror-dir` / `CUESIX_APISIX_MIRROR_DIR`: optional mirror directory for validation; if empty, cuesix creates a temp mirror.
+- `--keep-mirror` / `CUESIX_KEEP_MIRROR`: do not clean the mirror folder on startup.
 
 Reload behavior:
 - `--apisix-url` / `CUESIX_APISIX_URL`: APISIX Admin API base URL (e.g. `http://127.0.0.1:9180`).

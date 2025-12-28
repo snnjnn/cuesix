@@ -19,5 +19,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
 
 COPY --from=builder /out/cuesix /usr/local/bin/cuesix
 
+# Avoid problems copying the /usr/local/apisix folder
+RUN chmod a+rX /usr/local/apisix/deps
+
 USER apisix
 ENTRYPOINT ["cuesix"]

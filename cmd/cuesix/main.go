@@ -102,6 +102,7 @@ func main() {
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
 	enableYAML := flag.Bool("plugin-yaml", envBool("CUESIX_PLUGIN_YAML", false), "enable yaml post-render plugin")
 	mirrorDirFlag := flag.String("apisix-mirror-dir", envString("CUESIX_APISIX_MIRROR_DIR"), "apisix mirror directory (optional)")
+	mirrorKeepFlag := flag.Bool("keep-mirror", envBool("CUESIX_KEEP_MIRROR", false), "Do not remove mirror on startup")
 
 	flag.Parse()
 
@@ -160,6 +161,7 @@ func main() {
 		logger.Error("missing apisix home path")
 		os.Exit(1)
 	}
+	mirrorKeep := *mirrorKeepFlag
 	mirrorDir := *mirrorDirFlag
 	if mirrorDir == "" {
 		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
@@ -167,6 +169,7 @@ func main() {
 			logger.Error("create apisix mirror dir failed", "error", tmpErr)
 			os.Exit(1)
 		}
+		mirrorKeep = true // no need to recreate it
 		mirrorDir = tmp
 		defer func() {
 			if err := os.RemoveAll(mirrorDir); err != nil {
@@ -174,7 +177,7 @@ func main() {
 			}
 		}()
 	}
-	val, err := validator.New(*apisixHome, mirrorDir)
+	val, err := validator.New(*apisixHome, mirrorDir, mirrorKeep)
 	if err != nil {
 		logger.Error("prepare apisix mirror failed", "error", err)
 		os.Exit(1)

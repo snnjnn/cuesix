@@ -33,16 +33,15 @@ type Validator interface {
 }
 
 // New creates a validator using a mirrored APISIX home directory.
-func New(sourceDir string, mirrorDir string) (Validator, error) {
-	return newWithRunner(sourceDir, mirrorDir, systemCommandRunner{})
+func New(sourceDir string, mirrorDir string, useExisting bool) (Validator, error) {
+	return newWithRunner(sourceDir, mirrorDir, useExisting, systemCommandRunner{})
 }
 
-func newWithRunner(sourceDir string, mirrorDir string, runner commandRunner) (Validator, error) {
+func newWithRunner(sourceDir string, mirrorDir string, useExisting bool, runner commandRunner) (Validator, error) {
 	if runner == nil {
 		runner = systemCommandRunner{}
 	}
-	mirrorDir, err := prepareMirror(sourceDir, mirrorDir)
-	if err != nil {
+	if err := prepareMirror(sourceDir, mirrorDir, useExisting); err != nil {
 		return nil, err
 	}
 	return &mirrorValidator{mirrorDir: mirrorDir, runner: runner}, nil
@@ -143,35 +142,41 @@ func (systemCommandRunner) RunCommand(workDir string, name string, args ...strin
 
 // prepareMirror copies the entire APISIX home directory into a mirror folder.
 // mirrorDir must be provided by the caller.
-func prepareMirror(sourceDir string, mirrorDir string) (string, error) {
+func prepareMirror(sourceDir string, mirrorDir string, useExisting bool) error {
 	if sourceDir == "" {
-		return "", ErrSourceDirRequired
+		return ErrSourceDirRequired
 	}
 	if mirrorDir == "" {
-		return "", ErrMirrorDirRequired
+		return ErrMirrorDirRequired
 	}
 	if stat, err := os.Stat(sourceDir); err != nil {
 		if os.IsNotExist(err) {
-			return "", ErrMissingDir
+			return ErrMissingDir
 		}
-		return "", fmt.Errorf("failed to stat source dir: %w", err)
+		return fmt.Errorf("failed to stat source dir: %w", err)
 	} else {
 		if !stat.IsDir() {
-			return "", ErrSourceIsNotDir
+			return ErrSourceIsNotDir
 		}
 	}
-	if err := os.RemoveAll(mirrorDir); err != nil {
-		// RemoveAll would not error if the folder does not exist.
-		// If it complains, it is because there is an actual error
-		// while trying to remove an existing folder, so we should
-		// not ignore it.
-		return "", fmt.Errorf("failed to remove mirror folder: %w", err)
+	if stat, err := os.Stat(mirrorDir); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to stat mirror dir: %w", err)
+		}
+	} else if !stat.IsDir() {
+		return fmt.Errorf("mirror path is not a directory: %s", mirrorDir)
 	}
-	if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create mirror folder: %w", err)
+	if !useExisting {
+		if err := os.RemoveAll(mirrorDir); err != nil {
+			return fmt.Errorf("failed to remove mirror folder: %w", err)
+		}
+		if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create mirror folder: %w", err)
+		}
 	}
+	// And copy the source folder
 	if err := os.CopyFS(mirrorDir, os.DirFS(sourceDir)); err != nil {
-		return "", fmt.Errorf("failed to populate mirror folder: %w", err)
+		return fmt.Errorf("failed to populate mirror folder: %w", err)
 	}
-	return mirrorDir, nil
+	return nil
 }

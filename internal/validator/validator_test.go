@@ -21,7 +21,7 @@ func (m *mockCommandRunner) RunCommand(workDir string, name string, args ...stri
 
 func TestNewValidator(t *testing.T) {
 	sourceDir := createSourceDir(t, "default", ".json")
-	v, err := New(sourceDir, t.TempDir())
+	v, err := New(sourceDir, t.TempDir(), false)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -32,20 +32,20 @@ func TestNewValidator(t *testing.T) {
 
 func TestNewValidator_EmptyMirrorDir(t *testing.T) {
 	sourceDir := createSourceDir(t, "default", ".json")
-	if _, err := New(sourceDir, ""); err == nil {
+	if _, err := New(sourceDir, "", false); err == nil {
 		t.Fatalf("expected error for empty mirror dir")
 	}
 }
 
 func TestPrepareMirror_ErrorsWithoutMirrorDir(t *testing.T) {
 	sourceDir := createSourceDir(t, "default", ".json")
-	if _, err := prepareMirror(sourceDir, ""); err == nil {
+	if err := prepareMirror(sourceDir, "", false); err == nil {
 		t.Fatalf("expected error for empty mirror dir")
 	}
 }
 
 func TestPrepareMirror_ErrorsWithoutSourceDir(t *testing.T) {
-	if _, err := prepareMirror("", t.TempDir()); err == nil {
+	if err := prepareMirror("", t.TempDir(), false); err == nil {
 		t.Fatalf("expected error for empty source dir")
 	}
 }
@@ -66,11 +66,38 @@ func TestPrepareMirror_ClearsAndCopies(t *testing.T) {
 		t.Fatalf("write junk file: %v", err)
 	}
 
-	if _, err := prepareMirror(sourceDir, mirrorDir); err != nil {
+	if err := prepareMirror(sourceDir, mirrorDir, false); err != nil {
 		t.Fatalf("prepareMirror returned error: %v", err)
 	}
 	if _, err := os.Stat(junkFile); !os.IsNotExist(err) {
 		t.Fatalf("expected junk file to be removed")
+	}
+	if _, err := os.Stat(filepath.Join(mirrorDir, "conf", "config.yaml")); err != nil {
+		t.Fatalf("expected mirrored config.yaml: %v", err)
+	}
+}
+
+func TestPrepareMirrorUseExistingKeepsContent(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(sourceDir, "conf"), 0o755); err != nil {
+		t.Fatalf("create source conf dir: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "conf", "config.yaml")
+	if err := os.WriteFile(sourceFile, []byte("apisix:\n  node_listen: 9080\n"), 0o644); err != nil {
+		t.Fatalf("write source config: %v", err)
+	}
+
+	mirrorDir := t.TempDir()
+	junkFile := filepath.Join(mirrorDir, "junk.txt")
+	if err := os.WriteFile(junkFile, []byte("junk"), 0o644); err != nil {
+		t.Fatalf("write junk file: %v", err)
+	}
+
+	if err := prepareMirror(sourceDir, mirrorDir, true); err != nil {
+		t.Fatalf("prepareMirror returned error: %v", err)
+	}
+	if _, err := os.Stat(junkFile); err != nil {
+		t.Fatalf("expected junk file to remain: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(mirrorDir, "conf", "config.yaml")); err != nil {
 		t.Fatalf("expected mirrored config.yaml: %v", err)
@@ -106,7 +133,7 @@ func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, "default", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -148,7 +175,7 @@ func TestValidator_Validate_YAMLProfileExtension(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, "default", ".yaml")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -169,7 +196,7 @@ func TestValidator_Validate_SuccessOutputIgnored(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, "default", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -190,7 +217,7 @@ func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, "default", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -238,7 +265,7 @@ func TestValidator_Validate_EmptyProfile(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, "", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -260,7 +287,7 @@ func TestValidator_Validate_EmptyCandidate(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, "default", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -280,7 +307,7 @@ func TestValidator_Validate_MissingConfig(t *testing.T) {
 	}
 
 	sourceDir := createSourceDirWithoutConfig(t, "default", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), true, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
