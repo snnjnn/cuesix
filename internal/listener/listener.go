@@ -5,10 +5,12 @@ import (
 	"net/http"
 )
 
+// Notifier is notified when /compile is requested.
 type Notifier interface {
 	Notify()
 }
 
+// NewHandler builds the HTTP handler that exposes POST /compile.
 func NewHandler(notifier Notifier) (http.Handler, error) {
 	if notifier == nil {
 		return nil, errors.New("notifier is required")

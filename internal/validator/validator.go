@@ -14,12 +14,12 @@ type commandRunner interface {
 	RunCommand(workDir string, name string, args ...string) ([]byte, error)
 }
 
-// Validator defines the interface for validating APISIX configurations.
+// Validator validates APISIX dynamic configuration payloads.
 type Validator interface {
 	Validate(candidate []byte, isYAML bool) (bool, error)
 }
 
-// New creates a new Validator with a mirrored APISIX home directory.
+// New creates a validator using a mirrored APISIX home directory.
 func New(sourceDir string, mirrorDir string) (Validator, error) {
 	return newWithRunner(sourceDir, mirrorDir, systemCommandRunner{})
 }
@@ -40,6 +40,7 @@ type mirrorValidator struct {
 	mirrorDir string
 }
 
+// ValidationError captures stderr and the underlying error from apisix test.
 type ValidationError struct {
 	Output []byte
 	Cause  error

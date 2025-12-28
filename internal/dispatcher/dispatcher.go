@@ -24,23 +24,30 @@ type Reloader interface {
 	Apply(ctx context.Context, payload []byte) error
 }
 
+// Config wires the dispatcher dependencies and runtime options.
 type Config struct {
-	Compiler    Compiler
-	Cache       Cache
-	Validator   Validator
-	Reloader    Reloader
+	// Compiler, Cache, Validator, and Reloader define the pipeline stages.
+	Compiler  Compiler
+	Cache     Cache
+	Validator Validator
+	Reloader  Reloader
+	// Filesystems provide the input directories to read YAML fragments from.
 	Filesystems []fs.FS
-	OutputYAML  bool
-	Cooldown    time.Duration
-	Logger      *slog.Logger
+	// OutputYAML controls whether validation is performed against YAML instead of JSON.
+	OutputYAML bool
+	// Cooldown defines the minimum interval between dequeued runs.
+	Cooldown time.Duration
+	Logger   *slog.Logger
 }
 
+// Dispatcher queues compile requests and runs the compile/validate/reload pipeline.
 type Dispatcher struct {
 	config       Config
 	queue        chan struct{}
 	lastDequeued time.Time
 }
 
+// New builds a dispatcher with the provided configuration.
 func New(cfg Config) (*Dispatcher, error) {
 	if cfg.Compiler == nil {
 		return nil, errors.New("compiler is required")
@@ -66,6 +73,7 @@ func New(cfg Config) (*Dispatcher, error) {
 	}, nil
 }
 
+// Notify enqueues a compile request if the queue is empty.
 func (d *Dispatcher) Notify() {
 	select {
 	case d.queue <- struct{}{}:
@@ -73,6 +81,7 @@ func (d *Dispatcher) Notify() {
 	}
 }
 
+// Run consumes queued events until the context is canceled.
 func (d *Dispatcher) Run(ctx context.Context) error {
 	if err := d.waitForCooldown(ctx); err != nil {
 		return err

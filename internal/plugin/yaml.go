@@ -6,6 +6,7 @@ import (
 	yaml "go.yaml.in/yaml/v4"
 )
 
+// YAMLPlugin converts JSON payloads to YAML and appends the #END marker.
 type YAMLPlugin struct{}
 
 func (p *YAMLPlugin) Update(payload []byte) ([]byte, error) {

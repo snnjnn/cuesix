@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// JQPlugin applies a jq pipeline defined in the top-level jq list.
 type JQPlugin struct {
 	Runner jqRunner
 }
@@ -17,6 +18,7 @@ type jqRunner interface {
 	Run(input []byte, expression string) ([]byte, []byte, error)
 }
 
+// JQTransform describes a single jq expression in the pipeline.
 type JQTransform struct {
 	ID   string `json:"id"`
 	Prio int    `json:"prio"`

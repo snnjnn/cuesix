@@ -12,12 +12,18 @@ import (
 	"time"
 )
 
+// Reloader replaces the live config and triggers APISIX reloads.
 type Reloader struct {
-	ConfigPath      string
-	ReloadURL       string
-	ReloadMethod    string
-	APIKey          string
-	HTTPClient      *http.Client
+	// ConfigPath points to the dynamic config file under the APISIX home folder.
+	ConfigPath string
+	// ReloadURL and ReloadMethod target the Admin API reload endpoint.
+	ReloadURL    string
+	ReloadMethod string
+	// APIKey adds the X-API-KEY header when required by APISIX.
+	APIKey string
+	// HTTPClient overrides the default client when provided.
+	HTTPClient *http.Client
+	// Retry* fields control backoff behavior for reload attempts.
 	RetryMax        int
 	RetryInitial    time.Duration
 	RetryMaxDelay   time.Duration
@@ -25,6 +31,7 @@ type Reloader struct {
 	Logger          *slog.Logger
 }
 
+// Apply writes the payload to ConfigPath and triggers the reload endpoint.
 func (r *Reloader) Apply(ctx context.Context, payload []byte) error {
 	logger := ensureLogger(r.Logger)
 	if r.ConfigPath == "" {

@@ -16,6 +16,12 @@ const (
 	KindList = "list"
 )
 
+// MergingRule describes how a YAML path should be merged.
+// For list rules:
+// - IDAttr selects the key used to match entries across fragments.
+// - IDOptional controls whether entries without IDAttr are kept as standalone items.
+// - AllowMergeSameID controls whether entries with the same IDAttr are merged or rejected.
+// - Children defines merge rules for nested list paths under each list element.
 type MergingRule struct {
 	Path             string
 	Kind             string
@@ -25,6 +31,7 @@ type MergingRule struct {
 	Children         map[string]MergingRule
 }
 
+// DefaultMergingRules returns the APISIX-specific merge rules for top-level lists.
 func DefaultMergingRules() MergingRule {
 	return MergingRule{
 		Path: "/",
@@ -128,6 +135,7 @@ func DefaultMergingRules() MergingRule {
 	}
 }
 
+// Compile reads YAML fragments from the provided filesystems and merges them.
 func Compile(fses ...fs.FS) (map[string]any, error) {
 	if len(fses) == 0 {
 		return nil, errors.New("no filesystems provided")

@@ -5,11 +5,13 @@ import (
 	"hash/fnv"
 )
 
+// Cache tracks the last serialized payload to detect changes.
 type Cache struct {
 	lastHash uint64
 	hasHash  bool
 }
 
+// Changed returns a deterministic JSON payload when the value differs from the last call.
 func (c *Cache) Changed(value map[string]any) ([]byte, error) {
 	payload, err := MarshalDeterministicJSON(value)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// SSLPlugin inlines certificate files referenced via file:// in ssls entries.
 type SSLPlugin struct {
 	Filesystems []fs.FS
 }
