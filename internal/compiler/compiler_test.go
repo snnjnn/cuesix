@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -120,6 +121,35 @@ func TestMergeListSameIDWithChildList(t *testing.T) {
 	}
 }
 
+func TestMergeListCastsIntegerIDType(t *testing.T) {
+	rule := MergingRule{
+		Path:             "/routes",
+		Kind:             KindList,
+		IDAttr:           "id",
+		IDOptional:       false,
+		AllowMergeSameID: true,
+	}
+
+	left := []any{
+		map[string]any{"id": 1, "attrib1": "/a"},
+	}
+	right := []any{
+		map[string]any{"id": "1", "attrib2": "/b"},
+	}
+
+	merged, err := mergeList(left, right, rule)
+	if err != nil {
+		t.Fatalf("mergeList returned error: %v", err)
+	}
+
+	want := []any{
+		map[string]any{"id": "1", "attrib1": "/a", "attrib2": "/b"},
+	}
+	if diff := cmp.Diff(want, merged); diff != "" {
+		t.Fatalf("unexpected merge result (-want +got):\n%s", diff)
+	}
+}
+
 func TestCompileMergesFilesystems(t *testing.T) {
 	fsOne := fstest.MapFS{
 		"one.yaml": {
@@ -179,5 +209,56 @@ consumers:
 
 	if diff := cmp.Diff(want, merged); diff != "" {
 		t.Fatalf("unexpected compile result (-want +got):\n%s", diff)
+	}
+}
+
+func TestMergeMapRejectsNestedMapWithoutRule(t *testing.T) {
+	rule := MergingRule{
+		Path: "/",
+		Kind: KindMap,
+	}
+	left := map[string]any{
+		"meta": map[string]any{"a": 1},
+	}
+	right := map[string]any{
+		"meta": map[string]any{"b": 2},
+	}
+
+	_, err := mergeMap(left, right, rule)
+	if err == nil {
+		t.Fatalf("expected error for missing nested map rule")
+	}
+	if !strings.Contains(err.Error(), "expected scalar") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMergeMapMergesNestedMapWithRule(t *testing.T) {
+	rule := MergingRule{
+		Path: "/",
+		Kind: KindMap,
+		Children: map[string]MergingRule{
+			"meta": {
+				Path: "/meta",
+				Kind: KindMap,
+			},
+		},
+	}
+	left := map[string]any{
+		"meta": map[string]any{"a": 1},
+	}
+	right := map[string]any{
+		"meta": map[string]any{"b": 2},
+	}
+
+	merged, err := mergeMap(left, right, rule)
+	if err != nil {
+		t.Fatalf("mergeMap returned error: %v", err)
+	}
+	want := map[string]any{
+		"meta": map[string]any{"a": 1, "b": 2},
+	}
+	if diff := cmp.Diff(want, merged); diff != "" {
+		t.Fatalf("unexpected merge result (-want +got):\n%s", diff)
 	}
 }

@@ -4,16 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 
 	"go.yaml.in/yaml/v4"
 )
 
 const (
-	KindMap  = "map"
-	KindList = "list"
+	KindScalar     = "scalar"
+	KindMap        = "map"
+	KindList       = "list"
+	KindScalarList = "scalarlist"
 )
 
 // MergingRule describes how a YAML path should be merged.
@@ -33,6 +37,27 @@ type MergingRule struct {
 
 // DefaultMergingRules returns the APISIX-specific merge rules for top-level lists.
 func DefaultMergingRules() MergingRule {
+
+	// Muchos tipos comparten labels y plugins en su schema,
+	// generalmente todos los podremos unificar siempre que
+	// contengan claves disjuntas.
+	basicRules := func(prev string, other map[string]MergingRule) map[string]MergingRule {
+		basic := map[string]MergingRule{
+			"plugins": {
+				Path: prev + "/plugins",
+				Kind: KindMap,
+			},
+			"labels": {
+				Path: prev + "/labels",
+				Kind: KindMap,
+			},
+		}
+		if other != nil {
+			maps.Insert(basic, maps.All(other))
+		}
+		return basic
+	}
+
 	return MergingRule{
 		Path: "/",
 		Kind: KindMap,
@@ -43,6 +68,16 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       true,
 				AllowMergeSameID: true,
+				Children: basicRules("routes", map[string]MergingRule{
+					"uris": {
+						Path: "routes/uris",
+						Kind: KindScalarList,
+					},
+					"hosts": {
+						Path: "routes/hosts",
+						Kind: KindScalarList,
+					},
+				}),
 			},
 			"services": {
 				Path:             "/services",
@@ -50,6 +85,7 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       true,
 				AllowMergeSameID: false,
+				Children:         basicRules("services", nil),
 			},
 			"upstreams": {
 				Path:             "/upstreams",
@@ -64,6 +100,12 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       true,
 				AllowMergeSameID: false,
+				Children: map[string]MergingRule{
+					"snis": {
+						Path: "ssls/snis",
+						Kind: KindScalarList,
+					},
+				},
 			},
 			"global_rules": {
 				Path:             "/global_rules",
@@ -78,6 +120,7 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       false,
 				AllowMergeSameID: false,
+				Children:         basicRules("services", nil),
 			},
 			"plugin_configs": {
 				Path:             "/plugin_configs",
@@ -92,6 +135,7 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       true,
 				AllowMergeSameID: false,
+				Children:         basicRules("services", nil),
 			},
 			"protos": {
 				Path:             "/protos",
@@ -99,6 +143,15 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       true,
 				AllowMergeSameID: false,
+				Children: map[string]MergingRule{
+					"labels": {
+						Kind:             KindMap,
+						Path:             "/protos/labels",
+						IDAttr:           "route_id",
+						IDOptional:       false,
+						AllowMergeSameID: false,
+					},
+				},
 			},
 			"consumers": {
 				Path:             "/consumers",
@@ -106,7 +159,7 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "username",
 				IDOptional:       false,
 				AllowMergeSameID: true,
-				Children: map[string]MergingRule{
+				Children: basicRules("consumers", map[string]MergingRule{
 					"credentials": {
 						Path:             "/consumers/credentials",
 						Kind:             KindList,
@@ -114,7 +167,7 @@ func DefaultMergingRules() MergingRule {
 						IDOptional:       false,
 						AllowMergeSameID: false,
 					},
-				},
+				}),
 			},
 			"plugin_metadata": {
 				Path:             "/plugin_metadata",
@@ -158,18 +211,15 @@ func Compile(fses ...fs.FS) (map[string]any, error) {
 			if err != nil {
 				return nil, fmt.Errorf("parse %s: %w", path, err)
 			}
-			asMap, ok := value.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("root document in %s must be a map", path)
-			}
 			if merged == nil {
-				merged = asMap
+				merged = value
 				continue
 			}
-			mergedAny, err := ApplyMergeRules(merged, asMap, rootRule)
+			mergedAny, err := ApplyMergeRules(merged, value, rootRule)
 			if err != nil {
 				return nil, fmt.Errorf("merge %s: %w", path, err)
 			}
+			var ok bool
 			merged, ok = mergedAny.(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("merged root is not a map after %s", path)
@@ -185,10 +235,6 @@ func Compile(fses ...fs.FS) (map[string]any, error) {
 }
 
 func ApplyMergeRules(left, right any, rule MergingRule) (any, error) {
-	return mergeAny(left, right, &rule)
-}
-
-func mergeAny(left, right any, rule *MergingRule) (any, error) {
 	if left == nil && right == nil {
 		return nil, nil
 	}
@@ -202,7 +248,7 @@ func mergeAny(left, right any, rule *MergingRule) (any, error) {
 	leftMap, leftIsMap := left.(map[string]any)
 	rightMap, rightIsMap := right.(map[string]any)
 	if leftIsMap && rightIsMap {
-		if rule != nil && rule.Kind != "" && rule.Kind != KindMap {
+		if rule.Kind != KindMap {
 			return nil, fmt.Errorf("expected %s at %s but got map", rule.Kind, rule.Path)
 		}
 		return mergeMap(leftMap, rightMap, rule)
@@ -211,13 +257,16 @@ func mergeAny(left, right any, rule *MergingRule) (any, error) {
 	leftList, leftIsList := left.([]any)
 	rightList, rightIsList := right.([]any)
 	if leftIsList && rightIsList {
-		if rule == nil || rule.Kind != KindList {
+		if rule.Kind != KindList {
 			return nil, fmt.Errorf("missing list merge rule at %s", rulePath(rule))
 		}
-		return mergeList(leftList, rightList, *rule)
+		return mergeList(leftList, rightList, rule)
 	}
 
 	if !leftIsMap && !rightIsMap && !leftIsList && !rightIsList {
+		if rule.Kind != KindScalar {
+			return nil, fmt.Errorf("missing scalar merge rule at %s", rulePath(rule))
+		}
 		if reflect.DeepEqual(left, right) {
 			return cloneAny(left), nil
 		}
@@ -227,7 +276,7 @@ func mergeAny(left, right any, rule *MergingRule) (any, error) {
 	return nil, fmt.Errorf("type mismatch at %s", rulePath(rule))
 }
 
-func mergeMap(left, right map[string]any, rule *MergingRule) (any, error) {
+func mergeMap(left, right map[string]any, rule MergingRule) (any, error) {
 	merged := make(map[string]any, len(left)+len(right))
 	keys := make(map[string]struct{}, len(left)+len(right))
 	for key := range left {
@@ -254,14 +303,21 @@ func mergeMap(left, right map[string]any, rule *MergingRule) (any, error) {
 			merged[key] = cloneAny(leftValue)
 			continue
 		}
-		childRule, hasRule := ruleChild(rule, key)
-		var useRule *MergingRule
-		if hasRule {
-			useRule = &childRule
-		} else {
-			useRule = nil
+		// special case: id attributes might be defined as
+		// integers or strings, but there are internally
+		// noirmalized to strings by apisix.
+		// So we allow merging id == 1 to id == "1"
+		if key == rule.IDAttr {
+			stringVal, ok := asString(leftValue)
+			if ok {
+				leftValue = stringVal
+			}
+			stringVal, ok = asString(rightValue)
+			if ok {
+				rightValue = stringVal
+			}
 		}
-		mergedValue, err := mergeAny(leftValue, rightValue, useRule)
+		mergedValue, err := ApplyMergeRules(leftValue, rightValue, ruleChild(rule, key))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", joinPath(rulePath(rule), key), err)
 		}
@@ -275,8 +331,8 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 		value map[string]any
 		index int
 	}
-	seen := make(map[string]indexedItem)
-	seenRight := make(map[string]struct{})
+	seen := make(map[idKey]indexedItem)
+	seenRight := make(map[idKey]struct{})
 	output := make([]any, 0, len(left)+len(right))
 
 	for _, item := range left {
@@ -293,7 +349,7 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 			continue
 		}
 		if _, exists := seen[id]; exists {
-			return nil, fmt.Errorf("duplicate id %q in list at %s", id, rule.Path)
+			return nil, fmt.Errorf("duplicate id %s in list at %s", id, rule.Path)
 		}
 		seen[id] = indexedItem{value: normalized, index: len(output)}
 		output = append(output, cloneAny(normalized))
@@ -313,7 +369,7 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 			continue
 		}
 		if _, duplicate := seenRight[id]; duplicate {
-			return nil, fmt.Errorf("duplicate id %q in list at %s", id, rule.Path)
+			return nil, fmt.Errorf("duplicate id %s in list at %s", id, rule.Path)
 		}
 		seenRight[id] = struct{}{}
 		existing, exists := seen[id]
@@ -323,19 +379,18 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 			continue
 		}
 		if !rule.AllowMergeSameID {
-			return nil, fmt.Errorf("duplicate id %q without merge rule at %s", id, rule.Path)
+			return nil, fmt.Errorf("duplicate id %s without merge rule at %s", id, rule.Path)
 		}
-		mergedValue, err := mergeAny(existing.value, normalized, &MergingRule{
-			Path:     rule.Path,
-			Kind:     KindMap,
-			Children: rule.Children,
-		})
+		// Reuse the merging rule for maps
+		mapMergingRule := rule
+		mapMergingRule.Kind = KindMap
+		mergedValue, err := ApplyMergeRules(existing.value, normalized, mapMergingRule)
 		if err != nil {
-			return nil, fmt.Errorf("merge id %q at %s: %w", id, rule.Path, err)
+			return nil, fmt.Errorf("merge id %s at %s: %w", id, rule.Path, err)
 		}
 		mergedMap, ok := mergedValue.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("merged item is not a map for id %q at %s", id, rule.Path)
+			return nil, fmt.Errorf("merged item is not a map for id %s at %s", id, rule.Path)
 		}
 		seen[id] = indexedItem{value: mergedMap, index: existing.index}
 		output[existing.index] = mergedMap
@@ -344,7 +399,9 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 	return output, nil
 }
 
-func extractID(item map[string]any, rule MergingRule) (string, bool, error) {
+type idKey string
+
+func extractID(item map[string]any, rule MergingRule) (idKey, bool, error) {
 	raw, ok := item[rule.IDAttr]
 	if !ok {
 		if rule.IDOptional {
@@ -352,64 +409,51 @@ func extractID(item map[string]any, rule MergingRule) (string, bool, error) {
 		}
 		return "", false, fmt.Errorf("missing id attribute %q at %s", rule.IDAttr, rule.Path)
 	}
-	switch value := raw.(type) {
-	case string:
-		if value == "" && !rule.IDOptional {
-			return "", false, fmt.Errorf("empty id attribute %q at %s", rule.IDAttr, rule.Path)
-		}
-		return value, true, nil
-	default:
-		return "", false, fmt.Errorf("id attribute %q must be string at %s", rule.IDAttr, rule.Path)
+	value, ok := asString(raw)
+	if !ok {
+		return "", false, fmt.Errorf("id attribute %q at %s must be string or number", rule.IDAttr, rule.Path)
 	}
+	return idKey(value), true, nil
 }
 
-func decodeYAML(content []byte) (any, error) {
-	var value any
+func asString(raw any) (string, bool) {
+	switch value := raw.(type) {
+	case string:
+		return value, true
+	default:
+		if val, ok := asInt64(raw); ok {
+			return strconv.FormatInt(val, 10), true
+		}
+	}
+	return "", false
+}
+
+func asInt64(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int8:
+		return int64(typed), true
+	case int16:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case float32:
+		return int64(typed), true
+	case float64:
+		return int64(typed), true
+	}
+	return 0, false
+}
+
+func decodeYAML(content []byte) (map[string]any, error) {
+	var value map[string]any
 	if err := yaml.Unmarshal(content, &value); err != nil {
 		return nil, err
 	}
-	return normalizeYAML(value)
-}
-
-func normalizeYAML(value any) (any, error) {
-	switch typed := value.(type) {
-	case map[string]any:
-		normalized := make(map[string]any, len(typed))
-		for key, nested := range typed {
-			converted, err := normalizeYAML(nested)
-			if err != nil {
-				return nil, err
-			}
-			normalized[key] = converted
-		}
-		return normalized, nil
-	case map[any]any:
-		normalized := make(map[string]any, len(typed))
-		for key, nested := range typed {
-			stringKey, ok := key.(string)
-			if !ok {
-				return nil, fmt.Errorf("non-string map key: %v", key)
-			}
-			converted, err := normalizeYAML(nested)
-			if err != nil {
-				return nil, err
-			}
-			normalized[stringKey] = converted
-		}
-		return normalized, nil
-	case []any:
-		normalized := make([]any, 0, len(typed))
-		for _, item := range typed {
-			converted, err := normalizeYAML(item)
-			if err != nil {
-				return nil, err
-			}
-			normalized = append(normalized, converted)
-		}
-		return normalized, nil
-	default:
-		return typed, nil
-	}
+	return value, nil
 }
 
 func listYAMLFiles(filesystem fs.FS) ([]string, error) {
@@ -434,16 +478,23 @@ func listYAMLFiles(filesystem fs.FS) ([]string, error) {
 	return paths, nil
 }
 
-func ruleChild(rule *MergingRule, key string) (MergingRule, bool) {
-	if rule == nil || rule.Children == nil {
-		return MergingRule{}, false
+func ruleChild(rule MergingRule, attrib string) MergingRule {
+	if rule.Children != nil {
+		child, ok := rule.Children[attrib]
+		if ok {
+			return child
+		}
 	}
-	child, ok := rule.Children[key]
-	return child, ok
+	// If there is no merging rule defined, the merge
+	// algorihtm must just allow scalars.
+	return MergingRule{
+		Path: attrib,
+		Kind: KindScalar,
+	}
 }
 
-func rulePath(rule *MergingRule) string {
-	if rule == nil || rule.Path == "" {
+func rulePath(rule MergingRule) string {
+	if rule.Path == "" {
 		return "/"
 	}
 	return rule.Path
