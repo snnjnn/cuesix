@@ -189,7 +189,7 @@ func main() {
 	defer stop()
 
 	reloadURL := ""
-	if !*dryRun {
+	if apisixURL != nil && *apisixURL != "" {
 		reloadURL, err = buildReloadURL(*apisixURL)
 		if err != nil {
 			logger.Error("invalid apisix url", "error", err)
