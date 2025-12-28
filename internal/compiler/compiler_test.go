@@ -262,3 +262,72 @@ func TestMergeMapMergesNestedMapWithRule(t *testing.T) {
 		t.Fatalf("unexpected merge result (-want +got):\n%s", diff)
 	}
 }
+
+func TestMergeScalarList(t *testing.T) {
+	rule := MergingRule{
+		Path: "/ssls/snis",
+		Kind: KindScalarList,
+	}
+	left := []any{"a.example.com", "b.example.com"}
+	right := []any{"b.example.com", "c.example.com"}
+
+	merged, err := mergeScalarList(left, right, rule)
+	if err != nil {
+		t.Fatalf("mergeScalarList returned error: %v", err)
+	}
+	want := []any{"a.example.com", "b.example.com", "c.example.com"}
+	if diff := cmp.Diff(want, merged); diff != "" {
+		t.Fatalf("unexpected merge result (-want +got):\n%s", diff)
+	}
+}
+
+func TestMergeScalarListRejectsNonScalar(t *testing.T) {
+	rule := MergingRule{
+		Path: "/ssls/snis",
+		Kind: KindScalarList,
+	}
+	left := []any{map[string]any{"bad": true}}
+	right := []any{"ok"}
+
+	_, err := mergeScalarList(left, right, rule)
+	if err == nil {
+		t.Fatalf("expected error for non-scalar list item")
+	}
+}
+
+func TestExtractIDMissingRequired(t *testing.T) {
+	rule := MergingRule{
+		Path:             "/routes",
+		Kind:             KindList,
+		IDAttr:           "id",
+		IDOptional:       false,
+		AllowMergeSameID: false,
+	}
+	item := map[string]any{"uri": "/a"}
+	_, _, err := extractID(item, rule)
+	if err == nil {
+		t.Fatalf("expected error for missing id")
+	}
+}
+
+func TestApplyMergeRulesTypeMismatch(t *testing.T) {
+	rule := MergingRule{Path: "/", Kind: KindScalar}
+	_, err := ApplyMergeRules(map[string]any{"a": 1}, []any{"b"}, rule)
+	if err == nil {
+		t.Fatalf("expected type mismatch error")
+	}
+	if !strings.Contains(err.Error(), "type mismatch") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplyMergeRulesScalarRuleMismatch(t *testing.T) {
+	rule := MergingRule{Path: "/a", Kind: KindMap}
+	_, err := ApplyMergeRules("left", "right", rule)
+	if err == nil {
+		t.Fatalf("expected missing scalar merge rule error")
+	}
+	if !strings.Contains(err.Error(), "missing scalar merge rule") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

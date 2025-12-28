@@ -239,10 +239,10 @@ func ApplyMergeRules(left, right any, rule MergingRule) (any, error) {
 		return nil, nil
 	}
 	if left == nil {
-		return cloneAny(right), nil
+		return right, nil
 	}
 	if right == nil {
-		return cloneAny(left), nil
+		return left, nil
 	}
 
 	leftMap, leftIsMap := left.(map[string]any)
@@ -257,10 +257,14 @@ func ApplyMergeRules(left, right any, rule MergingRule) (any, error) {
 	leftList, leftIsList := left.([]any)
 	rightList, rightIsList := right.([]any)
 	if leftIsList && rightIsList {
-		if rule.Kind != KindList {
+		switch rule.Kind {
+		case KindList:
+			return mergeList(leftList, rightList, rule)
+		case KindScalarList:
+			return mergeScalarList(leftList, rightList, rule)
+		default:
 			return nil, fmt.Errorf("missing list merge rule at %s", rulePath(rule))
 		}
-		return mergeList(leftList, rightList, rule)
 	}
 
 	if !leftIsMap && !rightIsMap && !leftIsList && !rightIsList {
@@ -268,7 +272,7 @@ func ApplyMergeRules(left, right any, rule MergingRule) (any, error) {
 			return nil, fmt.Errorf("missing scalar merge rule at %s", rulePath(rule))
 		}
 		if reflect.DeepEqual(left, right) {
-			return cloneAny(left), nil
+			return left, nil
 		}
 		return nil, fmt.Errorf("scalar conflict at %s", rulePath(rule))
 	}
@@ -296,11 +300,11 @@ func mergeMap(left, right map[string]any, rule MergingRule) (any, error) {
 		leftValue, leftOk := left[key]
 		rightValue, rightOk := right[key]
 		if !leftOk {
-			merged[key] = cloneAny(rightValue)
+			merged[key] = rightValue
 			continue
 		}
 		if !rightOk {
-			merged[key] = cloneAny(leftValue)
+			merged[key] = leftValue
 			continue
 		}
 		// special case: id attributes might be defined as
@@ -336,36 +340,36 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 	output := make([]any, 0, len(left)+len(right))
 
 	for _, item := range left {
-		normalized, ok := item.(map[string]any)
+		asMap, ok := item.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("list item must be a map at %s", rule.Path)
 		}
-		id, hasID, err := extractID(normalized, rule)
+		id, hasID, err := extractID(asMap, rule)
 		if err != nil {
 			return nil, err
 		}
 		if !hasID {
-			output = append(output, cloneAny(normalized))
+			output = append(output, asMap)
 			continue
 		}
 		if _, exists := seen[id]; exists {
 			return nil, fmt.Errorf("duplicate id %s in list at %s", id, rule.Path)
 		}
-		seen[id] = indexedItem{value: normalized, index: len(output)}
-		output = append(output, cloneAny(normalized))
+		seen[id] = indexedItem{value: asMap, index: len(output)}
+		output = append(output, asMap)
 	}
 
 	for _, item := range right {
-		normalized, ok := item.(map[string]any)
+		asMap, ok := item.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("list item must be a map at %s", rule.Path)
 		}
-		id, hasID, err := extractID(normalized, rule)
+		id, hasID, err := extractID(asMap, rule)
 		if err != nil {
 			return nil, err
 		}
 		if !hasID {
-			output = append(output, cloneAny(normalized))
+			output = append(output, asMap)
 			continue
 		}
 		if _, duplicate := seenRight[id]; duplicate {
@@ -374,8 +378,8 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 		seenRight[id] = struct{}{}
 		existing, exists := seen[id]
 		if !exists {
-			seen[id] = indexedItem{value: normalized, index: len(output)}
-			output = append(output, cloneAny(normalized))
+			seen[id] = indexedItem{value: asMap, index: len(output)}
+			output = append(output, asMap)
 			continue
 		}
 		if !rule.AllowMergeSameID {
@@ -384,7 +388,7 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 		// Reuse the merging rule for maps
 		mapMergingRule := rule
 		mapMergingRule.Kind = KindMap
-		mergedValue, err := ApplyMergeRules(existing.value, normalized, mapMergingRule)
+		mergedValue, err := ApplyMergeRules(existing.value, asMap, mapMergingRule)
 		if err != nil {
 			return nil, fmt.Errorf("merge id %s at %s: %w", id, rule.Path, err)
 		}
@@ -397,6 +401,44 @@ func mergeList(left, right []any, rule MergingRule) (any, error) {
 	}
 
 	return output, nil
+}
+
+func mergeScalarList(left, right []any, rule MergingRule) (any, error) {
+	output := make([]any, 0, len(left)+len(right))
+	for _, item := range left {
+		if !isScalarListItem(item) {
+			return nil, fmt.Errorf("scalar list item must be a scalar at %s", rule.Path)
+		}
+		output = append(output, item)
+	}
+	for _, item := range right {
+		if !isScalarListItem(item) {
+			return nil, fmt.Errorf("scalar list item must be a scalar at %s", rule.Path)
+		}
+		if containsScalar(output, item) {
+			continue
+		}
+		output = append(output, item)
+	}
+	return output, nil
+}
+
+func containsScalar(values []any, target any) bool {
+	for _, value := range values {
+		if reflect.DeepEqual(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func isScalarListItem(value any) bool {
+	switch value.(type) {
+	case map[string]any, map[any]any, []any:
+		return false
+	default:
+		return true
+	}
 }
 
 type idKey string
@@ -505,23 +547,4 @@ func joinPath(base, key string) string {
 		return "/" + key
 	}
 	return base + "/" + key
-}
-
-func cloneAny(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		copied := make(map[string]any, len(typed))
-		for key, nested := range typed {
-			copied[key] = cloneAny(nested)
-		}
-		return copied
-	case []any:
-		copied := make([]any, len(typed))
-		for i, item := range typed {
-			copied[i] = cloneAny(item)
-		}
-		return copied
-	default:
-		return typed
-	}
 }
