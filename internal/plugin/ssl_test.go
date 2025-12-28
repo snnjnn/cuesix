@@ -10,9 +10,9 @@ import (
 
 func TestSSLPluginReplacesFields(t *testing.T) {
 	fsOne := fstest.MapFS{
-		"cert.pem":  {Data: []byte("cert-data")},
-		"key.pem":   {Data: []byte("key-data")},
-		"chain.pem": {Data: []byte("chain-data")},
+		"cert.pem":   {Data: []byte("cert-data")},
+		"key.pem":    {Data: []byte("key-data")},
+		"chain.pem":  {Data: []byte("chain-data")},
 		"client.pem": {Data: []byte("client-data")},
 	}
 	plugin := &SSLPlugin{Filesystems: []fs.FS{fsOne}}

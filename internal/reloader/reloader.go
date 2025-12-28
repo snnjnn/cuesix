@@ -37,9 +37,6 @@ func (r *Reloader) Apply(ctx context.Context, payload []byte) error {
 	if r.ConfigPath == "" {
 		return errors.New("config path is required")
 	}
-	if r.ReloadURL == "" {
-		return errors.New("reload URL is required")
-	}
 	if len(payload) == 0 {
 		return errors.New("payload is required")
 	}
@@ -47,6 +44,10 @@ func (r *Reloader) Apply(ctx context.Context, payload []byte) error {
 	if err := replaceWithPayload(payload, r.ConfigPath); err != nil {
 		logger.Error("replace config failed", "error", err)
 		return err
+	}
+	if r.ReloadURL == "" {
+		logger.Info("reload request skipped by configuration")
+		return nil
 	}
 	if err := r.triggerReload(ctx); err != nil {
 		logger.Error("reload request failed", "error", err)

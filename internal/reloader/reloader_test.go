@@ -60,12 +60,32 @@ func TestApplyRejectsMissingConfig(t *testing.T) {
 	}
 }
 
-func TestApplyRejectsMissingReloadURL(t *testing.T) {
-	rel := &Reloader{
-		ConfigPath: "/tmp/apisix.yaml",
+func TestApplyAllowsMissingReloadURL(t *testing.T) {
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "apisix.yaml")
+	if err := os.WriteFile(targetPath, []byte("old"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
 	}
-	if err := rel.Apply(context.Background(), []byte("payload")); err == nil {
-		t.Fatalf("expected error for missing reload URL")
+
+	counter := &countingTransport{}
+	client := &http.Client{Transport: counter}
+	rel := &Reloader{
+		ConfigPath: targetPath,
+		HTTPClient: client,
+	}
+
+	if err := rel.Apply(context.Background(), []byte("payload")); err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if counter.calls != 0 {
+		t.Fatalf("expected no reload request, got %d", counter.calls)
+	}
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	if string(content) != "payload" {
+		t.Fatalf("expected payload written, got %q", string(content))
 	}
 }
 
@@ -187,4 +207,13 @@ func TestReplaceWithPayloadRenameFailure(t *testing.T) {
 	if err := replaceWithPayload([]byte("payload"), destPath); err == nil {
 		t.Fatalf("expected error when renaming onto a directory")
 	}
+}
+
+type countingTransport struct {
+	calls int
+}
+
+func (t *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	t.calls++
+	return nil, nil
 }

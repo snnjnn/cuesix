@@ -15,6 +15,8 @@ APISIX determines whether the dynamic config is YAML or JSON via `config.yaml`:
 deployment:
   role: data_plane
   role_data_plane:
+    # config provider defines if thee dynamic config
+    # is json or yaml. By default, it is yaml.
     config_provider: json|yaml
 ```
 
@@ -145,6 +147,7 @@ Input and runtime mode:
 - `--listen` / `CUESIX_LISTEN`: listen address for server mode.
 - `--input` (repeatable) / `CUESIX_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
 - `--cooldown` / `CUESIX_COOLDOWN`: minimum delay between queued compile runs.
+- `--dry-run` / `CUESIX_DRY_RUN` (bool): run pipeline without writing config or triggering reload.
 
 APISIX paths and validation:
 - `--apisix-home` / `CUESIX_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).

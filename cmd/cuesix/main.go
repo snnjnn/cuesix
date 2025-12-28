@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/warpcomdev/cuesix/internal/cache"
 	"github.com/warpcomdev/cuesix/internal/compiler"
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
@@ -25,7 +26,6 @@ import (
 	"github.com/warpcomdev/cuesix/internal/plugin"
 	"github.com/warpcomdev/cuesix/internal/reloader"
 	"github.com/warpcomdev/cuesix/internal/validator"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type compilerAdapter struct{}
@@ -86,6 +86,7 @@ func main() {
 
 	apisixHome := flag.String("apisix-home", envStringDefault("CUESIX_APISIX_HOME", "/usr/local/apisix"), "apisix home path")
 	apisixURL := flag.String("apisix-url", envString("CUESIX_APISIX_URL"), "apisix admin base url")
+	dryRun := flag.Bool("dry-run", envBool("CUESIX_DRY_RUN", false), "run pipeline without writing config or reloading apisix")
 	apiKey := flag.String("apisix-api-key", envString("CUESIX_APISIX_API_KEY"), "apisix admin api key")
 	reloadMethod := flag.String("reload-method", envStringDefault("CUESIX_RELOAD_METHOD", http.MethodPost), "reload HTTP method")
 
@@ -159,7 +160,7 @@ func main() {
 		logger.Error("missing apisix home path")
 		os.Exit(1)
 	}
-	if *apisixURL == "" {
+	if !*dryRun && *apisixURL == "" {
 		logger.Error("missing apisix url")
 		os.Exit(1)
 	}
@@ -187,17 +188,20 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	reloadURL, err := buildReloadURL(*apisixURL)
-	if err != nil {
-		logger.Error("invalid apisix url", "error", err)
-		os.Exit(1)
+	reloadURL := ""
+	if !*dryRun {
+		reloadURL, err = buildReloadURL(*apisixURL)
+		if err != nil {
+			logger.Error("invalid apisix url", "error", err)
+			os.Exit(1)
+		}
 	}
 
-	disp, err := dispatcher.New(dispatcher.Config{
-		Compiler:  compilerAdapter{},
-		Cache:     pluginCacheInst,
-		Validator: val,
-		Reloader: &reloader.Reloader{
+	var reloadTarget dispatcher.Reloader
+	if *dryRun {
+		reloadTarget = &dryRunReloader{Logger: logger}
+	} else {
+		reloadTarget = &reloader.Reloader{
 			ConfigPath:      configPath,
 			ReloadURL:       reloadURL,
 			ReloadMethod:    *reloadMethod,
@@ -207,7 +211,14 @@ func main() {
 			RetryMaxDelay:   *retryMaxDelay,
 			RetryMultiplier: *retryMultiplier,
 			Logger:          logger,
-		},
+		}
+	}
+
+	disp, err := dispatcher.New(dispatcher.Config{
+		Compiler:    compilerAdapter{},
+		Cache:       pluginCacheInst,
+		Validator:   val,
+		Reloader:    reloadTarget,
 		Filesystems: fses,
 		OutputYAML:  *enableYAML,
 		Cooldown:    *cooldown,
@@ -371,6 +382,19 @@ func buildReloadURL(base string) (string, error) {
 	query.Set("reload", "true")
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
+}
+
+type dryRunReloader struct {
+	Logger *slog.Logger
+}
+
+func (r *dryRunReloader) Apply(_ context.Context, payload []byte) error {
+	logger := r.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Info("dry-run reload skipped", "bytes", len(payload))
+	return nil
 }
 
 func envInt(key string, def int) int {
