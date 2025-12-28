@@ -25,6 +25,7 @@ import (
 	"github.com/warpcomdev/cuesix/internal/plugin"
 	"github.com/warpcomdev/cuesix/internal/reloader"
 	"github.com/warpcomdev/cuesix/internal/validator"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type compilerAdapter struct{}
@@ -222,9 +223,12 @@ func main() {
 		logger.Error("listener init failed", "error", err)
 		os.Exit(1)
 	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/", handler)
 	server := &http.Server{
 		Addr:              *listenAddr,
-		Handler:           drainBody(handler),
+		Handler:           drainBody(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,

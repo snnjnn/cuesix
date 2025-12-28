@@ -77,7 +77,9 @@ func New(cfg Config) (*Dispatcher, error) {
 func (d *Dispatcher) Notify() {
 	select {
 	case d.queue <- struct{}{}:
+		dispatcherEnqueued.Inc()
 	default:
+		dispatcherDropped.Inc()
 	}
 }
 
@@ -91,6 +93,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-d.queue:
+			dispatcherDequeued.Inc()
 			dequeuedAt := time.Now()
 			if err := d.waitAfterDequeue(ctx, dequeuedAt); err != nil {
 				return err
@@ -106,32 +109,50 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 }
 
 func (d *Dispatcher) handle(ctx context.Context) error {
+	start := time.Now()
+	defer dispatcherDuration.WithLabelValues("total").Observe(time.Since(start).Seconds())
+
+	stageStart := time.Now()
 	merged, err := d.config.Compiler.Compile(d.config.Filesystems...)
+	dispatcherDuration.WithLabelValues("compile").Observe(time.Since(stageStart).Seconds())
 	if err != nil {
+		dispatcherErrors.WithLabelValues("compile").Inc()
 		return err
 	}
 
+	stageStart = time.Now()
 	normalized, err := d.config.Cache.Changed(merged)
+	dispatcherDuration.WithLabelValues("cache").Observe(time.Since(stageStart).Seconds())
 	if err != nil {
+		dispatcherErrors.WithLabelValues("cache").Inc()
 		return err
 	}
 	if normalized == nil {
+		dispatcherSkipped.Inc()
 		d.config.Logger.Info("no changes detected; skipping validation and reload")
 		return nil
 	}
 
+	stageStart = time.Now()
 	ok, err := d.config.Validator.Validate(normalized, d.config.OutputYAML)
+	dispatcherDuration.WithLabelValues("validate").Observe(time.Since(stageStart).Seconds())
 	if err != nil {
+		dispatcherErrors.WithLabelValues("validate").Inc()
 		return err
 	}
 	if !ok {
 		d.config.Logger.Warn("validation failed")
+		dispatcherErrors.WithLabelValues("validate").Inc()
 		return errors.New("validation failed")
 	}
 
+	stageStart = time.Now()
 	if err := d.config.Reloader.Apply(ctx, normalized); err != nil {
+		dispatcherDuration.WithLabelValues("reload").Observe(time.Since(stageStart).Seconds())
+		dispatcherErrors.WithLabelValues("reload").Inc()
 		return err
 	}
+	dispatcherDuration.WithLabelValues("reload").Observe(time.Since(stageStart).Seconds())
 	d.config.Logger.Info("reload completed")
 	return nil
 }
