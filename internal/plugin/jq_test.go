@@ -2,10 +2,11 @@ package plugin
 
 import (
 	"errors"
-	"log/slog"
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type mockJQRunner struct {
@@ -25,7 +26,7 @@ func (m *mockJQRunner) Run(input []byte, expression string) ([]byte, []byte, err
 func TestJQPluginNoConfig(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`{"routes":[{"id":1}]}`)
-	got, err := plugin.Update(slog.Default(), input)
+	got, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -38,7 +39,7 @@ func TestJQPluginNoConfigSkipsRun(t *testing.T) {
 	runner := &mockJQRunner{}
 	plugin := &JQPlugin{Runner: runner}
 	input := []byte(`{"routes":[{"id":1}]}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -52,7 +53,7 @@ func TestJQPluginRemovesJQEntry(t *testing.T) {
 	plugin := &JQPlugin{Runner: runner}
 	input := []byte(`{"routes":[{"id":1}],"jq":[{"expr":".routes[0].id = 2"}]}`)
 	runner.stdout = []byte(`{"routes":[{"id":2}]}`)
-	got, err := plugin.Update(slog.Default(), input)
+	got, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestJQPluginAppliesTransformsInPrioOrder(t *testing.T) {
 	runner := &mockJQRunner{stdout: []byte(`{"routes":[{"id":20}]}`)}
 	plugin := &JQPlugin{Runner: runner}
 	input := []byte(`{"routes":[{"id":1}],"jq":[{"id":"first","prio":10,"expr":".routes[0].id = 10"},{"id":"second","prio":20,"expr":".routes[0].id = 20"}]}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestJQPluginAppliesTransformsInPrioOrder(t *testing.T) {
 func TestJQPluginRejectsNonListConfig(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`{"jq":{"expr":".a = 1"}}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err == nil {
 		t.Fatalf("expected error for non-list jq config")
 	}
@@ -102,7 +103,7 @@ func TestJQPluginRejectsNonListConfig(t *testing.T) {
 func TestJQPluginRequiresExpression(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`{"jq":[{"id":"missing"}]}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err == nil {
 		t.Fatalf("expected error for missing expr")
 	}
@@ -118,7 +119,7 @@ func TestJQPluginRequiresExpression(t *testing.T) {
 func TestJQPluginRejectsUnknownField(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`{"jq":[{"expr":".a = 1","extra":true}]}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err == nil {
 		t.Fatalf("expected error for unknown field")
 	}
@@ -134,7 +135,7 @@ func TestJQPluginRejectsUnknownField(t *testing.T) {
 func TestJQPluginRejectsInvalidPrio(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`{"jq":[{"expr":".a = 1","prio":"high"}]}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err == nil {
 		t.Fatalf("expected error for invalid prio")
 	}
@@ -149,7 +150,7 @@ func TestJQPluginRejectsInvalidPrio(t *testing.T) {
 
 func TestJQPluginDecodeError(t *testing.T) {
 	plugin := &JQPlugin{}
-	_, err := plugin.Update(slog.Default(), []byte("{"))
+	_, err := plugin.Update(testutil.Logger(), []byte("{"))
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -163,7 +164,7 @@ func TestJQPluginExecError(t *testing.T) {
 	runner := &mockJQRunner{stderr: []byte("failed")}
 	plugin := &JQPlugin{Runner: runner}
 	input := []byte(`{"jq":[{"expr":".a = 1"}]}`)
-	_, err := plugin.Update(slog.Default(), input)
+	_, err := plugin.Update(testutil.Logger(), input)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -176,7 +177,7 @@ func TestJQPluginExecError(t *testing.T) {
 func TestJQPluginEmptyListRemovesJQ(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`{"jq":[],"a":1}`)
-	got, err := plugin.Update(slog.Default(), input)
+	got, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -188,7 +189,7 @@ func TestJQPluginEmptyListRemovesJQ(t *testing.T) {
 func TestJQPluginNonObjectRootSkips(t *testing.T) {
 	plugin := &JQPlugin{}
 	input := []byte(`[{"jq":[{"expr":".a = 1"}]}]`)
-	got, err := plugin.Update(slog.Default(), input)
+	got, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}

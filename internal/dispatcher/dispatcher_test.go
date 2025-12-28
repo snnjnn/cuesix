@@ -9,6 +9,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type stubCompiler struct {
@@ -79,7 +81,7 @@ func TestDispatcherSkipsWhenUnchanged(t *testing.T) {
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- disp.Run(ctx, slog.Default())
+		errCh <- disp.Run(ctx, testutil.Logger())
 	}()
 
 	disp.Notify()
@@ -122,7 +124,7 @@ func TestDispatcherReturnsCompilerError(t *testing.T) {
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- disp.Run(ctx, slog.Default())
+		errCh <- disp.Run(ctx, testutil.Logger())
 	}()
 
 	disp.Notify()
@@ -156,7 +158,7 @@ func TestDispatcherReturnsValidationError(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 
-	err = disp.handle(context.Background(), slog.Default())
+	err = disp.handle(context.Background(), testutil.Logger())
 	if err == nil {
 		t.Fatalf("expected validation error")
 	}

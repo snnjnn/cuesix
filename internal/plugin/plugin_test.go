@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type stubPlugin struct {
@@ -19,7 +21,7 @@ func (s *stubPlugin) Update(_ *slog.Logger, value map[string]any) (map[string]an
 func TestChainEmpty(t *testing.T) {
 	var chain PreRenderChain
 	input := map[string]any{"a": 1}
-	output, err := chain.Update(slog.Default(), input)
+	output, err := chain.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -34,7 +36,7 @@ func TestChainStopsOnError(t *testing.T) {
 	third := &stubPlugin{}
 	chain := PreRenderChain{first, second, third}
 
-	_, err := chain.Update(slog.Default(), map[string]any{"a": 1})
+	_, err := chain.Update(testutil.Logger(), map[string]any{"a": 1})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -61,7 +63,7 @@ func TestPostRenderChainStopsOnError(t *testing.T) {
 	third := &stubPostPlugin{}
 	chain := PostRenderChain{first, second, third}
 
-	_, err := chain.Update(slog.Default(), []byte("data"))
+	_, err := chain.Update(testutil.Logger(), []byte("data"))
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -77,7 +79,7 @@ func TestPostRenderFunc(t *testing.T) {
 		return append(value, 'x'), nil
 	})
 
-	out, err := fn.Update(slog.Default(), []byte("data"))
+	out, err := fn.Update(testutil.Logger(), []byte("data"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +96,7 @@ func TestPreRenderFunc(t *testing.T) {
 		return value, nil
 	})
 
-	out, err := fn.Update(slog.Default(), map[string]any{"a": 1})
+	out, err := fn.Update(testutil.Logger(), map[string]any{"a": 1})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

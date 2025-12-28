@@ -1,14 +1,15 @@
 package cache
 
 import (
-	"log/slog"
 	"testing"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestCacheChangedDeterministic(t *testing.T) {
 	c := &Cache{}
 
-	firstPath, err := c.Changed(slog.Default(), map[string]any{
+	firstPath, err := c.Changed(testutil.Logger(), map[string]any{
 		"a": 1,
 		"b": 2,
 	})
@@ -19,7 +20,7 @@ func TestCacheChangedDeterministic(t *testing.T) {
 		t.Fatalf("expected first Changed to return path")
 	}
 
-	secondPath, err := c.Changed(slog.Default(), map[string]any{
+	secondPath, err := c.Changed(testutil.Logger(), map[string]any{
 		"b": 2,
 		"a": 1,
 	})
@@ -34,7 +35,7 @@ func TestCacheChangedDeterministic(t *testing.T) {
 func TestCacheChangedDifferent(t *testing.T) {
 	c := &Cache{}
 
-	firstPath, err := c.Changed(slog.Default(), map[string]any{"a": 1})
+	firstPath, err := c.Changed(testutil.Logger(), map[string]any{"a": 1})
 	if err != nil {
 		t.Fatalf("first Changed returned error: %v", err)
 	}
@@ -54,7 +55,7 @@ func TestCacheChangedDifferent(t *testing.T) {
 func TestCacheChangedInvalidValue(t *testing.T) {
 	c := &Cache{}
 
-	path, err := c.Changed(slog.Default(), map[string]any{
+	path, err := c.Changed(testutil.Logger(), map[string]any{
 		"a": func() {},
 	})
 	if err == nil {

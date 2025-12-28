@@ -1,12 +1,13 @@
 package compiler
 
 import (
-	"log/slog"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestMergeListOptionalIDKeepsItems(t *testing.T) {
@@ -180,7 +181,7 @@ consumers:
 		},
 	}
 
-	merged, err := Compile(slog.Default(), fsOne, fsTwo)
+	merged, err := Compile(testutil.Logger(), fsOne, fsTwo)
 	if err != nil {
 		t.Fatalf("Compile returned error: %v", err)
 	}

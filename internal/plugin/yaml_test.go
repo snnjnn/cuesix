@@ -2,13 +2,14 @@ package plugin
 
 import (
 	"bytes"
-	"log/slog"
 	"testing"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestYAMLPluginEmptyPayload(t *testing.T) {
 	plugin := &YAMLPlugin{}
-	got, err := plugin.Update(slog.Default(), nil)
+	got, err := plugin.Update(testutil.Logger(), nil)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -21,7 +22,7 @@ func TestYAMLPluginEmptyPayload(t *testing.T) {
 func TestYAMLPluginConvertsJSONToYAML(t *testing.T) {
 	plugin := &YAMLPlugin{}
 	input := []byte("{\"routes\":[{\"id\":1}]}")
-	got, err := plugin.Update(slog.Default(), input)
+	got, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}

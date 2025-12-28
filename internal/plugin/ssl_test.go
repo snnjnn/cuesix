@@ -2,11 +2,11 @@ package plugin
 
 import (
 	"io/fs"
-	"log/slog"
 	"testing"
 	"testing/fstest"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestSSLPluginReplacesFields(t *testing.T) {
@@ -33,7 +33,7 @@ func TestSSLPluginReplacesFields(t *testing.T) {
 		},
 	}
 
-	got, err := plugin.Update(slog.Default(), input)
+	got, err := plugin.Update(testutil.Logger(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestSSLPluginMissingFile(t *testing.T) {
 			},
 		},
 	}
-	if _, err := plugin.Update(slog.Default(), input); err == nil {
+	if _, err := plugin.Update(testutil.Logger(), input); err == nil {
 		t.Fatalf("expected error for missing file")
 	}
 }

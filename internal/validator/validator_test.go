@@ -3,10 +3,11 @@ package validator
 import (
 	"errors"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type mockCommandRunner struct {
@@ -36,7 +37,7 @@ func TestBuildConfigPath(t *testing.T) {
 }
 
 func TestNewValidator(t *testing.T) {
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	v, err := New(sourceDir, t.TempDir(), false)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -47,14 +48,14 @@ func TestNewValidator(t *testing.T) {
 }
 
 func TestNewValidator_EmptyMirrorDir(t *testing.T) {
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	if _, err := New(sourceDir, "", false); err == nil {
 		t.Fatalf("expected error for empty mirror dir")
 	}
 }
 
 func TestPrepareMirror_ErrorsWithoutMirrorDir(t *testing.T) {
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	if err := prepareMirror(sourceDir, "", false); err == nil {
 		t.Fatalf("expected error for empty mirror dir")
 	}
@@ -148,7 +149,7 @@ func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
 		},
 	}
 
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -158,7 +159,7 @@ func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
 	}
 
 	candidate := []byte(`{"new":true}`)
-	valid, err := v.Validate(slog.Default(), candidate, false)
+	valid, err := v.Validate(testutil.Logger(), candidate, false)
 
 	if !valid || err != nil {
 		t.Errorf("Expected valid=true, err=nil for a syntactically valid config, got valid=%t, err=%v", valid, err)
@@ -190,13 +191,13 @@ func TestValidator_Validate_YAMLProfileExtension(t *testing.T) {
 		},
 	}
 
-	sourceDir := createSourceDir(t, "default", ".yaml")
+	sourceDir := createSourceDir(t, true)
 	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	candidate := []byte("routes: []")
-	valid, err := v.Validate(slog.Default(), candidate, true)
+	valid, err := v.Validate(testutil.Logger(), candidate, true)
 	if !valid || err != nil {
 		t.Fatalf("expected valid=true, err=nil, got valid=%t, err=%v", valid, err)
 	}
@@ -211,13 +212,13 @@ func TestValidator_Validate_SuccessOutputIgnored(t *testing.T) {
 		},
 	}
 
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	candidate := []byte(`{"new":true}`)
-	valid, err := v.Validate(slog.Default(), candidate, false)
+	valid, err := v.Validate(testutil.Logger(), candidate, false)
 	if !valid || err != nil {
 		t.Fatalf("expected valid=true, err=nil, got valid=%t, err=%v", valid, err)
 	}
@@ -232,7 +233,7 @@ func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
 		},
 	}
 
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -242,7 +243,7 @@ func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
 	}
 
 	candidate := []byte(`{"new":true}`)
-	valid, err := v.Validate(slog.Default(), candidate, false)
+	valid, err := v.Validate(testutil.Logger(), candidate, false)
 
 	if valid || err == nil {
 		t.Errorf("Expected valid=false, err!=nil for a syntactically invalid config, got valid=%t, err=%v", valid, err)
@@ -279,14 +280,13 @@ func TestValidator_Validate_EmptyProfile(t *testing.T) {
 			return []byte("success"), nil
 		},
 	}
-
-	sourceDir := createSourceDir(t, "", ".json")
+	sourceDir := createSourceDir(t, false)
 	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
 	candidate := []byte(`{"new":true}`)
-	valid, err := v.Validate(slog.Default(), candidate, false)
+	valid, err := v.Validate(testutil.Logger(), candidate, false)
 	if !valid || err != nil {
 		t.Fatalf("expected valid=true, err=nil, got valid=%t, err=%v", valid, err)
 	}
@@ -302,33 +302,13 @@ func TestValidator_Validate_EmptyCandidate(t *testing.T) {
 		},
 	}
 
-	sourceDir := createSourceDir(t, "default", ".json")
+	sourceDir := createSourceDir(t, false)
 	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
-	if _, err := v.Validate(slog.Default(), nil, false); err == nil {
+	if _, err := v.Validate(testutil.Logger(), nil, false); err == nil {
 		t.Fatalf("expected error for empty candidate")
-	}
-}
-
-func TestValidator_Validate_MissingConfig(t *testing.T) {
-	t.Setenv("APISIX_PROFILE", "default")
-
-	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
-			t.Fatalf("runner should not be called when config.yaml is missing")
-			return nil, nil
-		},
-	}
-
-	sourceDir := createSourceDirWithoutConfig(t, "default", ".json")
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-	if _, err := v.Validate(slog.Default(), []byte(`{"new":true}`), false); err == nil {
-		t.Fatalf("expected error when config.yaml is missing")
 	}
 }
 
@@ -347,38 +327,13 @@ func TestValidationErrorErrorString(t *testing.T) {
 	}
 }
 
-func createSourceDirWithoutConfig(t *testing.T, profile string, ext string) string {
+func createSourceDir(t *testing.T, isYAML bool) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "conf"), 0o755); err != nil {
-		t.Fatalf("create conf dir: %v", err)
+	dynamicPath := BuildConfigPath(dir, isYAML)
+	if err := os.MkdirAll(filepath.Dir(dynamicPath), 0o755); err != nil {
+		t.Fatalf("create apisix profile dir: %v", err)
 	}
-	name := "apisix" + ext
-	if profile != "" {
-		name = "apisix-" + profile + ext
-	}
-	dynamicPath := filepath.Join(dir, "conf", name)
-	if err := os.WriteFile(dynamicPath, []byte(`{"old":true}`), 0o644); err != nil {
-		t.Fatalf("write apisix profile file: %v", err)
-	}
-	return dir
-}
-
-func createSourceDir(t *testing.T, profile string, ext string) string {
-	t.Helper()
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "conf", "config.yaml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("create conf dir: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("apisix:\n  node_listen: 9080\n"), 0o644); err != nil {
-		t.Fatalf("write config.yaml: %v", err)
-	}
-	name := "apisix" + ext
-	if profile != "" {
-		name = "apisix-" + profile + ext
-	}
-	dynamicPath := filepath.Join(dir, "conf", name)
 	if err := os.WriteFile(dynamicPath, []byte(`{"old":true}`), 0o644); err != nil {
 		t.Fatalf("write apisix profile file: %v", err)
 	}
