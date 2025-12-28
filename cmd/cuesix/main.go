@@ -10,6 +10,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -33,16 +34,21 @@ func (compilerAdapter) Compile(fses ...fs.FS) (map[string]any, error) {
 }
 
 type pluginCache struct {
-	plugins plugin.Plugin
-	cache   *cache.Cache
+	preRender  plugin.PreRender
+	postRender plugin.PostRender
+	cache      *cache.Cache
 }
 
-func (p *pluginCache) Changed(value map[string]any) (string, error) {
-	updated, err := p.plugins.Update(value)
+func (p *pluginCache) Changed(value map[string]any) ([]byte, error) {
+	updated, err := p.preRender.Update(value)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return p.cache.Changed(updated)
+	result, err := p.cache.Changed(updated)
+	if result == nil || err != nil {
+		return nil, err
+	}
+	return p.postRender.Update(result)
 }
 
 type stringSliceFlag struct {
@@ -77,8 +83,8 @@ func main() {
 	cooldown := flag.Duration("cooldown", envDuration("CUESIX_COOLDOWN", 0), "cooldown duration")
 	flag.Var(inputFlag, "input", "input directory (repeatable)")
 
-	configPath := flag.String("apisix-config", envString("CUESIX_APISIX_CONFIG"), "apisix config path")
-	apisixURL := flag.String("apisix-url", envString("CUESIX_APISIX_URL"), "apisix admin reload url")
+	apisixHome := flag.String("apisix-home", envStringDefault("CUESIX_APISIX_HOME", "/usr/local/apisix"), "apisix home path")
+	apisixURL := flag.String("apisix-url", envString("CUESIX_APISIX_URL"), "apisix admin base url")
 	apiKey := flag.String("apisix-api-key", envString("CUESIX_APISIX_API_KEY"), "apisix admin api key")
 	reloadMethod := flag.String("reload-method", envStringDefault("CUESIX_RELOAD_METHOD", http.MethodPost), "reload HTTP method")
 
@@ -91,6 +97,9 @@ func main() {
 		sslPathsFlag.values = splitComma(envSSLPaths)
 	}
 	flag.Var(sslPathsFlag, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
+	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
+	enableYAML := flag.Bool("plugin-yaml", envBool("CUESIX_PLUGIN_YAML", false), "enable yaml post-render plugin")
+	mirrorDirFlag := flag.String("apisix-mirror-dir", envString("CUESIX_APISIX_MIRROR_DIR"), "apisix mirror directory (optional)")
 
 	flag.Parse()
 
@@ -103,25 +112,39 @@ func main() {
 		log.Fatalf("input dirs: %v", err)
 	}
 
+	pluginCacheInst := &pluginCache{
+		preRender: func() plugin.PreRender {
+			plugins, pluginErr := buildPreRender(sslPathsFlag.values)
+			if pluginErr != nil {
+				logger.Error("pre-render plugin init failed", "error", pluginErr)
+				os.Exit(1)
+			}
+			return plugins
+		}(),
+		cache: &cache.Cache{},
+		postRender: func() plugin.PostRender {
+			plugins, pluginErr := buildPostRender(*enableJQ, *enableYAML)
+			if pluginErr != nil {
+				logger.Error("post-render plugin init failed", "error", pluginErr)
+				os.Exit(1)
+			}
+			return plugins
+		}(),
+	}
+
 	if !*serve {
 		merged, err := compiler.Compile(fses...)
 		if err != nil {
 			logger.Error("compile failed", "error", err)
 			os.Exit(1)
 		}
-		plugins, err := buildPlugins(sslPathsFlag.values)
+		output, err := pluginCacheInst.Changed(merged)
 		if err != nil {
-			logger.Error("plugin init failed", "error", err)
+			logger.Error("plugin pipeline failed", "error", err)
 			os.Exit(1)
 		}
-		updated, err := plugins.Update(merged)
-		if err != nil {
-			logger.Error("plugin update failed", "error", err)
-			os.Exit(1)
-		}
-		output, err := cache.MarshalDeterministicYAML(updated)
-		if err != nil {
-			logger.Error("render yaml failed", "error", err)
+		if output == nil {
+			logger.Error("unexpected nil output from plugin pipeline")
 			os.Exit(1)
 		}
 		if _, err := os.Stdout.Write(output); err != nil {
@@ -131,35 +154,51 @@ func main() {
 		return
 	}
 
-	if *configPath == "" {
-		logger.Error("missing apisix config path")
+	if strings.TrimSpace(*apisixHome) == "" {
+		logger.Error("missing apisix home path")
 		os.Exit(1)
 	}
 	if *apisixURL == "" {
 		logger.Error("missing apisix url")
 		os.Exit(1)
 	}
+	mirrorDir := *mirrorDirFlag
+	if mirrorDir == "" {
+		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
+		if tmpErr != nil {
+			logger.Error("create apisix mirror dir failed", "error", tmpErr)
+			os.Exit(1)
+		}
+		mirrorDir = tmp
+		defer func() {
+			if err := os.RemoveAll(mirrorDir); err != nil {
+				logger.Error("remove apisix mirror failed", "error", err)
+			}
+		}()
+	}
+	val, err := validator.New(*apisixHome, mirrorDir)
+	if err != nil {
+		logger.Error("prepare apisix mirror failed", "error", err)
+		os.Exit(1)
+	}
+	configPath := buildConfigPath(*apisixHome, *enableYAML)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	reloadURL, err := buildReloadURL(*apisixURL)
+	if err != nil {
+		logger.Error("invalid apisix url", "error", err)
+		os.Exit(1)
+	}
+
 	disp, err := dispatcher.New(dispatcher.Config{
-		Compiler:   compilerAdapter{},
-		Cache: &pluginCache{
-			plugins: func() plugin.Plugin {
-				plugins, pluginErr := buildPlugins(sslPathsFlag.values)
-				if pluginErr != nil {
-					logger.Error("plugin init failed", "error", pluginErr)
-					os.Exit(1)
-				}
-				return plugins
-			}(),
-			cache:   &cache.Cache{},
-		},
-		Validator:  validator.New(nil),
+		Compiler:  compilerAdapter{},
+		Cache:     pluginCacheInst,
+		Validator: val,
 		Reloader: &reloader.Reloader{
-			ConfigPath:      *configPath,
-			ReloadURL:       *apisixURL,
+			ConfigPath:      configPath,
+			ReloadURL:       reloadURL,
 			ReloadMethod:    *reloadMethod,
 			APIKey:          *apiKey,
 			RetryMax:        *retryMax,
@@ -169,6 +208,7 @@ func main() {
 			Logger:          logger,
 		},
 		Filesystems: fses,
+		OutputYAML:  *enableYAML,
 		Cooldown:    *cooldown,
 		Logger:      logger,
 	})
@@ -226,14 +266,26 @@ func main() {
 	}
 }
 
-func buildPlugins(sslPaths []string) (plugin.Plugin, error) {
-	var plugins plugin.Chain
+func buildPreRender(sslPaths []string) (plugin.PreRender, error) {
+	var plugins plugin.PreRenderChain
 	if len(sslPaths) > 0 {
 		sslFSes, err := buildFilesystems(sslPaths)
 		if err != nil {
 			return nil, err
 		}
 		plugins = append(plugins, &plugin.SSLPlugin{Filesystems: sslFSes})
+	}
+	return plugins, nil
+}
+
+func buildPostRender(enableJQ bool, enableYAML bool) (plugin.PostRender, error) {
+	var plugins plugin.PostRenderChain
+	if enableJQ {
+		plugins = append(plugins, &plugin.JQPlugin{})
+	}
+	if enableYAML {
+		// YAMLPlugin siempre debe ser el último plugin
+		plugins = append(plugins, &plugin.YAMLPlugin{})
 	}
 	return plugins, nil
 }
@@ -298,6 +350,23 @@ func envBool(key string, def bool) bool {
 		}
 	}
 	return def
+}
+
+func buildConfigPath(apisixHome string, outputYAML bool) string {
+	profile := strings.TrimSpace(os.Getenv("APISIX_PROFILE"))
+	return validator.ConfigPath(apisixHome, profile, outputYAML)
+}
+
+func buildReloadURL(base string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(base))
+	if err != nil {
+		return "", err
+	}
+	parsed.Path = "/apisix/admin/configs"
+	query := parsed.Query()
+	query.Set("reload", "true")
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
 }
 
 func envInt(key string, def int) int {

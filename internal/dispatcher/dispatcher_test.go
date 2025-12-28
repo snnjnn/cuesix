@@ -5,8 +5,8 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -22,12 +22,12 @@ func (s *stubCompiler) Compile(...fs.FS) (map[string]any, error) {
 }
 
 type stubCache struct {
-	path string
+	data []byte
 	err  error
 }
 
-func (s *stubCache) Changed(map[string]any) (string, error) {
-	return s.path, s.err
+func (s *stubCache) Changed(map[string]any) ([]byte, error) {
+	return s.data, s.err
 }
 
 type stubValidator struct {
@@ -36,7 +36,7 @@ type stubValidator struct {
 	calls int
 }
 
-func (s *stubValidator) Validate(string) (bool, error) {
+func (s *stubValidator) Validate([]byte, bool) (bool, error) {
 	s.calls++
 	return s.ok, s.err
 }
@@ -47,7 +47,7 @@ type stubReloader struct {
 	done  chan struct{}
 }
 
-func (s *stubReloader) Apply(context.Context, string) error {
+func (s *stubReloader) Apply(context.Context, []byte) error {
 	s.calls++
 	if s.done != nil {
 		s.done <- struct{}{}
@@ -55,78 +55,20 @@ func (s *stubReloader) Apply(context.Context, string) error {
 	return s.err
 }
 
-func TestDispatcherRemovesTempFile(t *testing.T) {
-	tempDir := t.TempDir()
-	tempFile, err := os.CreateTemp(tempDir, "cache-*.yaml")
-	if err != nil {
-		t.Fatalf("create temp file: %v", err)
-	}
-	tempPath := tempFile.Name()
-	if err := tempFile.Close(); err != nil {
-		t.Fatalf("close temp file: %v", err)
-	}
-
-	comp := &stubCompiler{result: map[string]any{"a": 1}}
-	cache := &stubCache{path: tempPath}
-	validator := &stubValidator{ok: true}
-	done := make(chan struct{}, 1)
-	reloader := &stubReloader{done: done}
-
-	disp, err := New(Config{
-		Compiler:   comp,
-		Cache:      cache,
-		Validator:  validator,
-		Reloader:   reloader,
-		Filesystems: []fs.FS{os.DirFS(tempDir)},
-		Cooldown:   0,
-	})
-	if err != nil {
-		t.Fatalf("New returned error: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- disp.Run(ctx)
-	}()
-
-	disp.Notify()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("timed out waiting for reload")
-	}
-	cancel()
-	err = <-errCh
-	if err != nil && err != context.Canceled {
-		t.Fatalf("unexpected Run error: %v", err)
-	}
-
-	for start := time.Now(); time.Since(start) < 2*time.Second; {
-		_, statErr := os.Stat(tempPath)
-		if os.IsNotExist(statErr) {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("expected temp file to be removed")
-}
-
 func TestDispatcherSkipsWhenUnchanged(t *testing.T) {
 	comp := &stubCompiler{result: map[string]any{"a": 1}}
-	cache := &stubCache{path: ""}
+	cache := &stubCache{data: nil}
 	validator := &stubValidator{ok: true}
 	reloader := &stubReloader{}
 
 	disp, err := New(Config{
-		Compiler:   comp,
-		Cache:      cache,
-		Validator:  validator,
-		Reloader:   reloader,
+		Compiler:    comp,
+		Cache:       cache,
+		Validator:   validator,
+		Reloader:    reloader,
 		Filesystems: []fs.FS{os.DirFS(".")},
-		Cooldown:   0,
+		OutputYAML:  false,
+		Cooldown:    0,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -163,12 +105,13 @@ func TestDispatcherReturnsCompilerError(t *testing.T) {
 	reloader := &stubReloader{}
 
 	disp, err := New(Config{
-		Compiler:   comp,
-		Cache:      cache,
-		Validator:  validator,
-		Reloader:   reloader,
+		Compiler:    comp,
+		Cache:       cache,
+		Validator:   validator,
+		Reloader:    reloader,
 		Filesystems: []fs.FS{os.DirFS(".")},
-		Cooldown:   0,
+		OutputYAML:  false,
+		Cooldown:    0,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -195,22 +138,18 @@ func TestDispatcherReturnsCompilerError(t *testing.T) {
 
 func TestDispatcherReturnsValidationError(t *testing.T) {
 	comp := &stubCompiler{result: map[string]any{"a": 1}}
-	tempDir := t.TempDir()
-	tempPath := filepath.Join(tempDir, "temp.yaml")
-	if err := os.WriteFile(tempPath, []byte("data"), 0o600); err != nil {
-		t.Fatalf("write temp: %v", err)
-	}
-	cache := &stubCache{path: tempPath}
+	cache := &stubCache{data: []byte("data")}
 	validator := &stubValidator{ok: false}
 	reloader := &stubReloader{}
 
 	disp, err := New(Config{
-		Compiler:   comp,
-		Cache:      cache,
-		Validator:  validator,
-		Reloader:   reloader,
+		Compiler:    comp,
+		Cache:       cache,
+		Validator:   validator,
+		Reloader:    reloader,
 		Filesystems: []fs.FS{os.DirFS(".")},
-		Cooldown:   0,
+		OutputYAML:  false,
+		Cooldown:    0,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -232,12 +171,13 @@ func TestWaitForCooldownRespectsLastDequeued(t *testing.T) {
 	reloader := &stubReloader{}
 
 	disp, err := New(Config{
-		Compiler:   comp,
-		Cache:      cache,
-		Validator:  validator,
-		Reloader:   reloader,
+		Compiler:    comp,
+		Cache:       cache,
+		Validator:   validator,
+		Reloader:    reloader,
 		Filesystems: []fs.FS{os.DirFS(".")},
-		Cooldown:   50 * time.Millisecond,
+		OutputYAML:  false,
+		Cooldown:    50 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
@@ -247,4 +187,63 @@ func TestWaitForCooldownRespectsLastDequeued(t *testing.T) {
 	if err := disp.waitForCooldown(context.Background()); err != nil {
 		t.Fatalf("unexpected cooldown error: %v", err)
 	}
+}
+
+func TestSleepContextWithSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		done := make(chan error, 1)
+		go func() {
+			done <- sleepContext(context.Background(), 1*time.Second)
+		}()
+
+		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-done:
+			t.Fatalf("sleepContext returned too early")
+		default:
+		}
+
+		time.Sleep(500 * time.Millisecond)
+		if err := <-done; err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestWaitAfterDequeueWithSynctest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		disp, err := New(Config{
+			Compiler:    &stubCompiler{},
+			Cache:       &stubCache{},
+			Validator:   &stubValidator{},
+			Reloader:    &stubReloader{},
+			Filesystems: []fs.FS{os.DirFS(".")},
+			OutputYAML:  false,
+			Cooldown:    1 * time.Second,
+		})
+		if err != nil {
+			t.Fatalf("New returned error: %v", err)
+		}
+
+		now := time.Now()
+		disp.lastDequeued = now
+		dequeuedAt := now.Add(500 * time.Millisecond)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- disp.waitAfterDequeue(context.Background(), dequeuedAt)
+		}()
+
+		time.Sleep(400 * time.Millisecond)
+		select {
+		case <-done:
+			t.Fatalf("waitAfterDequeue returned too early")
+		default:
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		if err := <-done; err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }

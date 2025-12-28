@@ -5,28 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"syscall"
-	"log/slog"
 	"time"
 )
 
 type Reloader struct {
-	ConfigPath   string
-	ReloadURL    string
-	ReloadMethod string
-	APIKey       string
-	HTTPClient   *http.Client
+	ConfigPath      string
+	ReloadURL       string
+	ReloadMethod    string
+	APIKey          string
+	HTTPClient      *http.Client
 	RetryMax        int
 	RetryInitial    time.Duration
 	RetryMaxDelay   time.Duration
 	RetryMultiplier float64
-	Logger         *slog.Logger
+	Logger          *slog.Logger
 }
 
-func (r *Reloader) Apply(ctx context.Context, tempPath string) error {
+func (r *Reloader) Apply(ctx context.Context, payload []byte) error {
 	logger := ensureLogger(r.Logger)
 	if r.ConfigPath == "" {
 		return errors.New("config path is required")
@@ -34,11 +33,11 @@ func (r *Reloader) Apply(ctx context.Context, tempPath string) error {
 	if r.ReloadURL == "" {
 		return errors.New("reload URL is required")
 	}
-	if tempPath == "" {
-		return errors.New("temp path is required")
+	if len(payload) == 0 {
+		return errors.New("payload is required")
 	}
 
-	if err := replaceFile(tempPath, r.ConfigPath); err != nil {
+	if err := replaceWithPayload(payload, r.ConfigPath); err != nil {
 		logger.Error("replace config failed", "error", err)
 		return err
 	}
@@ -136,33 +135,17 @@ func ensureLogger(logger *slog.Logger) *slog.Logger {
 	return logger
 }
 
-func replaceFile(srcPath, destPath string) error {
-	if err := os.Rename(srcPath, destPath); err == nil {
-		return nil
-	} else if !isCrossDevice(err) {
-		return fmt.Errorf("replace config: %w", err)
-	}
-
-	info, err := os.Stat(srcPath)
-	if err != nil {
-		return fmt.Errorf("stat temp file: %w", err)
-	}
-
-	destDir := filepath.Dir(destPath)
-	tmp, err := os.CreateTemp(destDir, ".cuesix-reload-*.yaml")
+func replaceWithPayload(payload []byte, destPath string) error {
+	dir := filepath.Dir(destPath)
+	tmp, err := os.CreateTemp(dir, ".cuesix-reload-*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	if err := copyFileContents(tmp, srcPath); err != nil {
+	if _, err := tmp.Write(payload); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Chmod(info.Mode()); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("chmod temp file: %w", err)
+		return fmt.Errorf("write temp file: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
@@ -173,29 +156,18 @@ func replaceFile(srcPath, destPath string) error {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp file: %w", err)
 	}
+	if info, err := os.Stat(destPath); err == nil {
+		if err := os.Chmod(tmpPath, info.Mode()); err != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("chmod temp file: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("stat config file: %w", err)
+	}
 	if err := os.Rename(tmpPath, destPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("replace config: %w", err)
 	}
 	return nil
-}
-
-func copyFileContents(dst *os.File, srcPath string) error {
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return fmt.Errorf("open temp file: %w", err)
-	}
-	defer src.Close()
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("copy temp file: %w", err)
-	}
-	return nil
-}
-
-func isCrossDevice(err error) bool {
-	var linkErr *os.LinkError
-	if errors.As(err, &linkErr) && linkErr.Err == syscall.EXDEV {
-		return true
-	}
-	return false
 }

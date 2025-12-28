@@ -13,8 +13,9 @@ Generalidades:
 - La API http de la aplicación solo está para provocar el disparo de la compilación. No se espera recibir ninguna información en la petición, y la respuesta siempre será un 204 No Content.
 - Las rutas a los directorios con los ficheros yaml se proporcionarán como parámetros de la línea de comandos.
 - La aplicación debe soportar múltiples directorios de entrada.
-- También se le proporcionarán como flags: la ruta al directorio temporal, la ruta al fichero de config de apisix, y la URL de apisix.
+- También se le proporcionarán como flags: la ruta al home de apisix, la URL de apisix y la ruta opcional para el mirror de APISIX.
 - Todos los flags deben poder ser especificados también como variables de entorno.
+- El post-render plugin `jq` aplica una cascada de expresiones definidas en una clave de primer nivel `jq` del JSON resultante y elimina esa clave antes de continuar.
 
 Reglas de fusión APISIX:
 
@@ -57,3 +58,6 @@ Desarrollo:
 - Usar la librería estándar de golang en lo posible.
 - Mantener el mínimo número necesario de dependencias.
 - Favorecer mantenibilidad y legibilidad.
+- La serialización y deserialización JSON deben usar `encoding/json/v2` con `Deterministic` activado.
+- La serialización y deserialización YAML deben usar `go.yaml.in/yaml/v4`.
+- En el arranque se debe copiar el home de apisix a un directorio temporal espejo; ese espejo se usa para validación y se elimina al terminar (o se recrea al arrancar).

@@ -1,6 +1,12 @@
 # Plugin - Functional
 
-- Allow post-processing of the merged YAML object before serialization.
+- Allow post-processing of the config at two points:
+  - PreRender: merged object before JSON serialization.
+  - PostRender: after JSON serialization.
 - Plugins run sequentially and stop on the first error.
 
-El primer plugin implementado es `ssl`. Su objetivo es escanear todos los objetos de la lista de `ssls` en la configuración, en busca de atributos `cert`, `key`, `certs`, `keys` o `client.ca` que hagan referencia a ficheros. En el caso de encontrarlos, debe reemplazar el valor de esos atributos por el contenido del fichero al que hacen referencia usando los directorios configurados para el plugin.
+ssl plugin: Su objetivo es escanear todos los objetos de la lista de `ssls` en la configuración, en busca de atributos `cert`, `key`, `certs`, `keys` o `client.ca` que hagan referencia a ficheros. En el caso de encontrarlos, debe reemplazar el valor de esos atributos por el contenido del fichero al que hacen referencia usando los directorios configurados para el plugin.
+
+jq plugin: Su objetivo es aplicar transformaciones jq al JSON generado. Busca una entrada de primer nivel `jq` con una lista de objetos que describen las expresiones, elimina esa entrada y aplica las expresiones en cascada por orden de `prio` descendente mediante un pipeline de jq.
+
+yaml plugin: Plugin post-render opcional que recibe el JSON generado, lo convierte a YAML y añade el comentario "#END" al final. Si está habilitado, debe ejecutarse siempre como el último post-render plugin.

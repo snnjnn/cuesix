@@ -14,7 +14,7 @@ Salidas:
 Dependencias:
 
 - `io/fs` para el acceso a los sistemas de ficheros.
-- `go.yaml.in/yaml/v3` para parsear YAML.
+- `go.yaml.in/yaml/v4` para parsear YAML.
 
 Reglas y fusion:
 

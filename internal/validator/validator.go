@@ -1,27 +1,43 @@
 package validator
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
 
-// CommandRunner defines an interface for running external commands.
-type CommandRunner interface {
-	RunCommand(name string, args ...string) ([]byte, error)
+type commandRunner interface {
+	RunCommand(workDir string, name string, args ...string) ([]byte, error)
 }
 
 // Validator defines the interface for validating APISIX configurations.
 type Validator interface {
-	Validate(configPath string) (bool, error)
+	Validate(candidate []byte, isYAML bool) (bool, error)
 }
 
-// New creates a new Validator.
-func New(runner CommandRunner) Validator {
+// New creates a new Validator with a mirrored APISIX home directory.
+func New(sourceDir string, mirrorDir string) (Validator, error) {
+	return newWithRunner(sourceDir, mirrorDir, systemCommandRunner{})
+}
+
+func newWithRunner(sourceDir string, mirrorDir string, runner commandRunner) (Validator, error) {
 	if runner == nil {
-		runner = NewSystemCommandRunner() // Use systemCommandRunner if none provided
+		runner = systemCommandRunner{}
 	}
-	return &validator{runner: runner}
+	mirrorDir, err := prepareMirror(sourceDir, mirrorDir)
+	if err != nil {
+		return nil, err
+	}
+	return &mirrorValidator{mirrorDir: mirrorDir, runner: runner}, nil
 }
 
-type validator struct {
-	runner CommandRunner
+type mirrorValidator struct {
+	runner    commandRunner
+	mirrorDir string
 }
 
 type ValidationError struct {
@@ -46,8 +62,26 @@ func (e *ValidationError) Unwrap() error {
 // Validate validates an APISIX configuration file.
 // It returns true if the configuration is valid, false otherwise,
 // and an error with output attached when validation fails.
-func (v *validator) Validate(configPath string) (bool, error) {
-	outputBytes, err := v.runner.RunCommand("apisix", "test", "-c", configPath)
+func (v *mirrorValidator) Validate(candidate []byte, isYAML bool) (bool, error) {
+	if len(candidate) == 0 {
+		return false, errors.New("candidate config is required")
+	}
+	profile := strings.TrimSpace(os.Getenv("APISIX_PROFILE"))
+	ext := ".json"
+	if isYAML {
+		ext = ".yaml"
+	}
+
+	if err := replaceDynamicConfig(v.mirrorDir, profile, ext, candidate); err != nil {
+		return false, err
+	}
+
+	configPath := filepath.Join(v.mirrorDir, "conf", "config.yaml")
+	if _, err := os.Stat(configPath); err != nil {
+		return false, fmt.Errorf("config.yaml not found: %w", err)
+	}
+
+	outputBytes, err := v.runner.RunCommand(v.mirrorDir, "apisix", "test", "-c", configPath)
 
 	if err != nil {
 		// If command returns an error, it means apisix test failed.
@@ -57,4 +91,63 @@ func (v *validator) Validate(configPath string) (bool, error) {
 
 	// If command returns no error, it means apisix test succeeded.
 	return true, nil
+}
+
+func replaceDynamicConfig(mirrorDir string, profile string, ext string, candidate []byte) error {
+	target := ConfigPath(mirrorDir, profile, ext == ".yaml")
+	mode := fs.FileMode(0o644)
+	if info, err := os.Stat(target); err == nil {
+		mode = info.Mode()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	return os.WriteFile(target, candidate, mode)
+}
+
+// ConfigPath builds the APISIX dynamic config path for a home directory.
+// If profile is empty, it uses apisix.{ext}.
+func ConfigPath(homeDir string, profile string, isYAML bool) string {
+	ext := ".json"
+	if isYAML {
+		ext = ".yaml"
+	}
+	name := "apisix" + ext
+	if strings.TrimSpace(profile) != "" {
+		name = fmt.Sprintf("apisix-%s%s", strings.TrimSpace(profile), ext)
+	}
+	return filepath.Join(homeDir, "conf", name)
+}
+
+type systemCommandRunner struct{}
+
+func (systemCommandRunner) RunCommand(workDir string, name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = workDir
+	return cmd.CombinedOutput()
+}
+
+// prepareMirror copies the entire APISIX home directory into a mirror folder.
+// mirrorDir must be provided by the caller.
+func prepareMirror(sourceDir string, mirrorDir string) (string, error) {
+	if sourceDir == "" {
+		return "", fmt.Errorf("source dir is required")
+	}
+	if mirrorDir == "" {
+		return "", fmt.Errorf("mirror dir is required")
+	}
+	if err := os.RemoveAll(mirrorDir); err != nil {
+		// RemoveAll would not error if the folder does not exist.
+		// If it complains, it is because there is an actual error
+		// while trying to remove an existing folder, so we should
+		// not ignore it.
+		return "", err
+	}
+	if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := os.CopyFS(mirrorDir, os.DirFS(sourceDir)); err != nil {
+		return "", err
+	}
+	return mirrorDir, nil
 }

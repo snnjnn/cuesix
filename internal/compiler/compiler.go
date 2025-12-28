@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"sort"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 const (
@@ -114,6 +114,14 @@ func DefaultMergingRules() MergingRule {
 				Kind:             KindList,
 				IDAttr:           "plugin_name",
 				IDOptional:       false,
+				AllowMergeSameID: false,
+			},
+			// Add support for the "jq" plugin
+			"jq": {
+				Path:             "/jq",
+				Kind:             KindList,
+				IDAttr:           "id",
+				IDOptional:       true,
 				AllowMergeSameID: false,
 			},
 		},

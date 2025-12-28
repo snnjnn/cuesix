@@ -1,99 +1,210 @@
-package validator_test
+package validator
 
 import (
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
-
-	"github.com/warpcomdev/cuesix/internal/validator"
 )
 
-// MockCommandRunner is a mock implementation of validator.CommandRunner for testing.
-type MockCommandRunner struct {
-	RunCommandFunc func(name string, args ...string) ([]byte, error)
+type mockCommandRunner struct {
+	RunCommandFunc func(workDir string, name string, args ...string) ([]byte, error)
 }
 
-func (m *MockCommandRunner) RunCommand(name string, args ...string) ([]byte, error) {
+func (m *mockCommandRunner) RunCommand(workDir string, name string, args ...string) ([]byte, error) {
 	if m.RunCommandFunc != nil {
-		return m.RunCommandFunc(name, args...)
+		return m.RunCommandFunc(workDir, name, args...)
 	}
-	return nil, nil // Default empty response
+	return nil, nil
 }
-
 
 func TestNewValidator(t *testing.T) {
-	t.Parallel()
-	// Test should fail if New() is called without a CommandRunner, or if nil is passed
-	// This test will implicitly rely on the Validate method using the runner, or we can explicitly test that it's set.
-	v := validator.New(nil) // Pass nil for now, will cause failure if used in Validate without nil check
+	sourceDir := createSourceDir(t, "default", ".json")
+	v, err := New(sourceDir, t.TempDir())
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
 	if v == nil {
 		t.Fatal("New() should not return nil")
+	}
+}
+
+func TestNewValidator_EmptyMirrorDir(t *testing.T) {
+	sourceDir := createSourceDir(t, "default", ".json")
+	if _, err := New(sourceDir, ""); err == nil {
+		t.Fatalf("expected error for empty mirror dir")
+	}
+}
+
+func TestPrepareMirror_ErrorsWithoutMirrorDir(t *testing.T) {
+	sourceDir := createSourceDir(t, "default", ".json")
+	if _, err := prepareMirror(sourceDir, ""); err == nil {
+		t.Fatalf("expected error for empty mirror dir")
+	}
+}
+
+func TestPrepareMirror_ErrorsWithoutSourceDir(t *testing.T) {
+	if _, err := prepareMirror("", t.TempDir()); err == nil {
+		t.Fatalf("expected error for empty source dir")
+	}
+}
+
+func TestPrepareMirror_ClearsAndCopies(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(sourceDir, "conf"), 0o755); err != nil {
+		t.Fatalf("create source conf dir: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "conf", "config.yaml")
+	if err := os.WriteFile(sourceFile, []byte("apisix:\n  node_listen: 9080\n"), 0o644); err != nil {
+		t.Fatalf("write source config: %v", err)
+	}
+
+	mirrorDir := t.TempDir()
+	junkFile := filepath.Join(mirrorDir, "junk.txt")
+	if err := os.WriteFile(junkFile, []byte("junk"), 0o644); err != nil {
+		t.Fatalf("write junk file: %v", err)
+	}
+
+	if _, err := prepareMirror(sourceDir, mirrorDir); err != nil {
+		t.Fatalf("prepareMirror returned error: %v", err)
+	}
+	if _, err := os.Stat(junkFile); !os.IsNotExist(err) {
+		t.Fatalf("expected junk file to be removed")
+	}
+	if _, err := os.Stat(filepath.Join(mirrorDir, "conf", "config.yaml")); err != nil {
+		t.Fatalf("expected mirrored config.yaml: %v", err)
 	}
 }
 
 func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
-	t.Parallel()
+	t.Setenv("APISIX_PROFILE", "default")
 
-	mockRunner := &MockCommandRunner{
-		RunCommandFunc: func(name string, args ...string) ([]byte, error) {
-			// Simulate success
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+			if name != "apisix" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			if len(args) != 3 || args[0] != "test" || args[1] != "-c" {
+				t.Fatalf("unexpected args: %v", args)
+			}
+			configPath := args[2]
+			mirrorDir := filepath.Dir(filepath.Dir(configPath))
+			if workDir != mirrorDir {
+				t.Fatalf("unexpected workDir: %s", workDir)
+			}
+			candidatePath := filepath.Join(mirrorDir, "conf", "apisix-default.json")
+			got, err := os.ReadFile(candidatePath)
+			if err != nil {
+				t.Fatalf("read candidate in temp dir: %v", err)
+			}
+			if string(got) != `{"new":true}` {
+				t.Fatalf("unexpected candidate content: %q", string(got))
+			}
 			return []byte("success"), nil
 		},
 	}
 
-	v := validator.New(mockRunner) // Pass mock runner
+	sourceDir := createSourceDir(t, "default", ".json")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
 	if v == nil {
 		t.Fatal("New() should not return nil")
 	}
 
-	valid, err := v.Validate("/path/to/valid/config.yaml")
-	
-	// In the Red Phase, we expect this to fail because the dummy implementation returns false and nil error.
-	// The eventual expectation is valid=true, err=nil.
+	candidate := []byte(`{"new":true}`)
+	valid, err := v.Validate(candidate, false)
+
 	if !valid || err != nil {
 		t.Errorf("Expected valid=true, err=nil for a syntactically valid config, got valid=%t, err=%v", valid, err)
 	}
 }
 
-func TestValidator_Validate_SuccessOutputIgnored(t *testing.T) {
-	t.Parallel()
+func TestValidator_Validate_YAMLProfileExtension(t *testing.T) {
+	t.Setenv("APISIX_PROFILE", "default")
 
-	mockRunner := &MockCommandRunner{
-		RunCommandFunc: func(name string, args ...string) ([]byte, error) {
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+			if len(args) != 3 || args[0] != "test" || args[1] != "-c" {
+				t.Fatalf("unexpected args: %v", args)
+			}
+			configPath := args[2]
+			mirrorDir := filepath.Dir(filepath.Dir(configPath))
+			if workDir != mirrorDir {
+				t.Fatalf("unexpected workDir: %s", workDir)
+			}
+			candidatePath := filepath.Join(mirrorDir, "conf", "apisix-default.yaml")
+			got, err := os.ReadFile(candidatePath)
+			if err != nil {
+				t.Fatalf("read candidate in temp dir: %v", err)
+			}
+			if string(got) != "routes: []" {
+				t.Fatalf("unexpected candidate content: %q", string(got))
+			}
+			return []byte("success"), nil
+		},
+	}
+
+	sourceDir := createSourceDir(t, "default", ".yaml")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	candidate := []byte("routes: []")
+	valid, err := v.Validate(candidate, true)
+	if !valid || err != nil {
+		t.Fatalf("expected valid=true, err=nil, got valid=%t, err=%v", valid, err)
+	}
+}
+
+func TestValidator_Validate_SuccessOutputIgnored(t *testing.T) {
+	t.Setenv("APISIX_PROFILE", "default")
+
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
 			return []byte("ok"), nil
 		},
 	}
 
-	v := validator.New(mockRunner)
-	valid, err := v.Validate("/path/to/valid/config.yaml")
+	sourceDir := createSourceDir(t, "default", ".json")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	candidate := []byte(`{"new":true}`)
+	valid, err := v.Validate(candidate, false)
 	if !valid || err != nil {
 		t.Fatalf("expected valid=true, err=nil, got valid=%t, err=%v", valid, err)
 	}
 }
 
 func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
-	t.Parallel()
+	t.Setenv("APISIX_PROFILE", "default")
 
-	mockRunner := &MockCommandRunner{
-		RunCommandFunc: func(name string, args ...string) ([]byte, error) {
-			// Simulate failure
-			return []byte("error output"), io.ErrUnexpectedEOF // Example error
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+			return []byte("error output"), io.ErrUnexpectedEOF
 		},
 	}
 
-	v := validator.New(mockRunner) // Pass mock runner
+	sourceDir := createSourceDir(t, "default", ".json")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
 	if v == nil {
 		t.Fatal("New() should not return nil")
 	}
 
-	valid, err := v.Validate("/path/to/invalid/config.yaml")
+	candidate := []byte(`{"new":true}`)
+	valid, err := v.Validate(candidate, false)
 
-	// In the Red Phase, we expect this to fail because the dummy implementation returns false and nil error.
-	// The eventual expectation is valid=false, err!=nil.
 	if valid || err == nil {
 		t.Errorf("Expected valid=false, err!=nil for a syntactically invalid config, got valid=%t, err=%v", valid, err)
 	}
-	var validationErr *validator.ValidationError
+	var validationErr *ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected ValidationError, got %T", err)
 	}
@@ -105,17 +216,128 @@ func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
 	}
 }
 
+func TestValidator_Validate_EmptyProfile(t *testing.T) {
+	t.Setenv("APISIX_PROFILE", "")
+
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+			if len(args) != 3 || args[0] != "test" || args[1] != "-c" {
+				t.Fatalf("unexpected args: %v", args)
+			}
+			configPath := args[2]
+			mirrorDir := filepath.Dir(filepath.Dir(configPath))
+			if workDir != mirrorDir {
+				t.Fatalf("unexpected workDir: %s", workDir)
+			}
+			candidatePath := filepath.Join(mirrorDir, "conf", "apisix.json")
+			if _, err := os.Stat(candidatePath); err != nil {
+				t.Fatalf("expected apisix.json file: %v", err)
+			}
+			return []byte("success"), nil
+		},
+	}
+
+	sourceDir := createSourceDir(t, "", ".json")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	candidate := []byte(`{"new":true}`)
+	valid, err := v.Validate(candidate, false)
+	if !valid || err != nil {
+		t.Fatalf("expected valid=true, err=nil, got valid=%t, err=%v", valid, err)
+	}
+}
+
+func TestValidator_Validate_EmptyCandidate(t *testing.T) {
+	t.Setenv("APISIX_PROFILE", "default")
+
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+			t.Fatalf("runner should not be called for empty candidate")
+			return nil, nil
+		},
+	}
+
+	sourceDir := createSourceDir(t, "default", ".json")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	if _, err := v.Validate(nil, false); err == nil {
+		t.Fatalf("expected error for empty candidate")
+	}
+}
+
+func TestValidator_Validate_MissingConfig(t *testing.T) {
+	t.Setenv("APISIX_PROFILE", "default")
+
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+			t.Fatalf("runner should not be called when config.yaml is missing")
+			return nil, nil
+		},
+	}
+
+	sourceDir := createSourceDirWithoutConfig(t, "default", ".json")
+	v, err := newWithRunner(sourceDir, t.TempDir(), mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	if _, err := v.Validate([]byte(`{"new":true}`), false); err == nil {
+		t.Fatalf("expected error when config.yaml is missing")
+	}
+}
+
 func TestValidationErrorErrorString(t *testing.T) {
-	plain := &validator.ValidationError{Output: []byte("oops")}
+	plain := &ValidationError{Output: []byte("oops")}
 	if plain.Error() == "" {
 		t.Fatalf("expected error string")
 	}
-	withCause := &validator.ValidationError{Output: []byte("oops"), Cause: io.ErrUnexpectedEOF}
+	withCause := &ValidationError{Output: []byte("oops"), Cause: io.ErrUnexpectedEOF}
 	if withCause.Error() == "" {
 		t.Fatalf("expected error string with cause")
 	}
-	noOutput := &validator.ValidationError{Cause: io.ErrUnexpectedEOF}
+	noOutput := &ValidationError{Cause: io.ErrUnexpectedEOF}
 	if noOutput.Error() == "" {
 		t.Fatalf("expected error string without output")
 	}
+}
+
+func createSourceDirWithoutConfig(t *testing.T, profile string, ext string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "conf"), 0o755); err != nil {
+		t.Fatalf("create conf dir: %v", err)
+	}
+	name := "apisix" + ext
+	if profile != "" {
+		name = "apisix-" + profile + ext
+	}
+	dynamicPath := filepath.Join(dir, "conf", name)
+	if err := os.WriteFile(dynamicPath, []byte(`{"old":true}`), 0o644); err != nil {
+		t.Fatalf("write apisix profile file: %v", err)
+	}
+	return dir
+}
+
+func createSourceDir(t *testing.T, profile string, ext string) string {
+	t.Helper()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "conf", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("create conf dir: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("apisix:\n  node_listen: 9080\n"), 0o644); err != nil {
+		t.Fatalf("write config.yaml: %v", err)
+	}
+	name := "apisix" + ext
+	if profile != "" {
+		name = "apisix-" + profile + ext
+	}
+	dynamicPath := filepath.Join(dir, "conf", name)
+	if err := os.WriteFile(dynamicPath, []byte(`{"old":true}`), 0o644); err != nil {
+		t.Fatalf("write apisix profile file: %v", err)
+	}
+	return dir
 }

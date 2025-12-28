@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"os"
 	"log/slog"
 	"time"
 )
@@ -14,37 +13,32 @@ type Compiler interface {
 }
 
 type Cache interface {
-	Changed(value map[string]any) (string, error)
+	Changed(value map[string]any) ([]byte, error)
 }
 
 type Validator interface {
-	Validate(configPath string) (bool, error)
+	Validate(candidate []byte, isYAML bool) (bool, error)
 }
 
 type Reloader interface {
-	Apply(ctx context.Context, tempPath string) error
+	Apply(ctx context.Context, payload []byte) error
 }
 
 type Config struct {
-	Compiler   Compiler
-	Cache      Cache
-	Validator  Validator
-	Reloader   Reloader
+	Compiler    Compiler
+	Cache       Cache
+	Validator   Validator
+	Reloader    Reloader
 	Filesystems []fs.FS
+	OutputYAML  bool
 	Cooldown    time.Duration
 	Logger      *slog.Logger
 }
 
 type Dispatcher struct {
-	queue       chan struct{}
-	compiler    Compiler
-	cache       Cache
-	validator   Validator
-	reloader    Reloader
-	filesystems []fs.FS
-	cooldown    time.Duration
+	config       Config
+	queue        chan struct{}
 	lastDequeued time.Time
-	logger      *slog.Logger
 }
 
 func New(cfg Config) (*Dispatcher, error) {
@@ -63,15 +57,12 @@ func New(cfg Config) (*Dispatcher, error) {
 	if len(cfg.Filesystems) == 0 {
 		return nil, errors.New("filesystems are required")
 	}
+	// cfg is passed by value, so there is no risk
+	// overwriting the Logger pointer field.
+	cfg.Logger = ensureLogger(cfg.Logger)
 	return &Dispatcher{
-		queue:       make(chan struct{}, 1),
-		compiler:    cfg.Compiler,
-		cache:       cfg.Cache,
-		validator:   cfg.Validator,
-		reloader:    cfg.Reloader,
-		filesystems: cfg.Filesystems,
-		cooldown:    cfg.Cooldown,
-		logger:      ensureLogger(cfg.Logger),
+		config: cfg,
+		queue:  make(chan struct{}, 1),
 	}, nil
 }
 
@@ -96,9 +87,9 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 				return err
 			}
 			d.lastDequeued = dequeuedAt
-			d.logger.Info("compile request dequeued", "cooldown", d.cooldown)
+			d.config.Logger.Info("compile request dequeued", "cooldown", d.config.Cooldown)
 			if err := d.handle(ctx); err != nil {
-				d.logger.Error("compile pipeline failed", "error", err)
+				d.config.Logger.Error("compile pipeline failed", "error", err)
 				return err
 			}
 		}
@@ -106,44 +97,41 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 }
 
 func (d *Dispatcher) handle(ctx context.Context) error {
-	merged, err := d.compiler.Compile(d.filesystems...)
+	merged, err := d.config.Compiler.Compile(d.config.Filesystems...)
 	if err != nil {
 		return err
 	}
 
-	tempPath, err := d.cache.Changed(merged)
+	normalized, err := d.config.Cache.Changed(merged)
 	if err != nil {
 		return err
 	}
-	if tempPath == "" {
-		d.logger.Info("no changes detected; skipping validation and reload")
+	if normalized == nil {
+		d.config.Logger.Info("no changes detected; skipping validation and reload")
 		return nil
 	}
-	defer func() {
-		_ = os.Remove(tempPath)
-	}()
 
-	ok, err := d.validator.Validate(tempPath)
+	ok, err := d.config.Validator.Validate(normalized, d.config.OutputYAML)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		d.logger.Warn("validation failed")
+		d.config.Logger.Warn("validation failed")
 		return errors.New("validation failed")
 	}
 
-	if err := d.reloader.Apply(ctx, tempPath); err != nil {
+	if err := d.config.Reloader.Apply(ctx, normalized); err != nil {
 		return err
 	}
-	d.logger.Info("reload completed")
+	d.config.Logger.Info("reload completed")
 	return nil
 }
 
 func (d *Dispatcher) waitForCooldown(ctx context.Context) error {
-	if d.cooldown <= 0 || d.lastDequeued.IsZero() {
+	if d.config.Cooldown <= 0 || d.lastDequeued.IsZero() {
 		return nil
 	}
-	remaining := d.cooldown - time.Since(d.lastDequeued)
+	remaining := d.config.Cooldown - time.Since(d.lastDequeued)
 	if remaining <= 0 {
 		return nil
 	}
@@ -151,10 +139,10 @@ func (d *Dispatcher) waitForCooldown(ctx context.Context) error {
 }
 
 func (d *Dispatcher) waitAfterDequeue(ctx context.Context, dequeuedAt time.Time) error {
-	if d.cooldown <= 0 || d.lastDequeued.IsZero() {
+	if d.config.Cooldown <= 0 || d.lastDequeued.IsZero() {
 		return nil
 	}
-	remaining := d.cooldown - dequeuedAt.Sub(d.lastDequeued)
+	remaining := d.config.Cooldown - dequeuedAt.Sub(d.lastDequeued)
 	if remaining <= 0 {
 		return nil
 	}

@@ -10,6 +10,7 @@
 
 # Local env
 .env
+coverage.out
 
 # Editor
 .idea/

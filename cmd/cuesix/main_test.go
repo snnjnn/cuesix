@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/plugin"
 )
 
 func TestSplitComma(t *testing.T) {
@@ -44,7 +50,7 @@ func TestBuildFilesystems(t *testing.T) {
 }
 
 func TestBuildPluginsInvalidPath(t *testing.T) {
-	_, err := buildPlugins([]string{"/path/does/not/exist"})
+	_, err := buildPreRender([]string{"/path/does/not/exist"})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -52,7 +58,7 @@ func TestBuildPluginsInvalidPath(t *testing.T) {
 
 func TestBuildPluginsValidPath(t *testing.T) {
 	dir := t.TempDir()
-	_, err := buildPlugins([]string{filepath.Clean(dir)})
+	_, err := buildPreRender([]string{filepath.Clean(dir)})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +105,7 @@ func TestEnvString(t *testing.T) {
 }
 
 func TestBuildPluginsEmpty(t *testing.T) {
-	p, err := buildPlugins(nil)
+	p, err := buildPreRender(nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,4 +126,103 @@ func TestEnvBoolDefault(t *testing.T) {
 	if !envBool("CUESIX_BOOL_DEFAULT", true) {
 		t.Fatalf("expected default true")
 	}
+}
+
+func TestBuildPostRender(t *testing.T) {
+	post, err := buildPostRender(true, true)
+	if err != nil {
+		t.Fatalf("buildPostRender returned error: %v", err)
+	}
+	chain, ok := post.(plugin.PostRenderChain)
+	if !ok {
+		t.Fatalf("expected PostRenderChain, got %T", post)
+	}
+	if len(chain) != 2 {
+		t.Fatalf("expected 2 plugins, got %d", len(chain))
+	}
+	if _, ok := chain[0].(*plugin.JQPlugin); !ok {
+		t.Fatalf("expected first plugin to be JQPlugin, got %T", chain[0])
+	}
+	if _, ok := chain[1].(*plugin.YAMLPlugin); !ok {
+		t.Fatalf("expected second plugin to be YAMLPlugin, got %T", chain[1])
+	}
+}
+
+func TestBuildPostRenderEmpty(t *testing.T) {
+	post, err := buildPostRender(false, false)
+	if err != nil {
+		t.Fatalf("buildPostRender returned error: %v", err)
+	}
+	chain, ok := post.(plugin.PostRenderChain)
+	if !ok {
+		t.Fatalf("expected PostRenderChain, got %T", post)
+	}
+	if len(chain) != 0 {
+		t.Fatalf("expected empty chain, got %d", len(chain))
+	}
+}
+
+func TestDrainBody(t *testing.T) {
+	body := io.NopCloser(bytes.NewBufferString("hello"))
+	req := httptest.NewRequest(http.MethodPost, "/", body)
+	closed := false
+	req.Body = &trackBody{ReadCloser: req.Body, closed: &closed}
+
+	handled := false
+	handler := drainBody(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handled = true
+		if !*r.Body.(*trackBody).closed {
+			t.Fatalf("expected body to be closed")
+		}
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if !handled {
+		t.Fatalf("expected handler to be called")
+	}
+}
+
+func TestBuildConfigPath(t *testing.T) {
+	t.Setenv("APISIX_PROFILE", "blue")
+	path := buildConfigPath("/usr/local/apisix", false)
+	want := filepath.Join("/usr/local/apisix", "conf", "apisix-blue.json")
+	if path != want {
+		t.Fatalf("expected %q, got %q", want, path)
+	}
+	t.Setenv("APISIX_PROFILE", "")
+	path = buildConfigPath("/usr/local/apisix", true)
+	want = filepath.Join("/usr/local/apisix", "conf", "apisix.yaml")
+	if path != want {
+		t.Fatalf("expected %q, got %q", want, path)
+	}
+}
+
+func TestBuildReloadURL(t *testing.T) {
+	got, err := buildReloadURL("http://127.0.0.1:9180")
+	if err != nil {
+		t.Fatalf("buildReloadURL returned error: %v", err)
+	}
+	want := "http://127.0.0.1:9180/apisix/admin/configs?reload=true"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+
+	got, err = buildReloadURL("http://127.0.0.1:9180/base?x=1")
+	if err != nil {
+		t.Fatalf("buildReloadURL returned error: %v", err)
+	}
+	want = "http://127.0.0.1:9180/apisix/admin/configs?reload=true&x=1"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+type trackBody struct {
+	io.ReadCloser
+	closed *bool
+}
+
+func (t *trackBody) Close() error {
+	*t.closed = true
+	return t.ReadCloser.Close()
 }

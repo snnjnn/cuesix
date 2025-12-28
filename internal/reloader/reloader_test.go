@@ -16,10 +16,6 @@ func TestApplyReplacesFileAndReloads(t *testing.T) {
 	if err := os.WriteFile(targetPath, []byte("old"), 0o600); err != nil {
 		t.Fatalf("write target: %v", err)
 	}
-	tempPath := filepath.Join(dir, "temp.yaml")
-	if err := os.WriteFile(tempPath, []byte("new"), 0o600); err != nil {
-		t.Fatalf("write temp: %v", err)
-	}
 
 	var gotMethod string
 	var gotHeader string
@@ -36,7 +32,7 @@ func TestApplyReplacesFileAndReloads(t *testing.T) {
 		APIKey:     "secret",
 	}
 
-	if err := rel.Apply(context.Background(), tempPath); err != nil {
+	if err := rel.Apply(context.Background(), []byte("new")); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 
@@ -59,8 +55,27 @@ func TestApplyRejectsMissingConfig(t *testing.T) {
 	rel := &Reloader{
 		ReloadURL: "http://example",
 	}
-	if err := rel.Apply(context.Background(), "temp"); err == nil {
+	if err := rel.Apply(context.Background(), []byte("payload")); err == nil {
 		t.Fatalf("expected error for missing config path")
+	}
+}
+
+func TestApplyRejectsMissingReloadURL(t *testing.T) {
+	rel := &Reloader{
+		ConfigPath: "/tmp/apisix.yaml",
+	}
+	if err := rel.Apply(context.Background(), []byte("payload")); err == nil {
+		t.Fatalf("expected error for missing reload URL")
+	}
+}
+
+func TestApplyRejectsEmptyPayload(t *testing.T) {
+	rel := &Reloader{
+		ConfigPath: "/tmp/apisix.yaml",
+		ReloadURL:  "http://example",
+	}
+	if err := rel.Apply(context.Background(), nil); err == nil {
+		t.Fatalf("expected error for empty payload")
 	}
 }
 
@@ -69,10 +84,6 @@ func TestApplyRetriesReload(t *testing.T) {
 	targetPath := filepath.Join(dir, "apisix.yaml")
 	if err := os.WriteFile(targetPath, []byte("old"), 0o600); err != nil {
 		t.Fatalf("write target: %v", err)
-	}
-	tempPath := filepath.Join(dir, "temp.yaml")
-	if err := os.WriteFile(tempPath, []byte("new"), 0o600); err != nil {
-		t.Fatalf("write temp: %v", err)
 	}
 
 	var calls int
@@ -87,18 +98,93 @@ func TestApplyRetriesReload(t *testing.T) {
 	defer server.Close()
 
 	rel := &Reloader{
-		ConfigPath:     targetPath,
-		ReloadURL:      server.URL,
-		RetryMax:       3,
-		RetryInitial:   1 * time.Millisecond,
-		RetryMaxDelay:  5 * time.Millisecond,
+		ConfigPath:      targetPath,
+		ReloadURL:       server.URL,
+		RetryMax:        3,
+		RetryInitial:    1 * time.Millisecond,
+		RetryMaxDelay:   5 * time.Millisecond,
 		RetryMultiplier: 2,
 	}
 
-	if err := rel.Apply(context.Background(), tempPath); err != nil {
+	if err := rel.Apply(context.Background(), []byte("new")); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 	if calls != 3 {
 		t.Fatalf("expected 3 calls, got %d", calls)
+	}
+}
+
+func TestApplyPreservesFileMode(t *testing.T) {
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "apisix.yaml")
+	if err := os.WriteFile(targetPath, []byte("old"), 0o640); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	rel := &Reloader{
+		ConfigPath: targetPath,
+		ReloadURL:  server.URL,
+	}
+
+	if err := rel.Apply(context.Background(), []byte("new")); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		t.Fatalf("stat target: %v", err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("expected mode 0640, got %o", info.Mode().Perm())
+	}
+}
+
+func TestApplyUsesCustomMethod(t *testing.T) {
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "apisix.yaml")
+	if err := os.WriteFile(targetPath, []byte("old"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+
+	var gotMethod string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	rel := &Reloader{
+		ConfigPath:   targetPath,
+		ReloadURL:    server.URL,
+		ReloadMethod: http.MethodPut,
+	}
+
+	if err := rel.Apply(context.Background(), []byte("new")); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Fatalf("expected PUT, got %s", gotMethod)
+	}
+}
+
+func TestReplaceWithPayloadErrorsWhenDirMissing(t *testing.T) {
+	destPath := filepath.Join(t.TempDir(), "missing", "apisix.yaml")
+	if err := replaceWithPayload([]byte("payload"), destPath); err == nil {
+		t.Fatalf("expected error when destination dir is missing")
+	}
+}
+
+func TestReplaceWithPayloadRenameFailure(t *testing.T) {
+	dir := t.TempDir()
+	destPath := filepath.Join(dir, "conf")
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
+		t.Fatalf("create dest dir: %v", err)
+	}
+	if err := replaceWithPayload([]byte("payload"), destPath); err == nil {
+		t.Fatalf("expected error when renaming onto a directory")
 	}
 }
