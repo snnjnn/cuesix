@@ -14,6 +14,19 @@ type commandRunner interface {
 	RunCommand(workDir string, name string, args ...string) ([]byte, error)
 }
 
+type mirrorError string
+
+func (e mirrorError) Error() string {
+	return string(e)
+}
+
+const (
+	ErrSourceDirRequired mirrorError = "apisix home path is required"
+	ErrMirrorDirRequired mirrorError = "mirror path is required"
+	ErrMissingDir        mirrorError = "apisix home directory does not exist"
+	ErrSourceIsNotDir    mirrorError = "apisix home path is not a directory"
+)
+
 // Validator validates APISIX dynamic configuration payloads.
 type Validator interface {
 	Validate(candidate []byte, isYAML bool) (bool, error)
@@ -132,23 +145,33 @@ func (systemCommandRunner) RunCommand(workDir string, name string, args ...strin
 // mirrorDir must be provided by the caller.
 func prepareMirror(sourceDir string, mirrorDir string) (string, error) {
 	if sourceDir == "" {
-		return "", fmt.Errorf("source dir is required")
+		return "", ErrSourceDirRequired
 	}
 	if mirrorDir == "" {
-		return "", fmt.Errorf("mirror dir is required")
+		return "", ErrMirrorDirRequired
+	}
+	if stat, err := os.Stat(sourceDir); err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrMissingDir
+		}
+		return "", fmt.Errorf("failed to stat source dir: %w", err)
+	} else {
+		if !stat.IsDir() {
+			return "", ErrSourceIsNotDir
+		}
 	}
 	if err := os.RemoveAll(mirrorDir); err != nil {
 		// RemoveAll would not error if the folder does not exist.
 		// If it complains, it is because there is an actual error
 		// while trying to remove an existing folder, so we should
 		// not ignore it.
-		return "", err
+		return "", fmt.Errorf("failed to remove mirror folder: %w", err)
 	}
 	if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create mirror folder: %w", err)
 	}
 	if err := os.CopyFS(mirrorDir, os.DirFS(sourceDir)); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to populate mirror folder: %w", err)
 	}
 	return mirrorDir, nil
 }

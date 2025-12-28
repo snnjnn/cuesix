@@ -160,10 +160,6 @@ func main() {
 		logger.Error("missing apisix home path")
 		os.Exit(1)
 	}
-	if !*dryRun && *apisixURL == "" {
-		logger.Error("missing apisix url")
-		os.Exit(1)
-	}
 	mirrorDir := *mirrorDirFlag
 	if mirrorDir == "" {
 		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
