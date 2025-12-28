@@ -9,19 +9,19 @@ import (
 )
 
 type Compiler interface {
-	Compile(fses ...fs.FS) (map[string]any, error)
+	Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error)
 }
 
 type Cache interface {
-	Changed(value map[string]any) ([]byte, error)
+	Changed(logger *slog.Logger, value map[string]any) ([]byte, error)
 }
 
 type Validator interface {
-	Validate(candidate []byte, isYAML bool) (bool, error)
+	Validate(logger *slog.Logger, candidate []byte, isYAML bool) (bool, error)
 }
 
 type Reloader interface {
-	Apply(ctx context.Context, payload []byte) error
+	Apply(ctx context.Context, logger *slog.Logger, payload []byte) error
 }
 
 // Config wires the dispatcher dependencies and runtime options.
@@ -37,7 +37,6 @@ type Config struct {
 	OutputYAML bool
 	// Cooldown defines the minimum interval between dequeued runs.
 	Cooldown time.Duration
-	Logger   *slog.Logger
 }
 
 // Dispatcher queues compile requests and runs the compile/validate/reload pipeline.
@@ -64,9 +63,6 @@ func New(cfg Config) (*Dispatcher, error) {
 	if len(cfg.Filesystems) == 0 {
 		return nil, errors.New("filesystems are required")
 	}
-	// cfg is passed by value, so there is no risk
-	// overwriting the Logger pointer field.
-	cfg.Logger = ensureLogger(cfg.Logger)
 	return &Dispatcher{
 		config: cfg,
 		queue:  make(chan struct{}, 1),
@@ -84,7 +80,7 @@ func (d *Dispatcher) Notify() {
 }
 
 // Run consumes queued events until the context is canceled.
-func (d *Dispatcher) Run(ctx context.Context) error {
+func (d *Dispatcher) Run(ctx context.Context, logger *slog.Logger) error {
 	if err := d.waitForCooldown(ctx); err != nil {
 		return err
 	}
@@ -99,29 +95,32 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 				return err
 			}
 			d.lastDequeued = dequeuedAt
-			d.config.Logger.Info("compile request dequeued", "cooldown", d.config.Cooldown)
-			if err := d.handle(ctx); err != nil {
-				d.config.Logger.Error("compile pipeline failed", "error", err)
+			logger.Info("compile request dequeued", "cooldown", d.config.Cooldown)
+			if err := d.handle(ctx, logger); err != nil {
+				logger.Error("compile pipeline failed", "error", err)
 				return err
 			}
 		}
 	}
 }
 
-func (d *Dispatcher) handle(ctx context.Context) error {
+func (d *Dispatcher) handle(ctx context.Context, logger *slog.Logger) error {
 	start := time.Now()
 	defer dispatcherDuration.WithLabelValues("total").Observe(time.Since(start).Seconds())
 
 	stageStart := time.Now()
-	merged, err := d.config.Compiler.Compile(d.config.Filesystems...)
+	logger.Info("compile stage start")
+	merged, err := d.config.Compiler.Compile(logger, d.config.Filesystems...)
 	dispatcherDuration.WithLabelValues("compile").Observe(time.Since(stageStart).Seconds())
 	if err != nil {
 		dispatcherErrors.WithLabelValues("compile").Inc()
 		return err
 	}
+	logger.Info("compile stage complete", "duration", time.Since(stageStart))
 
 	stageStart = time.Now()
-	normalized, err := d.config.Cache.Changed(merged)
+	logger.Info("cache stage start")
+	normalized, err := d.config.Cache.Changed(logger, merged)
 	dispatcherDuration.WithLabelValues("cache").Observe(time.Since(stageStart).Seconds())
 	if err != nil {
 		dispatcherErrors.WithLabelValues("cache").Inc()
@@ -129,31 +128,35 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 	}
 	if normalized == nil {
 		dispatcherSkipped.Inc()
-		d.config.Logger.Info("no changes detected; skipping validation and reload")
+		logger.Info("no changes detected; skipping validation and reload")
 		return nil
 	}
+	logger.Info("cache stage complete", "duration", time.Since(stageStart))
 
 	stageStart = time.Now()
-	ok, err := d.config.Validator.Validate(normalized, d.config.OutputYAML)
+	logger.Info("validation stage start")
+	ok, err := d.config.Validator.Validate(logger, normalized, d.config.OutputYAML)
 	dispatcherDuration.WithLabelValues("validate").Observe(time.Since(stageStart).Seconds())
 	if err != nil {
 		dispatcherErrors.WithLabelValues("validate").Inc()
 		return err
 	}
 	if !ok {
-		d.config.Logger.Warn("validation failed")
+		logger.Warn("validation failed")
 		dispatcherErrors.WithLabelValues("validate").Inc()
 		return errors.New("validation failed")
 	}
+	logger.Info("validation stage complete", "duration", time.Since(stageStart))
 
 	stageStart = time.Now()
-	if err := d.config.Reloader.Apply(ctx, normalized); err != nil {
+	logger.Info("reload stage start")
+	if err := d.config.Reloader.Apply(ctx, logger, normalized); err != nil {
 		dispatcherDuration.WithLabelValues("reload").Observe(time.Since(stageStart).Seconds())
 		dispatcherErrors.WithLabelValues("reload").Inc()
 		return err
 	}
 	dispatcherDuration.WithLabelValues("reload").Observe(time.Since(stageStart).Seconds())
-	d.config.Logger.Info("reload completed")
+	logger.Info("reload stage complete", "duration", time.Since(stageStart))
 	return nil
 }
 
@@ -188,11 +191,4 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-func ensureLogger(logger *slog.Logger) *slog.Logger {
-	if logger == nil {
-		return slog.Default()
-	}
-	return logger
 }

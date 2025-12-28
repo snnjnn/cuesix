@@ -30,8 +30,8 @@ import (
 
 type compilerAdapter struct{}
 
-func (compilerAdapter) Compile(fses ...fs.FS) (map[string]any, error) {
-	return compiler.Compile(fses...)
+func (compilerAdapter) Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
+	return compiler.Compile(logger, fses...)
 }
 
 type pluginCache struct {
@@ -40,16 +40,26 @@ type pluginCache struct {
 	cache      *cache.Cache
 }
 
-func (p *pluginCache) Changed(value map[string]any) ([]byte, error) {
-	updated, err := p.preRender.Update(value)
+func (p *pluginCache) Changed(logger *slog.Logger, value map[string]any) ([]byte, error) {
+	logger.Info("pre-render plugins start")
+	updated, err := p.preRender.Update(logger, value)
 	if err != nil {
 		return nil, err
 	}
-	result, err := p.cache.Changed(updated)
+	logger.Info("pre-render plugins complete")
+	logger.Info("cache normalization start")
+	result, err := p.cache.Changed(logger, updated)
 	if result == nil || err != nil {
 		return nil, err
 	}
-	return p.postRender.Update(result)
+	logger.Info("cache normalization complete")
+	logger.Info("post-render plugins start")
+	output, err := p.postRender.Update(logger, result)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("post-render plugins complete")
+	return output, nil
 }
 
 type stringSliceFlag struct {
@@ -136,12 +146,12 @@ func main() {
 	}
 
 	if !*serve {
-		merged, err := compiler.Compile(fses...)
+		merged, err := compiler.Compile(logger, fses...)
 		if err != nil {
 			logger.Error("compile failed", "error", err)
 			os.Exit(1)
 		}
-		output, err := pluginCacheInst.Changed(merged)
+		output, err := pluginCacheInst.Changed(logger, merged)
 		if err != nil {
 			logger.Error("plugin pipeline failed", "error", err)
 			os.Exit(1)
@@ -182,7 +192,7 @@ func main() {
 		logger.Error("prepare apisix mirror failed", "error", err)
 		os.Exit(1)
 	}
-	configPath := buildConfigPath(*apisixHome, *enableYAML)
+	configPath := validator.BuildConfigPath(*apisixHome, *enableYAML)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -198,7 +208,7 @@ func main() {
 
 	var reloadTarget dispatcher.Reloader
 	if *dryRun {
-		reloadTarget = &dryRunReloader{Logger: logger}
+		reloadTarget = &dryRunReloader{}
 	} else {
 		reloadTarget = &reloader.Reloader{
 			ConfigPath:      configPath,
@@ -209,7 +219,6 @@ func main() {
 			RetryInitial:    *retryInitial,
 			RetryMaxDelay:   *retryMaxDelay,
 			RetryMultiplier: *retryMultiplier,
-			Logger:          logger,
 		}
 	}
 
@@ -221,7 +230,6 @@ func main() {
 		Filesystems: fses,
 		OutputYAML:  *enableYAML,
 		Cooldown:    *cooldown,
-		Logger:      logger,
 	})
 	if err != nil {
 		logger.Error("dispatcher init failed", "error", err)
@@ -248,7 +256,7 @@ func main() {
 	errCh := make(chan error, 1)
 	go func() {
 		for {
-			if err := disp.Run(ctx); err != nil {
+			if err := disp.Run(ctx, logger); err != nil {
 				if errors.Is(err, context.Canceled) {
 					return
 				}
@@ -258,6 +266,7 @@ func main() {
 		}
 	}()
 	go func() {
+		logger.Info("starting server", "addr", *listenAddr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 			return
@@ -366,11 +375,6 @@ func envBool(key string, def bool) bool {
 	return def
 }
 
-func buildConfigPath(apisixHome string, outputYAML bool) string {
-	profile := strings.TrimSpace(os.Getenv("APISIX_PROFILE"))
-	return validator.ConfigPath(apisixHome, profile, outputYAML)
-}
-
 func buildReloadURL(base string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(base))
 	if err != nil {
@@ -383,15 +387,9 @@ func buildReloadURL(base string) (string, error) {
 	return parsed.String(), nil
 }
 
-type dryRunReloader struct {
-	Logger *slog.Logger
-}
+type dryRunReloader struct{}
 
-func (r *dryRunReloader) Apply(_ context.Context, payload []byte) error {
-	logger := r.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
+func (r *dryRunReloader) Apply(_ context.Context, logger *slog.Logger, payload []byte) error {
 	logger.Info("dry-run reload skipped", "bytes", len(payload))
 	return nil
 }

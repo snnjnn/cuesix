@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"path/filepath"
 	"reflect"
@@ -189,7 +190,7 @@ func DefaultMergingRules() MergingRule {
 }
 
 // Compile reads YAML fragments from the provided filesystems and merges them.
-func Compile(fses ...fs.FS) (map[string]any, error) {
+func Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
 	if len(fses) == 0 {
 		return nil, errors.New("no filesystems provided")
 	}
@@ -203,6 +204,7 @@ func Compile(fses ...fs.FS) (map[string]any, error) {
 			return nil, err
 		}
 		for _, path := range paths {
+			logger.Info("compiler reading file", "path", path)
 			content, err := fs.ReadFile(filesystem, path)
 			if err != nil {
 				return nil, fmt.Errorf("read %s: %w", path, err)

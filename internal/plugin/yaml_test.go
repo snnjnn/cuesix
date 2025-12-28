@@ -2,12 +2,13 @@ package plugin
 
 import (
 	"bytes"
+	"log/slog"
 	"testing"
 )
 
 func TestYAMLPluginEmptyPayload(t *testing.T) {
 	plugin := &YAMLPlugin{}
-	got, err := plugin.Update(nil)
+	got, err := plugin.Update(slog.Default(), nil)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -20,7 +21,7 @@ func TestYAMLPluginEmptyPayload(t *testing.T) {
 func TestYAMLPluginConvertsJSONToYAML(t *testing.T) {
 	plugin := &YAMLPlugin{}
 	input := []byte("{\"routes\":[{\"id\":1}]}")
-	got, err := plugin.Update(input)
+	got, err := plugin.Update(slog.Default(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}

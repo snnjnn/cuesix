@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 )
 
@@ -10,7 +11,7 @@ type stubPlugin struct {
 	err   error
 }
 
-func (s *stubPlugin) Update(value map[string]any) (map[string]any, error) {
+func (s *stubPlugin) Update(_ *slog.Logger, value map[string]any) (map[string]any, error) {
 	s.calls++
 	return value, s.err
 }
@@ -18,7 +19,7 @@ func (s *stubPlugin) Update(value map[string]any) (map[string]any, error) {
 func TestChainEmpty(t *testing.T) {
 	var chain PreRenderChain
 	input := map[string]any{"a": 1}
-	output, err := chain.Update(input)
+	output, err := chain.Update(slog.Default(), input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,7 +34,7 @@ func TestChainStopsOnError(t *testing.T) {
 	third := &stubPlugin{}
 	chain := PreRenderChain{first, second, third}
 
-	_, err := chain.Update(map[string]any{"a": 1})
+	_, err := chain.Update(slog.Default(), map[string]any{"a": 1})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -49,7 +50,7 @@ type stubPostPlugin struct {
 	err   error
 }
 
-func (s *stubPostPlugin) Update(value []byte) ([]byte, error) {
+func (s *stubPostPlugin) Update(_ *slog.Logger, value []byte) ([]byte, error) {
 	s.calls++
 	return value, s.err
 }
@@ -60,7 +61,7 @@ func TestPostRenderChainStopsOnError(t *testing.T) {
 	third := &stubPostPlugin{}
 	chain := PostRenderChain{first, second, third}
 
-	_, err := chain.Update([]byte("data"))
+	_, err := chain.Update(slog.Default(), []byte("data"))
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -71,12 +72,12 @@ func TestPostRenderChainStopsOnError(t *testing.T) {
 
 func TestPostRenderFunc(t *testing.T) {
 	calls := 0
-	fn := PostRenderFunc(func(value []byte) ([]byte, error) {
+	fn := PostRenderFunc(func(_ *slog.Logger, value []byte) ([]byte, error) {
 		calls++
 		return append(value, 'x'), nil
 	})
 
-	out, err := fn.Update([]byte("data"))
+	out, err := fn.Update(slog.Default(), []byte("data"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,13 +88,13 @@ func TestPostRenderFunc(t *testing.T) {
 
 func TestPreRenderFunc(t *testing.T) {
 	calls := 0
-	fn := PreRenderFunc(func(value map[string]any) (map[string]any, error) {
+	fn := PreRenderFunc(func(_ *slog.Logger, value map[string]any) (map[string]any, error) {
 		calls++
 		value["b"] = 2
 		return value, nil
 	})
 
-	out, err := fn.Update(map[string]any{"a": 1})
+	out, err := fn.Update(slog.Default(), map[string]any{"a": 1})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

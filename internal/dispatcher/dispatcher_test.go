@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"testing"
 	"testing/synctest"
@@ -16,7 +17,7 @@ type stubCompiler struct {
 	calls  int
 }
 
-func (s *stubCompiler) Compile(...fs.FS) (map[string]any, error) {
+func (s *stubCompiler) Compile(*slog.Logger, ...fs.FS) (map[string]any, error) {
 	s.calls++
 	return s.result, s.err
 }
@@ -26,7 +27,7 @@ type stubCache struct {
 	err  error
 }
 
-func (s *stubCache) Changed(map[string]any) ([]byte, error) {
+func (s *stubCache) Changed(*slog.Logger, map[string]any) ([]byte, error) {
 	return s.data, s.err
 }
 
@@ -36,7 +37,7 @@ type stubValidator struct {
 	calls int
 }
 
-func (s *stubValidator) Validate([]byte, bool) (bool, error) {
+func (s *stubValidator) Validate(*slog.Logger, []byte, bool) (bool, error) {
 	s.calls++
 	return s.ok, s.err
 }
@@ -47,7 +48,7 @@ type stubReloader struct {
 	done  chan struct{}
 }
 
-func (s *stubReloader) Apply(context.Context, []byte) error {
+func (s *stubReloader) Apply(context.Context, *slog.Logger, []byte) error {
 	s.calls++
 	if s.done != nil {
 		s.done <- struct{}{}
@@ -78,7 +79,7 @@ func TestDispatcherSkipsWhenUnchanged(t *testing.T) {
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- disp.Run(ctx)
+		errCh <- disp.Run(ctx, slog.Default())
 	}()
 
 	disp.Notify()
@@ -121,7 +122,7 @@ func TestDispatcherReturnsCompilerError(t *testing.T) {
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- disp.Run(ctx)
+		errCh <- disp.Run(ctx, slog.Default())
 	}()
 
 	disp.Notify()
@@ -155,7 +156,7 @@ func TestDispatcherReturnsValidationError(t *testing.T) {
 		t.Fatalf("New returned error: %v", err)
 	}
 
-	err = disp.handle(context.Background())
+	err = disp.handle(context.Background(), slog.Default())
 	if err == nil {
 		t.Fatalf("expected validation error")
 	}

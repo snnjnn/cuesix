@@ -182,21 +182,6 @@ func TestDrainBody(t *testing.T) {
 	}
 }
 
-func TestBuildConfigPath(t *testing.T) {
-	t.Setenv("APISIX_PROFILE", "blue")
-	path := buildConfigPath("/usr/local/apisix", false)
-	want := filepath.Join("/usr/local/apisix", "conf", "apisix-blue.json")
-	if path != want {
-		t.Fatalf("expected %q, got %q", want, path)
-	}
-	t.Setenv("APISIX_PROFILE", "")
-	path = buildConfigPath("/usr/local/apisix", true)
-	want = filepath.Join("/usr/local/apisix", "conf", "apisix.yaml")
-	if path != want {
-		t.Fatalf("expected %q, got %q", want, path)
-	}
-}
-
 func TestBuildReloadURL(t *testing.T) {
 	got, err := buildReloadURL("http://127.0.0.1:9180")
 	if err != nil {

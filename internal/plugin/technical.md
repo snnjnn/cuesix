@@ -1,7 +1,7 @@
 # Plugin - Technical
 
-- A plugin implements `Update(value map[string]any) (map[string]any, error)`.
-- `Chain` composes multiple plugins and applies them in order.
+- A plugin implements `Update(logger *slog.Logger, value map[string]any) (map[string]any, error)`.
+- `Chain` composes multiple plugins and applies them in order, passing the logger through.
 - No plugin is required; a nil or empty chain is a no-op.
 
 Plugin `ssl`:

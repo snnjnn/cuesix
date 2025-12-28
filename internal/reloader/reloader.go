@@ -28,12 +28,11 @@ type Reloader struct {
 	RetryInitial    time.Duration
 	RetryMaxDelay   time.Duration
 	RetryMultiplier float64
-	Logger          *slog.Logger
 }
 
 // Apply writes the payload to ConfigPath and triggers the reload endpoint.
-func (r *Reloader) Apply(ctx context.Context, payload []byte) error {
-	logger := ensureLogger(r.Logger)
+func (r *Reloader) Apply(ctx context.Context, logger *slog.Logger, payload []byte) error {
+	logger = ensureLogger(logger)
 	if r.ConfigPath == "" {
 		return errors.New("config path is required")
 	}

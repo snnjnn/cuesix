@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +30,20 @@ const (
 
 // Validator validates APISIX dynamic configuration payloads.
 type Validator interface {
-	Validate(candidate []byte, isYAML bool) (bool, error)
+	Validate(logger *slog.Logger, candidate []byte, isYAML bool) (bool, error)
+}
+
+func BuildConfigPath(apisixHome string, isYAML bool) string {
+	profile := strings.TrimSpace(os.Getenv("APISIX_PROFILE"))
+	ext := ".json"
+	if isYAML {
+		ext = ".yaml"
+	}
+	name := "apisix" + ext
+	if strings.TrimSpace(profile) != "" {
+		name = fmt.Sprintf("apisix-%s%s", strings.TrimSpace(profile), ext)
+	}
+	return filepath.Join(apisixHome, "conf", name)
 }
 
 // New creates a validator using a mirrored APISIX home directory.
@@ -75,23 +89,15 @@ func (e *ValidationError) Unwrap() error {
 // Validate validates an APISIX configuration file.
 // It returns true if the configuration is valid, false otherwise,
 // and an error with output attached when validation fails.
-func (v *mirrorValidator) Validate(candidate []byte, isYAML bool) (bool, error) {
+func (v *mirrorValidator) Validate(logger *slog.Logger, candidate []byte, isYAML bool) (bool, error) {
 	if len(candidate) == 0 {
 		return false, errors.New("candidate config is required")
 	}
-	profile := strings.TrimSpace(os.Getenv("APISIX_PROFILE"))
-	ext := ".json"
-	if isYAML {
-		ext = ".yaml"
-	}
 
-	if err := replaceDynamicConfig(v.mirrorDir, profile, ext, candidate); err != nil {
+	configPath := BuildConfigPath(v.mirrorDir, isYAML)
+	logger.Info("validating temporal config file", "path", configPath)
+	if err := replaceDynamicConfig(configPath, candidate); err != nil {
 		return false, err
-	}
-
-	configPath := filepath.Join(v.mirrorDir, "conf", "config.yaml")
-	if _, err := os.Stat(configPath); err != nil {
-		return false, fmt.Errorf("config.yaml not found: %w", err)
 	}
 
 	outputBytes, err := v.runner.RunCommand(v.mirrorDir, "apisix", "test", "-c", configPath)
@@ -103,11 +109,11 @@ func (v *mirrorValidator) Validate(candidate []byte, isYAML bool) (bool, error) 
 	}
 
 	// If command returns no error, it means apisix test succeeded.
+	logger.Info("validation succeeded", "path", configPath)
 	return true, nil
 }
 
-func replaceDynamicConfig(mirrorDir string, profile string, ext string, candidate []byte) error {
-	target := ConfigPath(mirrorDir, profile, ext == ".yaml")
+func replaceDynamicConfig(target string, candidate []byte) error {
 	mode := fs.FileMode(0o644)
 	if info, err := os.Stat(target); err == nil {
 		mode = info.Mode()
@@ -116,20 +122,6 @@ func replaceDynamicConfig(mirrorDir string, profile string, ext string, candidat
 	}
 
 	return os.WriteFile(target, candidate, mode)
-}
-
-// ConfigPath builds the APISIX dynamic config path for a home directory.
-// If profile is empty, it uses apisix.{ext}.
-func ConfigPath(homeDir string, profile string, isYAML bool) string {
-	ext := ".json"
-	if isYAML {
-		ext = ".yaml"
-	}
-	name := "apisix" + ext
-	if strings.TrimSpace(profile) != "" {
-		name = fmt.Sprintf("apisix-%s%s", strings.TrimSpace(profile), ext)
-	}
-	return filepath.Join(homeDir, "conf", name)
 }
 
 type systemCommandRunner struct{}
@@ -167,16 +159,25 @@ func prepareMirror(sourceDir string, mirrorDir string, useExisting bool) error {
 		return fmt.Errorf("mirror path is not a directory: %s", mirrorDir)
 	}
 	if !useExisting {
-		if err := os.RemoveAll(mirrorDir); err != nil {
-			return fmt.Errorf("failed to remove mirror folder: %w", err)
+		if err := clearDir(mirrorDir); err != nil {
+			return fmt.Errorf("failed to clear mirror folder: %w", err)
 		}
-		if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
-			return fmt.Errorf("failed to create mirror folder: %w", err)
+		if err := os.CopyFS(mirrorDir, os.DirFS(sourceDir)); err != nil {
+			return fmt.Errorf("failed to populate mirror folder: %w", err)
 		}
 	}
-	// And copy the source folder
-	if err := os.CopyFS(mirrorDir, os.DirFS(sourceDir)); err != nil {
-		return fmt.Errorf("failed to populate mirror folder: %w", err)
+	return nil
+}
+
+func clearDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
 	}
 	return nil
 }

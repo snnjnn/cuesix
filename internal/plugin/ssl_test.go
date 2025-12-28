@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"io/fs"
+	"log/slog"
 	"testing"
 	"testing/fstest"
 
@@ -32,7 +33,7 @@ func TestSSLPluginReplacesFields(t *testing.T) {
 		},
 	}
 
-	got, err := plugin.Update(input)
+	got, err := plugin.Update(slog.Default(), input)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -66,7 +67,7 @@ func TestSSLPluginMissingFile(t *testing.T) {
 			},
 		},
 	}
-	if _, err := plugin.Update(input); err == nil {
+	if _, err := plugin.Update(slog.Default(), input); err == nil {
 		t.Fatalf("expected error for missing file")
 	}
 }

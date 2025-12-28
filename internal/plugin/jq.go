@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"sort"
 	"strings"
@@ -84,13 +85,16 @@ func (e *JQConfigError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Field, e.Err)
 }
 
-func (p *JQPlugin) Update(value []byte) ([]byte, error) {
+func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 	if len(value) == 0 {
 		return value, nil
 	}
 
+	logger.Info("jq plugin start", "bytes", len(value))
+
 	var root any
 	if err := json.Unmarshal(value, &root); err != nil {
+		logger.Error("jq plugin decode failed", "error", err)
 		return nil, &JQDecodeError{Err: err}
 	}
 
@@ -101,17 +105,21 @@ func (p *JQPlugin) Update(value []byte) ([]byte, error) {
 
 	transforms, hasJQ, err := parseJQTransforms(obj)
 	if err != nil {
+		logger.Error("jq plugin config invalid", "error", err)
 		return nil, err
 	}
 	if !hasJQ {
+		logger.Info("jq plugin skipped: no jq config")
 		return value, nil
 	}
 
 	payload, err := json.Marshal(obj)
 	if err != nil {
+		logger.Error("jq plugin encode failed", "error", err)
 		return nil, &JQEncodeError{Err: err}
 	}
 	if len(transforms) == 0 {
+		logger.Info("jq plugin no transforms", "bytes", len(payload))
 		return payload, nil
 	}
 
@@ -123,15 +131,18 @@ func (p *JQPlugin) Update(value []byte) ([]byte, error) {
 	if runner == nil {
 		runner = systemJQRunner{}
 	}
-	expression := buildJQPipeline(transforms)
+	expression := buildJQPipeline(logger, transforms)
+	logger.Info("jq plugin executing", "transforms", len(transforms))
 	stdout, stderr, err := runner.Run(payload, expression)
 	if err != nil || len(stderr) > 0 {
+		logger.Error("jq plugin execution failed", "error", err, "stderr", strings.TrimSpace(string(stderr)))
 		return nil, &JQExecError{
 			Expr:   expression,
 			Stderr: strings.TrimSpace(string(stderr)),
 			Err:    err,
 		}
 	}
+	logger.Info("jq plugin complete", "bytes", len(stdout))
 	return stdout, nil
 }
 
@@ -148,9 +159,10 @@ func (systemJQRunner) Run(input []byte, expression string) ([]byte, []byte, erro
 	return stdout.Bytes(), stderr.Bytes(), err
 }
 
-func buildJQPipeline(transforms []JQTransform) string {
+func buildJQPipeline(logger *slog.Logger, transforms []JQTransform) string {
 	parts := make([]string, 0, len(transforms))
 	for _, transform := range transforms {
+		logger.Info("jq plugin appending transform", "id", transform.ID, "prio", transform.Prio)
 		parts = append(parts, "("+transform.Expr+")")
 	}
 	return strings.Join(parts, " | ")

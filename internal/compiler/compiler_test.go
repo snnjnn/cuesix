@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"log/slog"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -179,7 +180,7 @@ consumers:
 		},
 	}
 
-	merged, err := Compile(fsOne, fsTwo)
+	merged, err := Compile(slog.Default(), fsOne, fsTwo)
 	if err != nil {
 		t.Fatalf("Compile returned error: %v", err)
 	}
