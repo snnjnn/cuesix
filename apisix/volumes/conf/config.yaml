@@ -1,0 +1,81 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+apisix:
+  node_listen:
+    - 9080 # APISIX listening port
+  enable_server_tokens: false
+  enable_admin: false
+  enable_dev_mode: false
+  worker_startup_time_threshold: 60
+  # trusted_addresses:
+  # - A.B.C.D/24
+  ssl:
+    enable: true
+    fallback_sni: apisix
+    listen:
+      - port: 9443
+  enable_control: true
+  control:
+    ip: "0.0.0.0"
+    port: 9090
+  enable_admin: false
+  enable_ipv6: false
+  events:
+    # get rid of logs/worker_events.sock
+    module: lua-resty-worker-events
+
+discovery:
+  dns:
+    resolv_conf: /etc/resolv.conf # Path to the local DNS
+
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+plugin_attr:
+  redirect:
+    https_port: 443
+
+nginx_config:
+  worker_shutdown_timeout: 30s
+  error_log: /dev/stderr
+  error_log_level: warn
+  http:
+    enable_access_log: true
+    access_log: /dev/stdout
+    charset: utf-8
+    client_max_body_size: 50m
+  http_configuration_snippet: |
+    client_body_temp_path /var/lib/nginx/tmp/client_body;
+    proxy_temp_path       /var/lib/nginx/tmp/proxy;
+    fastcgi_temp_path     /var/lib/nginx/tmp/fastcgi;
+    uwsgi_temp_path       /var/lib/nginx/tmp/uwsgi;
+    scgi_temp_path        /var/lib/nginx/tmp/scgi;
+
+# Enable on demand
+plugins:
+  - real-ip
+  - request-id
+  - cors
+  - ip-restriction
+  - limit-req
+  - limit-conn
+  - prometheus
+  - redirect
+
