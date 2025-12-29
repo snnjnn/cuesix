@@ -26,6 +26,7 @@ import (
 	"github.com/warpcomdev/cuesix/internal/plugin"
 	"github.com/warpcomdev/cuesix/internal/reloader"
 	"github.com/warpcomdev/cuesix/internal/validator"
+	"golang.org/x/sync/errgroup"
 )
 
 type compilerAdapter struct{}
@@ -90,15 +91,19 @@ func main() {
 	}
 
 	serve := flag.Bool("serve", envBool("CUESIX_SERVE", false), "run HTTP server")
-	listenAddr := flag.String("listen", envStringDefault("CUESIX_LISTEN", ":8080"), "listen address")
+	listenAddr := flag.String("listen", envStringDefault("CUESIX_LISTEN", "127.0.0.1:8080"), "listen address")
+	metricsAddr := flag.String("metrics", envStringDefault("CUESIX_METRICS_LISTEN", ""), "metrics listen address (empty to disable)")
 	cooldown := flag.Duration("cooldown", envDuration("CUESIX_COOLDOWN", 0), "cooldown duration")
 	flag.Var(inputFlag, "input", "input directory (repeatable)")
 
 	apisixHome := flag.String("apisix-home", envStringDefault("CUESIX_APISIX_HOME", "/usr/local/apisix"), "apisix home path")
+	validationTimeout := flag.Duration("validation-timeout", envDuration("CUESIX_APISIX_TEST_TIMEOUT", 30*time.Second), "timeout for apisix test")
+
 	apisixURL := flag.String("apisix-url", envString("CUESIX_APISIX_URL"), "apisix admin base url")
 	dryRun := flag.Bool("dry-run", envBool("CUESIX_DRY_RUN", false), "run pipeline without writing config or reloading apisix")
 	apiKey := flag.String("apisix-api-key", envString("CUESIX_APISIX_API_KEY"), "apisix admin api key")
 	reloadMethod := flag.String("reload-method", envStringDefault("CUESIX_RELOAD_METHOD", http.MethodPost), "reload HTTP method")
+	reloadTimeout := flag.Duration("reload-timeout", envDuration("CUESIX_RELOAD_TIMEOUT", 10*time.Second), "timeout for reload HTTP request")
 
 	retryMax := flag.Int("retry-max", envInt("CUESIX_RETRY_MAX", 0), "reload retry attempts")
 	retryInitial := flag.Duration("retry-initial", envDuration("CUESIX_RETRY_INITIAL", 200*time.Millisecond), "reload initial backoff")
@@ -110,6 +115,7 @@ func main() {
 	}
 	flag.Var(sslPathsFlag, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
+	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 	enableYAML := flag.Bool("plugin-yaml", envBool("CUESIX_PLUGIN_YAML", false), "enable yaml post-render plugin")
 	mirrorDirFlag := flag.String("apisix-mirror-dir", envString("CUESIX_APISIX_MIRROR_DIR"), "apisix mirror directory (optional)")
 	mirrorKeepFlag := flag.Bool("keep-mirror", envBool("CUESIX_KEEP_MIRROR", false), "Do not remove mirror on startup")
@@ -136,7 +142,7 @@ func main() {
 		}(),
 		cache: &cache.Cache{},
 		postRender: func() plugin.PostRender {
-			plugins, pluginErr := buildPostRender(*enableJQ, *enableYAML)
+			plugins, pluginErr := buildPostRender(*enableJQ, *enableYAML, *jqTimeout)
 			if pluginErr != nil {
 				logger.Error("post-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -187,7 +193,7 @@ func main() {
 			}
 		}()
 	}
-	val, err := validator.New(*apisixHome, mirrorDir, mirrorKeep)
+	val, err := validator.New(*apisixHome, mirrorDir, mirrorKeep, *validationTimeout)
 	if err != nil {
 		logger.Error("prepare apisix mirror failed", "error", err)
 		os.Exit(1)
@@ -219,6 +225,7 @@ func main() {
 			RetryInitial:    *retryInitial,
 			RetryMaxDelay:   *retryMaxDelay,
 			RetryMultiplier: *retryMultiplier,
+			RequestTimeout:  *reloadTimeout,
 		}
 	}
 
@@ -242,7 +249,6 @@ func main() {
 		os.Exit(1)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
 	mux.Handle("/", handler)
 	server := &http.Server{
 		Addr:              *listenAddr,
@@ -253,39 +259,67 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	errCh := make(chan error, 1)
-	go func() {
+	var metricsServer *http.Server
+	if strings.TrimSpace(*metricsAddr) != "" {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", promhttp.Handler())
+		metricsServer = &http.Server{
+			Addr:              *metricsAddr,
+			Handler:           metricsMux,
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       10 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
+		}
+	}
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
 		for {
-			if err := disp.Run(ctx, logger); err != nil {
+			if err := disp.Run(groupCtx, logger); err != nil {
 				if errors.Is(err, context.Canceled) {
-					return
+					return nil
 				}
 				logger.Error("dispatcher error", "error", err)
 				continue
 			}
 		}
-	}()
-	go func() {
+	})
+
+	group.Go(func() error {
 		logger.Info("starting server", "addr", *listenAddr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-			return
+			return err
 		}
-		errCh <- nil
-	}()
+		return nil
+	})
+	group.Go(serverShutdown(groupCtx, logger, "server", server, 10*time.Second))
 
-	select {
-	case <-ctx.Done():
-	case err := <-errCh:
-		if err != nil {
-			logger.Error("server error", "error", err)
-		}
+	if metricsServer != nil {
+		group.Go(func() error {
+			logger.Info("starting metrics server", "addr", *metricsAddr)
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+			return nil
+		})
+		group.Go(serverShutdown(groupCtx, logger, "metrics server", metricsServer, 10*time.Second))
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("server shutdown error", "error", err)
+	if err := group.Wait(); err != nil {
+		logger.Error("server error", "error", err)
+	}
+}
+
+func serverShutdown(ctx context.Context, logger *slog.Logger, name string, server *http.Server, timeout time.Duration) func() error {
+	return func() error {
+		<-ctx.Done()
+		cancelCtx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+		defer cancelFunc()
+		if err := server.Shutdown(cancelCtx); err != nil {
+			logger.Error("server shutdown error", "server", name, "error", err)
+		}
+		return nil
 	}
 }
 
@@ -301,10 +335,10 @@ func buildPreRender(sslPaths []string) (plugin.PreRender, error) {
 	return plugins, nil
 }
 
-func buildPostRender(enableJQ bool, enableYAML bool) (plugin.PostRender, error) {
+func buildPostRender(enableJQ bool, enableYAML bool, jqTimeout time.Duration) (plugin.PostRender, error) {
 	var plugins plugin.PostRenderChain
 	if enableJQ {
-		plugins = append(plugins, &plugin.JQPlugin{})
+		plugins = append(plugins, &plugin.JQPlugin{Timeout: jqTimeout})
 	}
 	if enableYAML {
 		// YAMLPlugin siempre debe ser el último plugin

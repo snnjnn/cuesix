@@ -6,6 +6,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/prometheus/client_golang v1.23.2
 	go.yaml.in/yaml/v4 v4.0.0-rc.3
+	golang.org/x/sync v0.19.0
 )
 
 require (

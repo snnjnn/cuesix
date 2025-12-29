@@ -1,22 +1,24 @@
 package validator
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type mockCommandRunner struct {
-	RunCommandFunc func(workDir string, name string, args ...string) ([]byte, error)
+	RunCommandFunc func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error)
 }
 
-func (m *mockCommandRunner) RunCommand(workDir string, name string, args ...string) ([]byte, error) {
+func (m *mockCommandRunner) RunCommand(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 	if m.RunCommandFunc != nil {
-		return m.RunCommandFunc(workDir, name, args...)
+		return m.RunCommandFunc(ctx, workDir, name, args...)
 	}
 	return nil, nil
 }
@@ -38,7 +40,7 @@ func TestBuildConfigPath(t *testing.T) {
 
 func TestNewValidator(t *testing.T) {
 	sourceDir := createSourceDir(t, false)
-	v, err := New(sourceDir, t.TempDir(), false)
+	v, err := New(sourceDir, t.TempDir(), false, 0)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -49,7 +51,7 @@ func TestNewValidator(t *testing.T) {
 
 func TestNewValidator_EmptyMirrorDir(t *testing.T) {
 	sourceDir := createSourceDir(t, false)
-	if _, err := New(sourceDir, "", false); err == nil {
+	if _, err := New(sourceDir, "", false, 0); err == nil {
 		t.Fatalf("expected error for empty mirror dir")
 	}
 }
@@ -125,7 +127,7 @@ func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
 	t.Setenv("APISIX_PROFILE", "default")
 
 	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 			if name != "apisix" {
 				t.Fatalf("unexpected command: %s", name)
 			}
@@ -150,7 +152,7 @@ func TestValidator_Validate_SyntacticallyValid(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, false)
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 0, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -170,7 +172,7 @@ func TestValidator_Validate_YAMLProfileExtension(t *testing.T) {
 	t.Setenv("APISIX_PROFILE", "default")
 
 	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 			if len(args) != 3 || args[0] != "test" || args[1] != "-c" {
 				t.Fatalf("unexpected args: %v", args)
 			}
@@ -192,7 +194,7 @@ func TestValidator_Validate_YAMLProfileExtension(t *testing.T) {
 	}
 
 	sourceDir := createSourceDir(t, true)
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 0, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -207,13 +209,13 @@ func TestValidator_Validate_SuccessOutputIgnored(t *testing.T) {
 	t.Setenv("APISIX_PROFILE", "default")
 
 	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 			return []byte("ok"), nil
 		},
 	}
 
 	sourceDir := createSourceDir(t, false)
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 0, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -228,13 +230,13 @@ func TestValidator_Validate_SyntacticallyInvalid(t *testing.T) {
 	t.Setenv("APISIX_PROFILE", "default")
 
 	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 			return []byte("error output"), io.ErrUnexpectedEOF
 		},
 	}
 
 	sourceDir := createSourceDir(t, false)
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 0, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -264,7 +266,7 @@ func TestValidator_Validate_EmptyProfile(t *testing.T) {
 	t.Setenv("APISIX_PROFILE", "")
 
 	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 			if len(args) != 3 || args[0] != "test" || args[1] != "-c" {
 				t.Fatalf("unexpected args: %v", args)
 			}
@@ -281,7 +283,7 @@ func TestValidator_Validate_EmptyProfile(t *testing.T) {
 		},
 	}
 	sourceDir := createSourceDir(t, false)
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 0, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -296,14 +298,14 @@ func TestValidator_Validate_EmptyCandidate(t *testing.T) {
 	t.Setenv("APISIX_PROFILE", "default")
 
 	mockRunner := &mockCommandRunner{
-		RunCommandFunc: func(workDir string, name string, args ...string) ([]byte, error) {
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
 			t.Fatalf("runner should not be called for empty candidate")
 			return nil, nil
 		},
 	}
 
 	sourceDir := createSourceDir(t, false)
-	v, err := newWithRunner(sourceDir, t.TempDir(), false, mockRunner)
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 0, mockRunner)
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -324,6 +326,25 @@ func TestValidationErrorErrorString(t *testing.T) {
 	noOutput := &ValidationError{Cause: io.ErrUnexpectedEOF}
 	if noOutput.Error() == "" {
 		t.Fatalf("expected error string without output")
+	}
+}
+
+func TestValidatorTimeoutPassesContext(t *testing.T) {
+	sourceDir := createSourceDir(t, false)
+	mockRunner := &mockCommandRunner{
+		RunCommandFunc: func(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
+			if _, ok := ctx.Deadline(); !ok {
+				t.Fatalf("expected deadline in context")
+			}
+			return []byte("ok"), nil
+		},
+	}
+	v, err := newWithRunner(sourceDir, t.TempDir(), false, 10*time.Millisecond, mockRunner)
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	if _, err := v.Validate(testutil.Logger(), []byte(`{"new":true}`), false); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 }
 

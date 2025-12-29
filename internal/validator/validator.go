@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -9,10 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type commandRunner interface {
-	RunCommand(workDir string, name string, args ...string) ([]byte, error)
+	RunCommand(ctx context.Context, workDir string, name string, args ...string) ([]byte, error)
 }
 
 type mirrorError string
@@ -47,23 +49,24 @@ func BuildConfigPath(apisixHome string, isYAML bool) string {
 }
 
 // New creates a validator using a mirrored APISIX home directory.
-func New(sourceDir string, mirrorDir string, useExisting bool) (Validator, error) {
-	return newWithRunner(sourceDir, mirrorDir, useExisting, systemCommandRunner{})
+func New(sourceDir string, mirrorDir string, useExisting bool, timeout time.Duration) (Validator, error) {
+	return newWithRunner(sourceDir, mirrorDir, useExisting, timeout, systemCommandRunner{})
 }
 
-func newWithRunner(sourceDir string, mirrorDir string, useExisting bool, runner commandRunner) (Validator, error) {
+func newWithRunner(sourceDir string, mirrorDir string, useExisting bool, timeout time.Duration, runner commandRunner) (Validator, error) {
 	if runner == nil {
 		runner = systemCommandRunner{}
 	}
 	if err := prepareMirror(sourceDir, mirrorDir, useExisting); err != nil {
 		return nil, err
 	}
-	return &mirrorValidator{mirrorDir: mirrorDir, runner: runner}, nil
+	return &mirrorValidator{mirrorDir: mirrorDir, runner: runner, timeout: timeout}, nil
 }
 
 type mirrorValidator struct {
 	runner    commandRunner
 	mirrorDir string
+	timeout   time.Duration
 }
 
 // ValidationError captures stderr and the underlying error from apisix test.
@@ -100,7 +103,13 @@ func (v *mirrorValidator) Validate(logger *slog.Logger, candidate []byte, isYAML
 		return false, err
 	}
 
-	outputBytes, err := v.runner.RunCommand(v.mirrorDir, "apisix", "test", "-c", configPath)
+	ctx := context.Background()
+	if v.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, v.timeout)
+		defer cancel()
+	}
+	outputBytes, err := v.runner.RunCommand(ctx, v.mirrorDir, "apisix", "test", "-c", configPath)
 
 	if err != nil {
 		// If command returns an error, it means apisix test failed.
@@ -126,8 +135,8 @@ func replaceDynamicConfig(target string, candidate []byte) error {
 
 type systemCommandRunner struct{}
 
-func (systemCommandRunner) RunCommand(workDir string, name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
+func (systemCommandRunner) RunCommand(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir
 	return cmd.CombinedOutput()
 }

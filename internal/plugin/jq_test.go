@@ -1,10 +1,12 @@
 package plugin
 
 import (
+	"context"
 	"errors"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/warpcomdev/cuesix/internal/testutil"
 )
@@ -17,10 +19,19 @@ type mockJQRunner struct {
 	err         error
 }
 
-func (m *mockJQRunner) Run(input []byte, expression string) ([]byte, []byte, error) {
+func (m *mockJQRunner) Run(_ context.Context, input []byte, expression string) ([]byte, []byte, error) {
 	m.inputs = append(m.inputs, input)
 	m.expressions = append(m.expressions, expression)
 	return m.stdout, m.stderr, m.err
+}
+
+type deadlineJQRunner struct{}
+
+func (deadlineJQRunner) Run(ctx context.Context, _ []byte, _ string) ([]byte, []byte, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return nil, nil, errors.New("missing deadline")
+	}
+	return []byte(`{"ok":true}`), nil, nil
 }
 
 func TestJQPluginNoConfig(t *testing.T) {
@@ -203,7 +214,7 @@ func TestSystemJQRunner(t *testing.T) {
 		t.Skip("jq not available in PATH")
 	}
 	runner := systemJQRunner{}
-	stdout, stderr, err := runner.Run([]byte(`{"a":1}`), ".a")
+	stdout, stderr, err := runner.Run(context.Background(), []byte(`{"a":1}`), ".a")
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -212,5 +223,17 @@ func TestSystemJQRunner(t *testing.T) {
 	}
 	if strings.TrimSpace(string(stdout)) != "1" {
 		t.Fatalf("unexpected stdout: %q", string(stdout))
+	}
+}
+
+func TestJQPluginTimeoutPassesContext(t *testing.T) {
+	plugin := &JQPlugin{
+		Runner:  deadlineJQRunner{},
+		Timeout: 10 * time.Millisecond,
+	}
+	input := []byte(`{"jq":[{"expr":".a = 1"}]}`)
+	_, err := plugin.Update(testutil.Logger(), input)
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
 	}
 }

@@ -2,21 +2,24 @@ package plugin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 )
 
 // JQPlugin applies a jq pipeline defined in the top-level jq list.
 type JQPlugin struct {
-	Runner jqRunner
+	Runner  jqRunner
+	Timeout time.Duration
 }
 
 type jqRunner interface {
-	Run(input []byte, expression string) ([]byte, []byte, error)
+	Run(ctx context.Context, input []byte, expression string) ([]byte, []byte, error)
 }
 
 // JQTransform describes a single jq expression in the pipeline.
@@ -133,7 +136,13 @@ func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 	}
 	expression := buildJQPipeline(logger, transforms)
 	logger.Info("jq plugin executing", "transforms", len(transforms))
-	stdout, stderr, err := runner.Run(payload, expression)
+	ctx := context.Background()
+	if p.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.Timeout)
+		defer cancel()
+	}
+	stdout, stderr, err := runner.Run(ctx, payload, expression)
 	if err != nil || len(stderr) > 0 {
 		logger.Error("jq plugin execution failed", "error", err, "stderr", strings.TrimSpace(string(stderr)))
 		return nil, &JQExecError{
@@ -148,8 +157,8 @@ func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 
 type systemJQRunner struct{}
 
-func (systemJQRunner) Run(input []byte, expression string) ([]byte, []byte, error) {
-	cmd := exec.Command("jq", expression)
+func (systemJQRunner) Run(ctx context.Context, input []byte, expression string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, "jq", expression)
 	cmd.Stdin = bytes.NewReader(input)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

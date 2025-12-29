@@ -28,6 +28,8 @@ type Reloader struct {
 	RetryInitial    time.Duration
 	RetryMaxDelay   time.Duration
 	RetryMultiplier float64
+	// RequestTimeout caps the reload HTTP request duration.
+	RequestTimeout time.Duration
 }
 
 // Apply writes the payload to ConfigPath and triggers the reload endpoint.
@@ -104,6 +106,11 @@ func (r *Reloader) doReloadRequest(ctx context.Context) error {
 	client := r.HTTPClient
 	if client == nil {
 		client = http.DefaultClient
+	}
+	if r.RequestTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.RequestTimeout)
+		defer cancel()
 	}
 	req, err := http.NewRequestWithContext(ctx, method, r.ReloadURL, nil)
 	if err != nil {

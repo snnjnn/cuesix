@@ -129,7 +129,7 @@ func TestEnvBoolDefault(t *testing.T) {
 }
 
 func TestBuildPostRender(t *testing.T) {
-	post, err := buildPostRender(true, true)
+	post, err := buildPostRender(true, true, 0)
 	if err != nil {
 		t.Fatalf("buildPostRender returned error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestBuildPostRender(t *testing.T) {
 }
 
 func TestBuildPostRenderEmpty(t *testing.T) {
-	post, err := buildPostRender(false, false)
+	post, err := buildPostRender(false, false, 0)
 	if err != nil {
 		t.Fatalf("buildPostRender returned error: %v", err)
 	}
