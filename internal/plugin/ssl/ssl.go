@@ -1,6 +1,7 @@
 package ssl
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -9,12 +10,20 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 )
 
 // SSLPlugin inlines certificate files referenced via file:// in ssls entries.
 type SSLPlugin struct {
 	Filesystems []fs.FS
+	ACME        ACMEManager
 	Expirations *ExpiryManager
+}
+
+// ACMEManager provides access to ACME certificates.
+type ACMEManager interface {
+	RequestCertificate(ctx context.Context, providerName string, sni string) (certmagicmgr.Certificate, error)
 }
 
 func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[string]any, error) {
@@ -38,6 +47,9 @@ func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[strin
 		entry, ok := item.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("ssl plugin expects ssls[%d] to be a map, got %T", i, item)
+		}
+		if err := p.handleACME(logger, entry); err != nil {
+			return nil, err
 		}
 		if err := p.replaceField(logger, entry, "cert", true, "cert"); err != nil {
 			return nil, err
@@ -212,4 +224,41 @@ func parseCertNotAfter(content string) (time.Time, error) {
 		return cert.NotAfter, nil
 	}
 	return time.Time{}, errors.New("no certificate data")
+}
+
+func (p *SSLPlugin) handleACME(logger *slog.Logger, entry map[string]any) error {
+	raw, ok := entry["cert"]
+	if !ok {
+		return nil
+	}
+	text, ok := raw.(string)
+	if !ok {
+		return fmt.Errorf("ssl plugin expects cert to be a string, got %T", raw)
+	}
+	if !strings.HasPrefix(text, "acme://") {
+		return nil
+	}
+	if p.ACME == nil {
+		return errors.New("ssl plugin acme requested but certmagic manager not configured")
+	}
+	provider := strings.TrimPrefix(text, "acme://")
+	if provider == "" {
+		return errors.New("ssl plugin empty acme provider")
+	}
+	snis := p.entrySNIs(logger, entry)
+	if len(snis) != 1 {
+		return errors.New("ssl plugin acme requires exactly one sni")
+	}
+	sni := snis[0]
+	cert, err := p.ACME.RequestCertificate(context.Background(), provider, sni)
+	if err != nil {
+		return err
+	}
+	entry["cert"] = string(cert.CertPEM)
+	entry["key"] = string(cert.KeyPEM)
+	logger.Info("ssl plugin acme certificate loaded", "provider", provider, "sni", sni)
+	if p.Expirations != nil && !cert.NotAfter.IsZero() {
+		p.Expirations.RecordSNI(sni, cert.NotAfter)
+	}
+	return nil
 }

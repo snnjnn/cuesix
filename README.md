@@ -180,6 +180,14 @@ Plugins:
 - `--plugin-ssl-expiry-check-interval` / `CUESIX_PLUGIN_SSL_EXPIRY_CHECK_INTERVAL`: interval for expiry checks (default 24h).
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
+Certmagic:
+- `--certmagic` / `CUESIX_CERTMAGIC` (bool): enable certmagic ACME manager.
+- `--certmagic-provider` (repeatable) / `CUESIX_CERTMAGIC_PROVIDERS` (semicolon-separated): provider specs (`name=...,ca=...,email=...[,timeout=...]`).
+- `--certmagic-default-provider` / `CUESIX_CERTMAGIC_DEFAULT_PROVIDER`: default provider name.
+- `--certmagic-data-dir` / `CUESIX_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
+- `--certmagic-challenge-addr` / `CUESIX_CERTMAGIC_CHALLENGE_ADDR`: HTTP-01 challenge listen address.
+- `--certmagic-timeout` / `CUESIX_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
+
 ## Usage
 
 Standalone:

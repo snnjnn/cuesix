@@ -50,7 +50,7 @@ func TestBuildFilesystems(t *testing.T) {
 }
 
 func TestBuildPluginsInvalidPath(t *testing.T) {
-	_, err := buildPreRender([]string{"/path/does/not/exist"}, nil)
+	_, err := buildPreRender([]string{"/path/does/not/exist"}, nil, nil)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -58,7 +58,7 @@ func TestBuildPluginsInvalidPath(t *testing.T) {
 
 func TestBuildPluginsValidPath(t *testing.T) {
 	dir := t.TempDir()
-	_, err := buildPreRender([]string{filepath.Clean(dir)}, nil)
+	_, err := buildPreRender([]string{filepath.Clean(dir)}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestEnvString(t *testing.T) {
 }
 
 func TestBuildPluginsEmpty(t *testing.T) {
-	p, err := buildPreRender(nil, nil)
+	p, err := buildPreRender(nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

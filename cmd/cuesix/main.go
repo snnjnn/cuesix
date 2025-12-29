@@ -20,6 +20,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/warpcomdev/cuesix/internal/cache"
+	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 	"github.com/warpcomdev/cuesix/internal/compiler"
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
@@ -123,6 +124,19 @@ func main() {
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
 	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_PLUGIN_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 
+	certmagicEnabled := flag.Bool("certmagic", envBool("CUESIX_CERTMAGIC", false), "enable certmagic acme manager")
+	certmagicDefaultProvider := flag.String("certmagic-default-provider", envString("CUESIX_CERTMAGIC_DEFAULT_PROVIDER"), "certmagic default provider")
+	certmagicDataDir := flag.String("certmagic-data-dir", envString("CUESIX_CERTMAGIC_DATA_DIR"), "certmagic data directory")
+	certmagicChallengeAddr := flag.String("certmagic-challenge-addr", envString("CUESIX_CERTMAGIC_CHALLENGE_ADDR"), "certmagic HTTP-01 challenge address")
+	certmagicTimeout := flag.Duration("certmagic-timeout", envDuration("CUESIX_CERTMAGIC_TIMEOUT", 0), "certmagic default certificate obtain timeout")
+	certmagicProvidersFlag := &stringSliceFlag{}
+	if envProviders := envString("CUESIX_CERTMAGIC_PROVIDERS"); envProviders != "" {
+		for _, spec := range splitSemicolon(envProviders) {
+			certmagicProvidersFlag.values = append(certmagicProvidersFlag.values, spec)
+		}
+	}
+	flag.Var(certmagicProvidersFlag, "certmagic-provider", "certmagic provider config (repeatable)")
+
 	flag.Parse()
 
 	if len(inputFlag.values) == 0 {
@@ -139,9 +153,33 @@ func main() {
 		expiryManager = ssl.NewExpiryManager(*sslExpiryWindow, *sslExpiryInterval, nil)
 	}
 
+	var acmeManager *certmagicmgr.Manager
+	if *certmagicEnabled {
+		if *certmagicChallengeAddr == "" {
+			logger.Error("certmagic enabled but challenge address is missing")
+			os.Exit(1)
+		}
+		providers, err := buildCertmagicProviders(certmagicProvidersFlag.values)
+		if err != nil {
+			logger.Error("certmagic provider config invalid", "error", err)
+			os.Exit(1)
+		}
+		acmeManager, err = certmagicmgr.NewManager(certmagicmgr.Config{
+			Providers:       providers,
+			DefaultProvider: strings.TrimSpace(*certmagicDefaultProvider),
+			DataDir:         strings.TrimSpace(*certmagicDataDir),
+			ChallengeAddr:   strings.TrimSpace(*certmagicChallengeAddr),
+			DefaultTimeout:  *certmagicTimeout,
+		}, logger)
+		if err != nil {
+			logger.Error("certmagic init failed", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
-			plugins, pluginErr := buildPreRender(sslPathsFlag.values, expiryManager)
+			plugins, pluginErr := buildPreRender(sslPathsFlag.values, expiryManager, acmeManager)
 			if pluginErr != nil {
 				logger.Error("pre-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -299,6 +337,11 @@ func main() {
 			return expiryManager.Run(groupCtx, logger)
 		})
 	}
+	if *certmagicEnabled && acmeManager != nil && *serve {
+		group.Go(func() error {
+			return acmeManager.RunChallengeServer(groupCtx)
+		})
+	}
 
 	group.Go(func() error {
 		logger.Info("starting server", "addr", *listenAddr)
@@ -337,14 +380,18 @@ func serverShutdown(ctx context.Context, logger *slog.Logger, name string, serve
 	}
 }
 
-func buildPreRender(sslPaths []string, expirations *ssl.ExpiryManager) (plugin.PreRender, error) {
+func buildPreRender(sslPaths []string, expirations *ssl.ExpiryManager, acmeManager *certmagicmgr.Manager) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
 	if len(sslPaths) > 0 {
 		sslFSes, err := buildFilesystems(sslPaths)
 		if err != nil {
 			return nil, err
 		}
-		plugins = append(plugins, &ssl.SSLPlugin{Filesystems: sslFSes, Expirations: expirations})
+		plugins = append(plugins, &ssl.SSLPlugin{
+			Filesystems: sslFSes,
+			ACME:        acmeManager,
+			Expirations: expirations,
+		})
 	}
 	return plugins, nil
 }
@@ -396,6 +443,33 @@ func splitComma(value string) []string {
 		}
 	}
 	return out
+}
+
+func splitSemicolon(value string) []string {
+	parts := strings.Split(value, ";")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func buildCertmagicProviders(specs []string) ([]certmagicmgr.ProviderConfig, error) {
+	if len(specs) == 0 {
+		return nil, errors.New("at least one certmagic provider is required")
+	}
+	providers := make([]certmagicmgr.ProviderConfig, 0, len(specs))
+	for _, spec := range specs {
+		cfg, err := certmagicmgr.ParseProviderSpec(spec)
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, cfg)
+	}
+	return providers, nil
 }
 
 func envString(key string) string {

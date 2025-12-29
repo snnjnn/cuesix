@@ -1,8 +1,8 @@
-El plugin SSL inyecta certificados desde ficheros (la integración con ACME/certmagic llegará más adelante).
+El plugin SSL inyecta certificados desde ficheros o los obtiene automáticamente mediante ACME/certmagic.
 La deteción de inyección de certificado se basa en el atributo `cert` del objeto `ssls`. Soporta tres formatos:
 
 - `file://<nombre de fichero>`: Un fichero a encontrar dentro de una lista de fs.FS dados.
-- `acme://...`: Reservado para ACME (aún no implementado).
+- `acme://...`: Se resuelve con certmagic.
 - cualquier otro formato: Se considera un certificado literal, no se toca.
 
 ## Tipo `file`
@@ -15,7 +15,9 @@ Al leer el certificado, se intenta obtener su fecha de caducidad. Si se consigue
 
 ## Tipo `acme`
 
-Las referencias de tipo `acme` se resolverán mediante certmagic cuando se implemente esta funcionalidad.
+Las referencias de tipo `acme` se resuelven mediante certmagic. El valor `acme://<provider>` indica el proveedor configurado en el gestor de certmagic.
+Para `acme`, la entrada debe incluir exactamente un `sni`. El atributo `key` se ignora y se sobreescribe con la clave obtenida.
+La resolución de ACME bloquea durante la compilación hasta obtener el certificado o agotar el timeout configurado.
 
 ## Gestión de caducidades
 

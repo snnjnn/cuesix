@@ -1,12 +1,14 @@
 package ssl
 
 import (
+	"context"
 	"io/fs"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
@@ -70,6 +72,51 @@ func TestSSLPluginMissingFile(t *testing.T) {
 	}
 	if _, err := plugin.Update(testutil.Logger(), input); err == nil {
 		t.Fatalf("expected error for missing file")
+	}
+}
+
+type fakeACME struct {
+	cert certmagicmgr.Certificate
+	err  error
+}
+
+func (f *fakeACME) RequestCertificate(_ context.Context, _ string, _ string) (certmagicmgr.Certificate, error) {
+	return f.cert, f.err
+}
+
+func TestSSLPluginACMEReplacesCertAndKey(t *testing.T) {
+	plugin := &SSLPlugin{
+		Filesystems: []fs.FS{fstest.MapFS{}},
+	}
+	cert := certmagicmgr.Certificate{
+		CertPEM:  []byte("cert-data"),
+		KeyPEM:   []byte("key-data"),
+		NotAfter: time.Now().Add(24 * time.Hour),
+	}
+	plugin.ACME = &fakeACME{cert: cert}
+
+	input := map[string]any{
+		"ssls": []any{
+			map[string]any{
+				"cert": "acme://letsencrypt",
+				"key":  "file://ignored.pem",
+				"snis": []any{"example.com"},
+			},
+		},
+	}
+
+	got, err := plugin.Update(testutil.Logger(), input)
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	entries := got["ssls"].([]any)
+	entry := entries[0].(map[string]any)
+	if entry["cert"] != "cert-data" {
+		t.Fatalf("expected cert to be replaced")
+	}
+	if entry["key"] != "key-data" {
+		t.Fatalf("expected key to be replaced")
 	}
 }
 
