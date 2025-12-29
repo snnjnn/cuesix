@@ -5,3 +5,4 @@
 - Provide the candidate config to the validator for validation.
 - Return errors from the compile pipeline; the caller decides how to restart the loop.
 - Provide a notifier-compatible interface to accept enqueue signals from listener.
+- Future: emit lifecycle signals (pipeline start/finish) to pause certmagic retry workers during reload cycles.

@@ -7,3 +7,4 @@
 - Support optional API key header and configurable HTTP method (defaults to POST).
 - Retry reload requests with exponential backoff (configurable attempts and timings).
 - Log success/failure with enough detail for operators.
+- Future: expose a method to patch a single SSL entry via APISIX Admin API for certmagic retries.

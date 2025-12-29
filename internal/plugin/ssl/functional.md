@@ -18,6 +18,7 @@ Al leer el certificado, se intenta obtener su fecha de caducidad. Si se consigue
 Las referencias de tipo `acme` se resuelven mediante certmagic. El valor `acme://<provider>` indica el proveedor configurado en el gestor de certmagic.
 Para `acme`, la entrada debe incluir exactamente un `sni`. El atributo `key` se ignora y se sobreescribe con la clave obtenida.
 La resolución de ACME bloquea durante la compilación hasta obtener el certificado o agotar el timeout configurado.
+Si la obtención del certificado falla, el plugin utiliza un certificado de fallback (placeholder) cargado por el gestor de certmagic, para evitar dejar entradas `ssls` incompletas.
 
 ## Gestión de caducidades
 
@@ -32,3 +33,9 @@ La gorutina no se encarga de renovar los certificados; eso lo hace certmagic, o 
 La reconfiguración tendrá el efecto de volver a ejecutar todos los plugins, entre ellos el de ssl, y con ello actualizar la lista de caducidades. De esta forma, los certificados que el usuario haya actualizado en disco por otros medios, serán recargados.
 
 Si falla el parseo de un certificado para obtener su fecha de caducidad, el error se registra en logs, pero no aborta la compilación.
+
+## Reintentos ACME y actualización incremental
+
+Cuando una solicitud ACME falla, el SNI se incorpora a una cola de reintentos.
+Los reintentos se ejecutan en segundo plano y, si tienen éxito, actualizan el certificado correspondiente en APISIX mediante la API de administración, sin disparar una recompilación completa.
+Los reintentos se inhiben mientras se ejecuta el pipeline de compilación/validación/recarga, se cancelan al iniciar un nuevo ciclo y solo se reanudan cuando la recarga ha finalizado correctamente.

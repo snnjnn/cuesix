@@ -18,3 +18,10 @@ Integración ACME:
 - La entrada debe incluir exactamente un `sni`. Si no es así, se devuelve error.
 - La llamada bloquea hasta obtener el certificado o agotar el timeout configurado.
 - El atributo `key` se ignora y se sobreescribe con la clave obtenida.
+- Si la obtención del certificado falla, se usa el certificado de fallback cargado por el gestor de certmagic (placeholder de APISIX), y se registra el error.
+
+Reintentos y actualizaciones incrementales:
+
+- Los SNIs que fallan se encolan para reintentos asíncronos.
+- Un proceso en segundo plano reintenta la obtención y, cuando se consigue, actualiza la entrada de `ssl` en APISIX mediante la API de administración, sin recargar el resto de la configuración.
+- Los reintentos y la publicación incremental se inhiben durante la ejecución del pipeline y se limpian al iniciar un nuevo ciclo de compilación. Solo se activan cuando la recarga completa ha finalizado correctamente.

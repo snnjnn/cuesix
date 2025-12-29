@@ -187,6 +187,10 @@ Certmagic:
 - `--certmagic-data-dir` / `CUESIX_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
 - `--certmagic-challenge-addr` / `CUESIX_CERTMAGIC_CHALLENGE_ADDR`: HTTP-01 challenge listen address.
 - `--certmagic-timeout` / `CUESIX_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
+- `--certmagic-fallback-cert` / `CUESIX_CERTMAGIC_FALLBACK_CERT`: fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
+- `--certmagic-fallback-key` / `CUESIX_CERTMAGIC_FALLBACK_KEY`: fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
+
+When an ACME certificate cannot be obtained, cuesix will use the fallback certificate to keep the `ssls` entry valid and will retry in the background, updating APISIX via the Admin API when the certificate becomes available.
 
 ## Usage
 

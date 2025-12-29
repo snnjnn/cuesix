@@ -8,6 +8,8 @@ Entradas y configuracion:
   - `DataDir`: ruta de almacenamiento persistente para certmagic.
   - `ChallengeAddr`: direccion donde se expone el handler HTTP-01.
   - `DefaultTimeout`: timeout por defecto para obtencion de certificados.
+  - `FallbackCertPath`: ruta del certificado placeholder de APISIX.
+  - `FallbackKeyPath`: ruta de la clave placeholder de APISIX.
 - `ProviderConfig`:
   - `Timeout`: timeout especifico para ese proveedor.
 
@@ -15,6 +17,7 @@ Salidas:
 
 - `RequestCertificate` devuelve `Certificate` con `CertPEM`, `KeyPEM` y `NotAfter`.
 - `ListManaged` devuelve los certificados gestionados con su metadata.
+ - El certificado fallback se carga al crear el manager y debe existir; si no, es error fatal.
 
 Dependencias:
 
@@ -30,6 +33,7 @@ API principal:
   - Serializa el acceso a certmagic con un mutex.
 - `ListManaged()` devuelve el inventario actual.
 - `RemoveManaged(sni)` elimina la entrada del inventario (no elimina almacenamiento en disco).
+ - `Fallback()` (o equivalente) expone el certificado placeholder para que el plugin pueda usarlo en caso de error.
 
 Notas:
 
@@ -37,3 +41,7 @@ Notas:
 - `acme://<provider>` seleccionara el proveedor en la capa de plugin (no implementado aqui).
 - External Account Binding (EAB) no esta soportado en esta iteracion.
 - El handler HTTP-01 se expone en `ChallengeAddr` y se informa a certmagic con `AltHTTPPort`.
+- Reintentos:
+  - Los fallos de obtencion se encolan en un retrier.
+  - Tras una recarga completa exitosa, el retrier intenta obtener certificados y un publicador actualiza APISIX via Admin API.
+  - Si se inicia un nuevo ciclo de compilacion/recarga, los reintentos se cancelan y el estado se reinicia.

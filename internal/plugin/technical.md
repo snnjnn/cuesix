@@ -11,6 +11,7 @@ Plugin `ssl`:
 - El valor de `file://` únicamente contiene el nombre del fichero al que se hace referencia, no la ruta. El plugin debe buscar el fichero en cualquiera de los fs.FS que contiene.
 - La no existencia de un fichero referenciado por un atributo, debe generar un error.
 - Si el valor del atributo es `acme://<provider>`, y la entrada tiene un único SNI, el certificado se gestiona automáticamente con certmagic usando el proveedor indicado.
+- Si la obtención ACME falla, el plugin usa un certificado placeholder configurado para completar la entrada `ssl`.
 - El plugin se activa desde el ejecutable con `--plugin-ssl-path` o `CUESIX_PLUGIN_SSL_PATHS`.
 
 Plugin `jq`:
