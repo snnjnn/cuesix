@@ -144,20 +144,23 @@ All flags can be provided as environment variables.
 
 Input and runtime mode:
 - `--serve` / `CUESIX_SERVE` (bool): enable server mode with `POST /compile`.
-- `--listen` / `CUESIX_LISTEN`: listen address for server mode.
+- `--listen` / `CUESIX_LISTEN`: listen address for server mode (default `127.0.0.1:8080`).
+- `--metrics` / `CUESIX_METRICS_LISTEN`: listen address for `/metrics` (empty disables).
 - `--input` (repeatable) / `CUESIX_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
 - `--cooldown` / `CUESIX_COOLDOWN`: minimum delay between queued compile runs.
 - `--dry-run` / `CUESIX_DRY_RUN` (bool): run pipeline without writing config or triggering reload.
 
 APISIX paths and validation:
 - `--apisix-home` / `CUESIX_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).
-- `--apisix-mirror-dir` / `CUESIX_APISIX_MIRROR_DIR`: optional mirror directory for validation; if empty, cuesix creates a temp mirror.
+- `--mirror-dir` / `CUESIX_MIRROR_DIR`: optional mirror directory for validation; if empty, cuesix creates a temp mirror.
 - `--keep-mirror` / `CUESIX_KEEP_MIRROR`: do not clean and re-populate the mirror folder on startup.
+- `--validation-timeout` / `CUESIX_VALIDATION_TIMEOUT`: timeout for `apisix test` validation.
 
 Reload behavior:
 - `--apisix-url` / `CUESIX_APISIX_URL`: APISIX Admin API base URL (e.g. `http://127.0.0.1:9180`).
 - `--apisix-api-key` / `CUESIX_APISIX_API_KEY`: Admin API key for reload requests.
 - `--reload-method` / `CUESIX_RELOAD_METHOD`: HTTP method for reload requests (default POST).
+- `--reload-timeout` / `CUESIX_RELOAD_TIMEOUT`: timeout for reload HTTP requests.
 - `--retry-max` / `CUESIX_RETRY_MAX`: number of reload retries on failure.
 - `--retry-initial` / `CUESIX_RETRY_INITIAL`: initial backoff before the first retry.
 - `--retry-max-delay` / `CUESIX_RETRY_MAX_DELAY`: cap for retry backoff.
@@ -165,6 +168,7 @@ Reload behavior:
 
 Plugins:
 - `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
+- `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
@@ -181,6 +185,7 @@ Server mode:
 ```bash
 cuesix --serve \
   --listen :8080 \
+  --metrics :9090 \
   --input ./configs \
   --apisix-home /usr/local/apisix \
   --apisix-url http://127.0.0.1:9180

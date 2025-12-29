@@ -97,28 +97,28 @@ func main() {
 	flag.Var(inputFlag, "input", "input directory (repeatable)")
 
 	apisixHome := flag.String("apisix-home", envStringDefault("CUESIX_APISIX_HOME", "/usr/local/apisix"), "apisix home path")
-	validationTimeout := flag.Duration("validation-timeout", envDuration("CUESIX_APISIX_TEST_TIMEOUT", 30*time.Second), "timeout for apisix test")
+	mirrorDirFlag := flag.String("mirror-dir", envString("CUESIX_MIRROR_DIR"), "apisix mirror directory (optional)")
+	mirrorKeepFlag := flag.Bool("keep-mirror", envBool("CUESIX_KEEP_MIRROR", false), "Do not remove mirror on startup")
+	validationTimeout := flag.Duration("validation-timeout", envDuration("CUESIX_VALIDATION_TIMEOUT", 30*time.Second), "timeout for apisix test")
 
 	apisixURL := flag.String("apisix-url", envString("CUESIX_APISIX_URL"), "apisix admin base url")
 	dryRun := flag.Bool("dry-run", envBool("CUESIX_DRY_RUN", false), "run pipeline without writing config or reloading apisix")
 	apiKey := flag.String("apisix-api-key", envString("CUESIX_APISIX_API_KEY"), "apisix admin api key")
 	reloadMethod := flag.String("reload-method", envStringDefault("CUESIX_RELOAD_METHOD", http.MethodPost), "reload HTTP method")
 	reloadTimeout := flag.Duration("reload-timeout", envDuration("CUESIX_RELOAD_TIMEOUT", 10*time.Second), "timeout for reload HTTP request")
-
 	retryMax := flag.Int("retry-max", envInt("CUESIX_RETRY_MAX", 0), "reload retry attempts")
 	retryInitial := flag.Duration("retry-initial", envDuration("CUESIX_RETRY_INITIAL", 200*time.Millisecond), "reload initial backoff")
 	retryMaxDelay := flag.Duration("retry-max-delay", envDuration("CUESIX_RETRY_MAX_DELAY", 2*time.Second), "reload max backoff")
 	retryMultiplier := flag.Float64("retry-multiplier", envFloat("CUESIX_RETRY_MULTIPLIER", 2), "reload backoff multiplier")
+
+	enableYAML := flag.Bool("plugin-yaml", envBool("CUESIX_PLUGIN_YAML", false), "enable yaml post-render plugin")
 	sslPathsFlag := &stringSliceFlag{}
 	if envSSLPaths := envString("CUESIX_PLUGIN_SSL_PATHS"); envSSLPaths != "" {
 		sslPathsFlag.values = splitComma(envSSLPaths)
 	}
 	flag.Var(sslPathsFlag, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
-	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
-	enableYAML := flag.Bool("plugin-yaml", envBool("CUESIX_PLUGIN_YAML", false), "enable yaml post-render plugin")
-	mirrorDirFlag := flag.String("apisix-mirror-dir", envString("CUESIX_APISIX_MIRROR_DIR"), "apisix mirror directory (optional)")
-	mirrorKeepFlag := flag.Bool("keep-mirror", envBool("CUESIX_KEEP_MIRROR", false), "Do not remove mirror on startup")
+	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_PLUGIN_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 
 	flag.Parse()
 
