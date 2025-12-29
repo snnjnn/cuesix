@@ -92,7 +92,7 @@ func main() {
 
 	serve := flag.Bool("serve", envBool("CUESIX_SERVE", false), "run HTTP server")
 	listenAddr := flag.String("listen", envStringDefault("CUESIX_LISTEN", "127.0.0.1:8080"), "listen address")
-	metricsAddr := flag.String("metrics", envStringDefault("CUESIX_METRICS_LISTEN", ""), "metrics listen address (empty to disable)")
+	metricsAddr := flag.String("metrics", envStringDefault("CUESIX_METRICS_LISTEN", ":8081"), "metrics listen address (empty to disable)")
 	cooldown := flag.Duration("cooldown", envDuration("CUESIX_COOLDOWN", 0), "cooldown duration")
 	flag.Var(inputFlag, "input", "input directory (repeatable)")
 
