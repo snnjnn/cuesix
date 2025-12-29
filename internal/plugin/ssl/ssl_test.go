@@ -1,9 +1,10 @@
-package plugin
+package ssl
 
 import (
 	"io/fs"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/warpcomdev/cuesix/internal/testutil"
@@ -69,5 +70,50 @@ func TestSSLPluginMissingFile(t *testing.T) {
 	}
 	if _, err := plugin.Update(testutil.Logger(), input); err == nil {
 		t.Fatalf("expected error for missing file")
+	}
+}
+
+type notifyCounter struct {
+	count int
+}
+
+func (n *notifyCounter) Notify() {
+	n.count++
+}
+
+func TestExpiryManagerNotifyOncePerDay(t *testing.T) {
+	now := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	notifier := &notifyCounter{}
+	manager := NewExpiryManager(5*24*time.Hour, time.Hour, notifier)
+
+	manager.RecordSNI("example.com", now.Add(48*time.Hour))
+	manager.checkAndNotify(now, testutil.Logger())
+
+	if notifier.count != 1 {
+		t.Fatalf("expected 1 notification, got %d", notifier.count)
+	}
+
+	manager.checkAndNotify(now.Add(2*time.Hour), testutil.Logger())
+	if notifier.count != 1 {
+		t.Fatalf("expected 1 notification after same-day check, got %d", notifier.count)
+	}
+
+	manager.checkAndNotify(now.Add(25*time.Hour), testutil.Logger())
+	if notifier.count != 2 {
+		t.Fatalf("expected 2 notifications after next-day check, got %d", notifier.count)
+	}
+}
+
+func TestExpiryManagerSuppressOnConfigDay(t *testing.T) {
+	now := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	notifier := &notifyCounter{}
+	manager := NewExpiryManager(5*24*time.Hour, time.Hour, notifier)
+
+	manager.ResetForConfig(now)
+	manager.RecordSNI("example.com", now.Add(48*time.Hour))
+	manager.checkAndNotify(now, testutil.Logger())
+
+	if notifier.count != 0 {
+		t.Fatalf("expected no notification on config day, got %d", notifier.count)
 	}
 }

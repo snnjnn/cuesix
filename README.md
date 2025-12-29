@@ -70,7 +70,9 @@ Besides merging files, cuesix implements some quality-of-life features that expa
 
 ### Certificate inlining
 
-The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `file://...` values. It searches for the given file name in the fodlers specified with the `--plugin-ssl-path` flag, and embeds them into the yaml.
+The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `file://...` or `acme://...` values.
+
+- If the certificate URL is `file://...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml.
 
 For example, a config snippet like:
 
@@ -88,6 +90,10 @@ ssls:
       ...
       -----END CERTIFICATE-----
 ```
+
+- If the certificate URL is `acme://...`, it will try to generate a new ACME certificate.
+  - Acme certificates and SANs is a complicated story, so this mode only works when the `ssls` entry has a single `sni`.
+  - The `key` entry is ignored, it is overriden with the acme key.
 
 ### Config-wide transformations
 
@@ -170,6 +176,8 @@ Plugins:
 - `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
 - `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
+- `--plugin-ssl-expiry-window` / `CUESIX_PLUGIN_SSL_EXPIRY_WINDOW`: warn before certificates expire (default 120h).
+- `--plugin-ssl-expiry-check-interval` / `CUESIX_PLUGIN_SSL_EXPIRY_CHECK_INTERVAL`: interval for expiry checks (default 24h).
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
 ## Usage

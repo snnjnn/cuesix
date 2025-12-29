@@ -24,6 +24,7 @@ import (
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 	"github.com/warpcomdev/cuesix/internal/reloader"
 	"github.com/warpcomdev/cuesix/internal/validator"
 	"golang.org/x/sync/errgroup"
@@ -117,6 +118,8 @@ func main() {
 		sslPathsFlag.values = splitComma(envSSLPaths)
 	}
 	flag.Var(sslPathsFlag, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
+	sslExpiryWindow := flag.Duration("plugin-ssl-expiry-window", envDuration("CUESIX_PLUGIN_SSL_EXPIRY_WINDOW", 5*24*time.Hour), "ssl plugin expiry warning window")
+	sslExpiryInterval := flag.Duration("plugin-ssl-expiry-check-interval", envDuration("CUESIX_PLUGIN_SSL_EXPIRY_CHECK_INTERVAL", 24*time.Hour), "ssl plugin expiry check interval")
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
 	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_PLUGIN_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 
@@ -131,9 +134,14 @@ func main() {
 		log.Fatalf("input dirs: %v", err)
 	}
 
+	var expiryManager *ssl.ExpiryManager
+	if len(sslPathsFlag.values) > 0 {
+		expiryManager = ssl.NewExpiryManager(*sslExpiryWindow, *sslExpiryInterval, nil)
+	}
+
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
-			plugins, pluginErr := buildPreRender(sslPathsFlag.values)
+			plugins, pluginErr := buildPreRender(sslPathsFlag.values, expiryManager)
 			if pluginErr != nil {
 				logger.Error("pre-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -285,6 +293,12 @@ func main() {
 			}
 		}
 	})
+	if expiryManager != nil {
+		expiryManager.SetNotifier(disp)
+		group.Go(func() error {
+			return expiryManager.Run(groupCtx, logger)
+		})
+	}
 
 	group.Go(func() error {
 		logger.Info("starting server", "addr", *listenAddr)
@@ -323,14 +337,14 @@ func serverShutdown(ctx context.Context, logger *slog.Logger, name string, serve
 	}
 }
 
-func buildPreRender(sslPaths []string) (plugin.PreRender, error) {
+func buildPreRender(sslPaths []string, expirations *ssl.ExpiryManager) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
 	if len(sslPaths) > 0 {
 		sslFSes, err := buildFilesystems(sslPaths)
 		if err != nil {
 			return nil, err
 		}
-		plugins = append(plugins, &plugin.SSLPlugin{Filesystems: sslFSes})
+		plugins = append(plugins, &ssl.SSLPlugin{Filesystems: sslFSes, Expirations: expirations})
 	}
 	return plugins, nil
 }
