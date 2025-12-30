@@ -15,8 +15,7 @@ Entradas y configuracion:
 
 Salidas:
 
-- `RequestCertificate` devuelve `Certificate` con `CertPEM`, `KeyPEM` y `NotAfter`.
-- `ListManaged` devuelve los certificados gestionados con su metadata.
+- `RequestCertificate` inicia la obtencion asincrona del certificado.
  - El certificado fallback se carga al crear el manager y debe existir; si no, es error fatal.
 
 Dependencias:
@@ -25,15 +24,17 @@ Dependencias:
 
 API principal:
 
-- `NewManager(cfg, logger)` valida configuracion y crea una instancia por proveedor.
+- `NewManager(cfg, logger, events)` valida configuracion y crea una instancia por proveedor. `events` es un canal externo opcional para eventos de certificados.
+- `NewWatcher(manager, events)` crea un watcher con un canal de eventos externo (requerido).
 - `RunChallengeServer(ctx)` expone `/.well-known/acme-challenge` en `ChallengeAddr`.
 - `RequestCertificate(ctx, provider, sni)`:
-  - Bloquea hasta obtener o cargar el certificado.
+  - Inicia la obtencion asincrona del certificado.
   - Usa timeout por proveedor o el timeout global.
   - Serializa el acceso a certmagic con un mutex.
-- `ListManaged()` devuelve el inventario actual.
 - `RemoveManaged(sni)` elimina la entrada del inventario (no elimina almacenamiento en disco).
  - `Fallback()` (o equivalente) expone el certificado placeholder para que el plugin pueda usarlo en caso de error.
+- `ClearTracking()` reinicia el mapa de seguimiento de SNIs, pensado para limpiarlo antes de procesar una nueva configuracion.
+- `ProviderView.BestMatchFor(sni)` devuelve el mejor certificado conocido para el SNI (el de mayor expiracion).
 
 Notas:
 

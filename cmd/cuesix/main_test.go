@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -49,21 +48,6 @@ func TestBuildFilesystems(t *testing.T) {
 	}
 }
 
-func TestBuildPluginsInvalidPath(t *testing.T) {
-	_, err := buildPreRender([]string{"/path/does/not/exist"}, nil)
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-}
-
-func TestBuildPluginsValidPath(t *testing.T) {
-	dir := t.TempDir()
-	_, err := buildPreRender([]string{filepath.Clean(dir)}, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestEnvStringDefault(t *testing.T) {
 	t.Setenv("CUESIX_STR", "")
 	if envStringDefault("CUESIX_STR", "fallback") != "fallback" {
@@ -101,16 +85,6 @@ func TestEnvString(t *testing.T) {
 	t.Setenv("CUESIX_RAW", "raw")
 	if envString("CUESIX_RAW") != "raw" {
 		t.Fatalf("expected raw value")
-	}
-}
-
-func TestBuildPluginsEmpty(t *testing.T) {
-	p, err := buildPreRender(nil, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if p == nil {
-		t.Fatalf("expected non-nil plugin")
 	}
 }
 

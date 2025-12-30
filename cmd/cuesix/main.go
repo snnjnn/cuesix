@@ -139,13 +139,6 @@ func main() {
 
 	flag.Parse()
 
-	if *certmagicFallbackCert == "" {
-		*certmagicFallbackCert = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.crt")
-	}
-	if *certmagicFallbackKey == "" {
-		*certmagicFallbackKey = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.key")
-	}
-
 	if len(inputFlag.values) == 0 {
 		log.Fatal("at least one --input or CUESIX_INPUT_DIRS is required")
 	}
@@ -155,7 +148,26 @@ func main() {
 		log.Fatalf("input dirs: %v", err)
 	}
 
-	var acmeManager *certmagicmgr.Manager
+	var fallbackCert certmagicmgr.Certificate
+	if len(sslPathsFlag.values) > 0 || *certmagicEnabled {
+		if *certmagicFallbackCert == "" {
+			*certmagicFallbackCert = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.crt")
+		}
+		if *certmagicFallbackKey == "" {
+			*certmagicFallbackKey = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.key")
+		}
+		fallbackCert, err = certmagicmgr.LoadFallbackCertificate(*certmagicFallbackCert, *certmagicFallbackKey)
+		if err != nil {
+			logger.Error("failed to load fallback certificate", "certPath", *certmagicFallbackCert, "keyPath", *certmagicFallbackKey, "error", err)
+			os.Exit(1)
+		}
+	}
+
+	var (
+		acmeManager *certmagicmgr.Manager
+		acmeWatcher *certmagicmgr.Watcher
+		events      chan certmagicmgr.CertEvent
+	)
 	if *certmagicEnabled {
 		if *certmagicChallengeAddr == "" {
 			logger.Error("certmagic enabled but challenge address is missing")
@@ -166,23 +178,27 @@ func main() {
 			logger.Error("certmagic provider config invalid", "error", err)
 			os.Exit(1)
 		}
+		events = make(chan certmagicmgr.CertEvent, 32)
 		acmeManager, err = certmagicmgr.NewManager(certmagicmgr.Config{
-			Providers:        providers,
-			DefaultProvider:  strings.TrimSpace(*certmagicDefaultProvider),
-			DataDir:          strings.TrimSpace(*certmagicDataDir),
-			DefaultTimeout:   *certmagicTimeout,
-			FallbackCertPath: strings.TrimSpace(*certmagicFallbackCert),
-			FallbackKeyPath:  strings.TrimSpace(*certmagicFallbackKey),
-		}, logger)
+			Providers:       providers,
+			DefaultProvider: strings.TrimSpace(*certmagicDefaultProvider),
+			DataDir:         strings.TrimSpace(*certmagicDataDir),
+			DefaultTimeout:  *certmagicTimeout,
+		}, logger, events)
 		if err != nil {
 			logger.Error("certmagic init failed", "error", err)
+			os.Exit(1)
+		}
+		acmeWatcher, err = certmagicmgr.NewWatcher(acmeManager, events)
+		if err != nil {
+			logger.Error("certmagic watcher init failed", "error", err)
 			os.Exit(1)
 		}
 	}
 
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
-			plugins, pluginErr := buildPreRender(sslPathsFlag.values, acmeManager)
+			plugins, pluginErr := buildPreRender(sslPathsFlag.values, acmeWatcher, fallbackCert)
 			if pluginErr != nil {
 				logger.Error("pre-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -327,6 +343,11 @@ func main() {
 	}
 
 	if acmeServer != nil {
+		// Start the cert watcher
+		group.Go(func() error {
+			acmeWatcher.RunWatch(groupCtx, logger, 60*time.Second)
+			return nil
+		})
 		group.Go(func() error {
 			logger.Info("starting acme server", "addr", *certmagicChallengeAddr)
 			if err := acmeServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -377,7 +398,7 @@ func serverShutdown(ctx context.Context, logger *slog.Logger, name string, serve
 	}
 }
 
-func buildPreRender(sslPaths []string, acmeManager *certmagicmgr.Manager) (plugin.PreRender, error) {
+func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallback certmagicmgr.Certificate) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
 	if len(sslPaths) > 0 {
 		sslFSes, err := buildFilesystems(sslPaths)
@@ -386,7 +407,8 @@ func buildPreRender(sslPaths []string, acmeManager *certmagicmgr.Manager) (plugi
 		}
 		plugins = append(plugins, &ssl.SSLPlugin{
 			Filesystems: sslFSes,
-			ACME:        acmeManager,
+			ACME:        acmeWatcher,
+			Fallback:    fallback,
 		})
 	}
 	return plugins, nil
