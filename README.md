@@ -176,8 +176,6 @@ Plugins:
 - `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
 - `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
-- `--plugin-ssl-expiry-window` / `CUESIX_PLUGIN_SSL_EXPIRY_WINDOW`: warn before certificates expire (default 120h).
-- `--plugin-ssl-expiry-check-interval` / `CUESIX_PLUGIN_SSL_EXPIRY_CHECK_INTERVAL`: interval for expiry checks (default 24h).
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
 Certmagic:

@@ -50,7 +50,7 @@ type stubReloader struct {
 	done  chan struct{}
 }
 
-func (s *stubReloader) Apply(context.Context, *slog.Logger, []byte) error {
+func (s *stubReloader) Apply(context.Context, *slog.Logger, []byte, bool) error {
 	s.calls++
 	if s.done != nil {
 		s.done <- struct{}{}

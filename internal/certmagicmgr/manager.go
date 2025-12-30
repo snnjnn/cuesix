@@ -7,11 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"sort"
+	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/caddyserver/certmagic"
@@ -27,11 +25,12 @@ type ProviderConfig struct {
 
 // Config describes the certmagic manager configuration.
 type Config struct {
-	Providers       []ProviderConfig
-	DefaultProvider string
-	DataDir         string
-	ChallengeAddr   string
-	DefaultTimeout  time.Duration
+	Providers        []ProviderConfig
+	DefaultProvider  string
+	DataDir          string
+	DefaultTimeout   time.Duration
+	FallbackCertPath string
+	FallbackKeyPath  string
 }
 
 // ManagedCert describes a managed certificate entry.
@@ -50,21 +49,17 @@ type Certificate struct {
 }
 
 type provider struct {
-	cfg    ProviderConfig
-	magic  *certmagic.Config
-	issuer *certmagic.ACMEIssuer
+	cfg   ProviderConfig
+	cache *certmagic.Cache
+	magic *certmagic.Config
 }
 
 // Manager owns certmagic configuration and serialized operations.
 type Manager struct {
 	cfg       Config
-	logger    *slog.Logger
-	providers map[string]*provider
-	handler   http.Handler
-
-	mu      sync.RWMutex
-	managed map[string]ManagedCert
-	certMu  sync.Mutex
+	storage   certmagic.Storage
+	providers map[string]provider
+	fallback  Certificate
 }
 
 // NewManager builds a certmagic manager and validates configuration.
@@ -78,7 +73,18 @@ func NewManager(cfg Config, logger *slog.Logger) (*Manager, error) {
 	if cfg.DataDir == "" {
 		return nil, errors.New("data dir is required")
 	}
-	providers := make(map[string]*provider, len(cfg.Providers))
+	if strings.TrimSpace(cfg.FallbackCertPath) == "" {
+		return nil, errors.New("fallback cert path is required")
+	}
+	if strings.TrimSpace(cfg.FallbackKeyPath) == "" {
+		return nil, errors.New("fallback key path is required")
+	}
+	fallback, err := loadFallbackCertificate(cfg.FallbackCertPath, cfg.FallbackKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	storage := &certmagic.FileStorage{Path: cfg.DataDir}
+	providers := make(map[string]provider, len(cfg.Providers))
 	for _, p := range cfg.Providers {
 		if p.Name == "" || p.CA == "" || p.Email == "" {
 			return nil, fmt.Errorf("provider %q requires name, ca, and email", p.Name)
@@ -86,65 +92,25 @@ func NewManager(cfg Config, logger *slog.Logger) (*Manager, error) {
 		if _, exists := providers[p.Name]; exists {
 			return nil, fmt.Errorf("duplicate provider name: %s", p.Name)
 		}
-		magic, issuer := buildProvider(cfg, p)
-		providers[p.Name] = &provider{
-			cfg:    p,
-			magic:  magic,
-			issuer: issuer,
-		}
+		providers[p.Name] = buildProvider(logger, cfg, p, storage)
 	}
-	handler := buildChallengeHandler(providers)
 	return &Manager{
 		cfg:       cfg,
-		logger:    logger,
+		storage:   storage,
 		providers: providers,
-		handler:   handler,
-		managed:   make(map[string]ManagedCert),
+		fallback:  fallback,
 	}, nil
 }
 
 // RunChallengeServer exposes the HTTP-01 challenge handler.
-func (m *Manager) RunChallengeServer(ctx context.Context) error {
-	if m.cfg.ChallengeAddr == "" {
-		return errors.New("challenge address is required")
-	}
-	server := &http.Server{
-		Addr:              m.cfg.ChallengeAddr,
-		Handler:           m.handler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		BaseContext: func(_ net.Listener) context.Context {
-			return ctx
-		},
-	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		m.logger.Info("certmagic challenge server start", "addr", m.cfg.ChallengeAddr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			m.logger.Error("certmagic challenge server shutdown failed", "error", err)
-		}
-		return nil
-	case err := <-errCh:
-		return err
-	}
+func (m *Manager) ChallengeHandler(logger *slog.Logger) http.Handler {
+	return certmagic.DefaultACME.HTTPChallengeHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info("challenge request", "host", r.Host, "url", r.URL.String())
+	}))
 }
 
 // RequestCertificate obtains or loads a certificate for the given SNI.
-func (m *Manager) RequestCertificate(ctx context.Context, providerName string, sni string) (Certificate, error) {
+func (m *Manager) RequestCertificate(ctx context.Context, logger *slog.Logger, providerName string, sni string) (Certificate, error) {
 	if strings.TrimSpace(sni) == "" {
 		return Certificate{}, errors.New("sni is required")
 	}
@@ -162,9 +128,6 @@ func (m *Manager) RequestCertificate(ctx context.Context, providerName string, s
 		defer cancel()
 	}
 
-	m.certMu.Lock()
-	defer m.certMu.Unlock()
-
 	if err := p.magic.ManageSync(ctx, []string{sni}); err != nil {
 		return Certificate{}, err
 	}
@@ -176,46 +139,53 @@ func (m *Manager) RequestCertificate(ctx context.Context, providerName string, s
 	if err != nil {
 		return Certificate{}, err
 	}
-	m.recordManaged(sni, p.cfg.Name, notAfter)
 	return Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
 }
 
-// ListManaged returns the managed certificate entries.
-func (m *Manager) ListManaged() []ManagedCert {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make([]ManagedCert, 0, len(m.managed))
-	for _, entry := range m.managed {
-		out = append(out, entry)
+// FallbackCertificate returns the configured fallback certificate.
+func (m *Manager) FallbackCertificate() (Certificate, error) {
+	if len(m.fallback.CertPEM) == 0 || len(m.fallback.KeyPEM) == 0 {
+		return Certificate{}, errors.New("fallback certificate not configured")
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Provider == out[j].Provider {
-			return out[i].SNI < out[j].SNI
-		}
-		return out[i].Provider < out[j].Provider
-	})
-	return out
+	return m.fallback, nil
 }
 
 // RemoveManaged stops tracking the SNI for future listings.
-func (m *Manager) RemoveManaged(sni string) {
-	m.mu.Lock()
-	delete(m.managed, sni)
-	m.mu.Unlock()
+func (m *Manager) RemoveManaged(logger *slog.Logger, providerName string, sni string) {
+	provider, err := m.resolveProvider(providerName)
+	if err != nil {
+		logger.Error("removing managed cert", "error", err)
+		return
+	}
+	for _, issuer := range provider.magic.Issuers {
+		c := certmagic.SubjectIssuer{
+			Subject:   sni,
+			IssuerKey: issuer.IssuerKey(),
+		}
+		provider.cache.RemoveManaged([]certmagic.SubjectIssuer{c})
+	}
 }
 
-func (m *Manager) resolveProvider(name string) (*provider, error) {
+func (m *Manager) RemoveExpired(ctx context.Context, logger *slog.Logger) error {
+	return certmagic.CleanStorage(ctx, m.storage, certmagic.CleanStorageOptions{
+		Interval:               12 * time.Hour,
+		ExpiredCerts:           true,
+		ExpiredCertGracePeriod: 5 * 25 * time.Hour,
+	})
+}
+
+func (m *Manager) resolveProvider(name string) (provider, error) {
 	if name != "" {
 		p, ok := m.providers[name]
 		if !ok {
-			return nil, fmt.Errorf("unknown provider: %s", name)
+			return provider{}, fmt.Errorf("unknown provider: %s", name)
 		}
 		return p, nil
 	}
 	if m.cfg.DefaultProvider != "" {
 		p, ok := m.providers[m.cfg.DefaultProvider]
 		if !ok {
-			return nil, fmt.Errorf("unknown default provider: %s", m.cfg.DefaultProvider)
+			return provider{}, fmt.Errorf("unknown default provider: %s", m.cfg.DefaultProvider)
 		}
 		return p, nil
 	}
@@ -224,23 +194,20 @@ func (m *Manager) resolveProvider(name string) (*provider, error) {
 			return p, nil
 		}
 	}
-	return nil, errors.New("provider is required")
+	return provider{}, errors.New("provider is required")
 }
 
-func (m *Manager) recordManaged(sni string, providerName string, notAfter time.Time) {
-	m.mu.Lock()
-	m.managed[sni] = ManagedCert{
-		SNI:        sni,
-		Provider:   providerName,
-		NotAfter:   notAfter,
-		ObtainedAt: time.Now().UTC(),
-	}
-	m.mu.Unlock()
-}
-
-func buildProvider(cfg Config, providerCfg ProviderConfig) (*certmagic.Config, *certmagic.ACMEIssuer) {
-	storage := &certmagic.FileStorage{Path: cfg.DataDir}
-	magic := certmagic.NewDefault()
+func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, storage certmagic.Storage) provider {
+	var (
+		cache *certmagic.Cache
+		magic *certmagic.Config
+	)
+	cache = certmagic.NewCache(certmagic.CacheOptions{
+		GetConfigForCert: func(cert certmagic.Certificate) (*certmagic.Config, error) {
+			return magic, nil
+		},
+	})
+	magic = certmagic.New(cache, *certmagic.NewDefault())
 	magic.Storage = storage
 	issuerCfg := certmagic.ACMEIssuer{
 		CA:     providerCfg.CA,
@@ -254,27 +221,13 @@ func buildProvider(cfg Config, providerCfg ProviderConfig) (*certmagic.Config, *
 	if timeout > 0 {
 		issuerCfg.CertObtainTimeout = timeout
 	}
-	if cfg.ChallengeAddr != "" {
-		if port := portFromAddr(cfg.ChallengeAddr); port > 0 {
-			issuerCfg.AltHTTPPort = port
-		}
-	}
 	issuer := certmagic.NewACMEIssuer(magic, issuerCfg)
 	magic.Issuers = []certmagic.Issuer{issuer}
-	return magic, issuer
-}
-
-func buildChallengeHandler(providers map[string]*provider) http.Handler {
-	handler := http.NotFoundHandler()
-	names := make([]string, 0, len(providers))
-	for name := range providers {
-		names = append(names, name)
+	return provider{
+		cfg:   providerCfg,
+		cache: cache,
+		magic: magic,
 	}
-	sort.Strings(names)
-	for _, name := range names {
-		handler = providers[name].issuer.HTTPChallengeHandler(handler)
-	}
-	return handler
 }
 
 func marshalCertificate(cert certmagic.Certificate) ([]byte, []byte, time.Time, error) {
@@ -303,6 +256,48 @@ func marshalCertificate(cert certmagic.Certificate) ([]byte, []byte, time.Time, 
 	return certPEM, keyPEM, notAfter, nil
 }
 
+func loadFallbackCertificate(certPath string, keyPath string) (Certificate, error) {
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return Certificate{}, fmt.Errorf("read fallback cert: %w", err)
+	}
+	if len(certPEM) == 0 {
+		return Certificate{}, errors.New("fallback cert is empty")
+	}
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return Certificate{}, fmt.Errorf("read fallback key: %w", err)
+	}
+	if len(keyPEM) == 0 {
+		return Certificate{}, errors.New("fallback key is empty")
+	}
+	notAfter, err := parseCertNotAfter(certPEM)
+	if err != nil {
+		return Certificate{}, fmt.Errorf("parse fallback cert: %w", err)
+	}
+	return Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
+}
+
+func parseCertNotAfter(certPEM []byte) (time.Time, error) {
+	rest := certPEM
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return cert.NotAfter, nil
+	}
+	return time.Time{}, errors.New("fallback cert missing certificate block")
+}
+
 func leafNotAfter(chain [][]byte) (time.Time, error) {
 	if len(chain) == 0 {
 		return time.Time{}, errors.New("missing certificate chain")
@@ -312,16 +307,4 @@ func leafNotAfter(chain [][]byte) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return leaf.NotAfter, nil
-}
-
-func portFromAddr(addr string) int {
-	_, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return 0
-	}
-	parsed, err := net.LookupPort("tcp", port)
-	if err != nil {
-		return 0
-	}
-	return parsed
 }

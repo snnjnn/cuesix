@@ -34,7 +34,7 @@ func TestApplyReplacesFileAndReloads(t *testing.T) {
 		APIKey:     "secret",
 	}
 
-	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new")); err != nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new"), true); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestApplyRejectsMissingConfig(t *testing.T) {
 	rel := &Reloader{
 		ReloadURL: "http://example",
 	}
-	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("payload")); err == nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("payload"), true); err == nil {
 		t.Fatalf("expected error for missing config path")
 	}
 }
@@ -76,7 +76,7 @@ func TestApplyAllowsMissingReloadURL(t *testing.T) {
 		HTTPClient: client,
 	}
 
-	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("payload")); err != nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("payload"), true); err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 	if counter.calls != 0 {
@@ -96,7 +96,7 @@ func TestApplyRejectsEmptyPayload(t *testing.T) {
 		ConfigPath: "/tmp/apisix.yaml",
 		ReloadURL:  "http://example",
 	}
-	if err := rel.Apply(context.Background(), testutil.Logger(), nil); err == nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), nil, true); err == nil {
 		t.Fatalf("expected error for empty payload")
 	}
 }
@@ -128,7 +128,7 @@ func TestApplyRetriesReload(t *testing.T) {
 		RetryMultiplier: 2,
 	}
 
-	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new")); err != nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new"), true); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 	if calls != 3 {
@@ -153,7 +153,7 @@ func TestApplyPreservesFileMode(t *testing.T) {
 		ReloadURL:  server.URL,
 	}
 
-	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new")); err != nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new"), true); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 	info, err := os.Stat(targetPath)
@@ -185,7 +185,7 @@ func TestApplyUsesCustomMethod(t *testing.T) {
 		ReloadMethod: http.MethodPut,
 	}
 
-	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new")); err != nil {
+	if err := rel.Apply(context.Background(), testutil.Logger(), []byte("new"), true); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 	if gotMethod != http.MethodPut {

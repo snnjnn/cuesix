@@ -33,7 +33,7 @@ type Reloader struct {
 }
 
 // Apply writes the payload to ConfigPath and triggers the reload endpoint.
-func (r *Reloader) Apply(ctx context.Context, logger *slog.Logger, payload []byte) error {
+func (r *Reloader) Apply(ctx context.Context, logger *slog.Logger, payload []byte, useApi bool) error {
 	logger = ensureLogger(logger)
 	if r.ConfigPath == "" {
 		return errors.New("config path is required")
@@ -48,6 +48,10 @@ func (r *Reloader) Apply(ctx context.Context, logger *slog.Logger, payload []byt
 	}
 	if r.ReloadURL == "" {
 		logger.Info("reload request skipped by configuration")
+		return nil
+	}
+	if !useApi {
+		logger.Info("reload request skipped by flag")
 		return nil
 	}
 	if err := r.triggerReload(ctx); err != nil {

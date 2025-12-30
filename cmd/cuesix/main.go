@@ -119,8 +119,6 @@ func main() {
 		sslPathsFlag.values = splitComma(envSSLPaths)
 	}
 	flag.Var(sslPathsFlag, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
-	sslExpiryWindow := flag.Duration("plugin-ssl-expiry-window", envDuration("CUESIX_PLUGIN_SSL_EXPIRY_WINDOW", 5*24*time.Hour), "ssl plugin expiry warning window")
-	sslExpiryInterval := flag.Duration("plugin-ssl-expiry-check-interval", envDuration("CUESIX_PLUGIN_SSL_EXPIRY_CHECK_INTERVAL", 24*time.Hour), "ssl plugin expiry check interval")
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
 	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_PLUGIN_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 
@@ -129,6 +127,8 @@ func main() {
 	certmagicDataDir := flag.String("certmagic-data-dir", envString("CUESIX_CERTMAGIC_DATA_DIR"), "certmagic data directory")
 	certmagicChallengeAddr := flag.String("certmagic-challenge-addr", envString("CUESIX_CERTMAGIC_CHALLENGE_ADDR"), "certmagic HTTP-01 challenge address")
 	certmagicTimeout := flag.Duration("certmagic-timeout", envDuration("CUESIX_CERTMAGIC_TIMEOUT", 0), "certmagic default certificate obtain timeout")
+	certmagicFallbackCert := flag.String("certmagic-fallback-cert", envString("CUESIX_CERTMAGIC_FALLBACK_CERT"), "fallback certificate path")
+	certmagicFallbackKey := flag.String("certmagic-fallback-key", envString("CUESIX_CERTMAGIC_FALLBACK_KEY"), "fallback key path")
 	certmagicProvidersFlag := &stringSliceFlag{}
 	if envProviders := envString("CUESIX_CERTMAGIC_PROVIDERS"); envProviders != "" {
 		for _, spec := range splitSemicolon(envProviders) {
@@ -139,6 +139,13 @@ func main() {
 
 	flag.Parse()
 
+	if *certmagicFallbackCert == "" {
+		*certmagicFallbackCert = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.crt")
+	}
+	if *certmagicFallbackKey == "" {
+		*certmagicFallbackKey = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.key")
+	}
+
 	if len(inputFlag.values) == 0 {
 		log.Fatal("at least one --input or CUESIX_INPUT_DIRS is required")
 	}
@@ -146,11 +153,6 @@ func main() {
 	fses, err := buildFilesystems(inputFlag.values)
 	if err != nil {
 		log.Fatalf("input dirs: %v", err)
-	}
-
-	var expiryManager *ssl.ExpiryManager
-	if len(sslPathsFlag.values) > 0 {
-		expiryManager = ssl.NewExpiryManager(*sslExpiryWindow, *sslExpiryInterval, nil)
 	}
 
 	var acmeManager *certmagicmgr.Manager
@@ -165,11 +167,12 @@ func main() {
 			os.Exit(1)
 		}
 		acmeManager, err = certmagicmgr.NewManager(certmagicmgr.Config{
-			Providers:       providers,
-			DefaultProvider: strings.TrimSpace(*certmagicDefaultProvider),
-			DataDir:         strings.TrimSpace(*certmagicDataDir),
-			ChallengeAddr:   strings.TrimSpace(*certmagicChallengeAddr),
-			DefaultTimeout:  *certmagicTimeout,
+			Providers:        providers,
+			DefaultProvider:  strings.TrimSpace(*certmagicDefaultProvider),
+			DataDir:          strings.TrimSpace(*certmagicDataDir),
+			DefaultTimeout:   *certmagicTimeout,
+			FallbackCertPath: strings.TrimSpace(*certmagicFallbackCert),
+			FallbackKeyPath:  strings.TrimSpace(*certmagicFallbackKey),
 		}, logger)
 		if err != nil {
 			logger.Error("certmagic init failed", "error", err)
@@ -179,7 +182,7 @@ func main() {
 
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
-			plugins, pluginErr := buildPreRender(sslPathsFlag.values, expiryManager, acmeManager)
+			plugins, pluginErr := buildPreRender(sslPathsFlag.values, acmeManager)
 			if pluginErr != nil {
 				logger.Error("pre-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -294,64 +297,24 @@ func main() {
 		logger.Error("listener init failed", "error", err)
 		os.Exit(1)
 	}
-	mux := http.NewServeMux()
-	mux.Handle("/", handler)
-	server := &http.Server{
-		Addr:              *listenAddr,
-		Handler:           drainBody(mux),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
+	server := buildServer(*listenAddr, handler)
 
 	var metricsServer *http.Server
 	if strings.TrimSpace(*metricsAddr) != "" {
 		metricsMux := http.NewServeMux()
 		metricsMux.Handle("/metrics", promhttp.Handler())
-		metricsServer = &http.Server{
-			Addr:              *metricsAddr,
-			Handler:           metricsMux,
-			ReadHeaderTimeout: 5 * time.Second,
-			ReadTimeout:       10 * time.Second,
-			WriteTimeout:      10 * time.Second,
-			IdleTimeout:       60 * time.Second,
-		}
+		metricsServer = buildServer(*metricsAddr, metricsMux)
+	}
+
+	var acmeServer *http.Server
+	if strings.TrimSpace(*certmagicChallengeAddr) != "" {
+		acmeServer = buildServer(*certmagicChallengeAddr, acmeManager.ChallengeHandler(logger))
 	}
 
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.Go(func() error {
-		for {
-			if err := disp.Run(groupCtx, logger); err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
-				logger.Error("dispatcher error", "error", err)
-				continue
-			}
-		}
-	})
-	if expiryManager != nil {
-		expiryManager.SetNotifier(disp)
-		group.Go(func() error {
-			return expiryManager.Run(groupCtx, logger)
-		})
-	}
-	if *certmagicEnabled && acmeManager != nil && *serve {
-		group.Go(func() error {
-			return acmeManager.RunChallengeServer(groupCtx)
-		})
-	}
 
-	group.Go(func() error {
-		logger.Info("starting server", "addr", *listenAddr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	})
-	group.Go(serverShutdown(groupCtx, logger, "server", server, 10*time.Second))
-
+	// Ready metrics and acme server first, because as soon as
+	// I start the other services, I could get an acme request
 	if metricsServer != nil {
 		group.Go(func() error {
 			logger.Info("starting metrics server", "addr", *metricsAddr)
@@ -362,6 +325,40 @@ func main() {
 		})
 		group.Go(serverShutdown(groupCtx, logger, "metrics server", metricsServer, 10*time.Second))
 	}
+
+	if acmeServer != nil {
+		group.Go(func() error {
+			logger.Info("starting acme server", "addr", *certmagicChallengeAddr)
+			if err := acmeServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+			return nil
+		})
+		group.Go(serverShutdown(groupCtx, logger, "acme server", acmeServer, 10*time.Second))
+	}
+
+	group.Go(func() error {
+		// Keep the dispatcher running until the context is cancelled
+		for {
+			if err := disp.Run(groupCtx, logger); err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+				logger.Error("dispatcher error", "error", err)
+				continue
+			}
+		}
+	})
+
+	// launch the main service
+	group.Go(func() error {
+		logger.Info("starting server", "addr", *listenAddr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
+	group.Go(serverShutdown(groupCtx, logger, "server", server, 10*time.Second))
 
 	if err := group.Wait(); err != nil {
 		logger.Error("server error", "error", err)
@@ -380,7 +377,7 @@ func serverShutdown(ctx context.Context, logger *slog.Logger, name string, serve
 	}
 }
 
-func buildPreRender(sslPaths []string, expirations *ssl.ExpiryManager, acmeManager *certmagicmgr.Manager) (plugin.PreRender, error) {
+func buildPreRender(sslPaths []string, acmeManager *certmagicmgr.Manager) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
 	if len(sslPaths) > 0 {
 		sslFSes, err := buildFilesystems(sslPaths)
@@ -390,10 +387,20 @@ func buildPreRender(sslPaths []string, expirations *ssl.ExpiryManager, acmeManag
 		plugins = append(plugins, &ssl.SSLPlugin{
 			Filesystems: sslFSes,
 			ACME:        acmeManager,
-			Expirations: expirations,
 		})
 	}
 	return plugins, nil
+}
+
+func buildServer(listenAddr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              listenAddr,
+		Handler:           drainBody(handler),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 }
 
 func buildPostRender(enableJQ bool, enableYAML bool, jqTimeout time.Duration) (plugin.PostRender, error) {
@@ -511,7 +518,7 @@ func buildReloadURL(base string) (string, error) {
 
 type dryRunReloader struct{}
 
-func (r *dryRunReloader) Apply(_ context.Context, logger *slog.Logger, payload []byte) error {
+func (r *dryRunReloader) Apply(_ context.Context, logger *slog.Logger, payload []byte, useApi bool) error {
 	logger.Info("dry-run reload skipped", "bytes", len(payload))
 	return nil
 }

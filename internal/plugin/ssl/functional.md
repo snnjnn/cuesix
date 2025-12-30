@@ -11,31 +11,9 @@ Las referencias de tipo `file://` se buscan en una lista de directorios dada, en
 
 Las referencias de tipo `file://` se soportan tanto en `cert` como en `key`.
 
-Al leer el certificado, se intenta obtener su fecha de caducidad. Si se consigue, se almacena la fecha de caducidad por cada SNI (solo se usan los `snis`, que es lo que usa APISIX para el match).
-
 ## Tipo `acme`
 
 Las referencias de tipo `acme` se resuelven mediante certmagic. El valor `acme://<provider>` indica el proveedor configurado en el gestor de certmagic.
 Para `acme`, la entrada debe incluir exactamente un `sni`. El atributo `key` se ignora y se sobreescribe con la clave obtenida.
 La resolución de ACME bloquea durante la compilación hasta obtener el certificado o agotar el timeout configurado.
 Si la obtención del certificado falla, el plugin utiliza un certificado de fallback (placeholder) cargado por el gestor de certmagic, para evitar dejar entradas `ssls` incompletas.
-
-## Gestión de caducidades
-
-La lista de caducidades es gestionada por una gorutina. El plugin envía los detalles de los certificados que lee, a la gorutrina. La gorotina se encarga de deduplicarlos (una sola entrada por SNI, con la fecha de caducidad más reciente).
-
-Cada `checkInterval` (por defecto, 24 horas), la gorutina decide si hay certificados próximos a caducar. Si hay certificados próximos a caducar hoy (por ejemplo, que no estén caducados aún, pero les queden menos de `warningWindow`, por defecto 5 días), la gorutina envía una notificación para que se recargue la configuración.
-
-Esa notificación utiliza el mismo canal que utiliza el módulo de dispatcher. A efectos funcionales, es indistinguible de una notificación de recarga que llegase por la API de `/compile`, y dispara el mismo proceso. Esto se hace como máximo una vez al día.
-
-La gorutina no se encarga de renovar los certificados; eso lo hace certmagic, o el operador que deja los certificados en el fichero. La gorutina simplemente se encarga de notificar cuando hay certificados próximos a caducar, para que se dispare una reconfiguración.
-
-La reconfiguración tendrá el efecto de volver a ejecutar todos los plugins, entre ellos el de ssl, y con ello actualizar la lista de caducidades. De esta forma, los certificados que el usuario haya actualizado en disco por otros medios, serán recargados.
-
-Si falla el parseo de un certificado para obtener su fecha de caducidad, el error se registra en logs, pero no aborta la compilación.
-
-## Reintentos ACME y actualización incremental
-
-Cuando una solicitud ACME falla, el SNI se incorpora a una cola de reintentos.
-Los reintentos se ejecutan en segundo plano y, si tienen éxito, actualizan el certificado correspondiente en APISIX mediante la API de administración, sin disparar una recompilación completa.
-Los reintentos se inhiben mientras se ejecuta el pipeline de compilación/validación/recarga, se cancelan al iniciar un nuevo ciclo y solo se reanudan cuando la recarga ha finalizado correctamente.

@@ -2,28 +2,26 @@ package ssl
 
 import (
 	"context"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 // SSLPlugin inlines certificate files referenced via file:// in ssls entries.
 type SSLPlugin struct {
 	Filesystems []fs.FS
 	ACME        ACMEManager
-	Expirations *ExpiryManager
 }
 
 // ACMEManager provides access to ACME certificates.
 type ACMEManager interface {
-	RequestCertificate(ctx context.Context, providerName string, sni string) (certmagicmgr.Certificate, error)
+	RequestCertificate(ctx context.Context, logger *slog.Logger, providerName string, sni string) (certmagicmgr.Certificate, error)
+	FallbackCertificate() (certmagicmgr.Certificate, error)
 }
 
 func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[string]any, error) {
@@ -31,9 +29,6 @@ func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[strin
 		return nil, errors.New("ssl plugin requires at least one filesystem")
 	}
 	logger.Info("ssl plugin start")
-	if p.Expirations != nil {
-		p.Expirations.ResetForConfig(time.Now())
-	}
 	sslsRaw, ok := value["ssls"]
 	if !ok {
 		logger.Info("ssl plugin skipped: no ssls")
@@ -51,19 +46,19 @@ func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[strin
 		if err := p.handleACME(logger, entry); err != nil {
 			return nil, err
 		}
-		if err := p.replaceField(logger, entry, "cert", true, "cert"); err != nil {
+		if err := p.replaceField(logger, entry, "cert", "cert"); err != nil {
 			return nil, err
 		}
-		if err := p.replaceField(logger, entry, "key", false, "key"); err != nil {
+		if err := p.replaceField(logger, entry, "key", "key"); err != nil {
 			return nil, err
 		}
-		if err := p.replaceListField(logger, entry, "certs", true, "certs"); err != nil {
+		if err := p.replaceListField(logger, entry, "certs", "certs"); err != nil {
 			return nil, err
 		}
-		if err := p.replaceListField(logger, entry, "keys", false, "keys"); err != nil {
+		if err := p.replaceListField(logger, entry, "keys", "keys"); err != nil {
 			return nil, err
 		}
-		if err := p.replaceNestedField(logger, entry, "client", "ca", true, "client.ca"); err != nil {
+		if err := p.replaceNestedField(logger, entry, "client", "ca", "client.ca"); err != nil {
 			return nil, err
 		}
 	}
@@ -71,7 +66,7 @@ func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[strin
 	return value, nil
 }
 
-func (p *SSLPlugin) replaceField(logger *slog.Logger, entry map[string]any, field string, track bool, logField string) error {
+func (p *SSLPlugin) replaceField(logger *slog.Logger, entry map[string]any, field string, logField string) error {
 	raw, ok := entry[field]
 	if !ok {
 		return nil
@@ -93,13 +88,10 @@ func (p *SSLPlugin) replaceField(logger *slog.Logger, entry map[string]any, fiel
 	}
 	entry[field] = content
 	p.logReplacement(logger, logField, name)
-	if track {
-		p.trackExpiration(logger, entry, logField, name, content)
-	}
 	return nil
 }
 
-func (p *SSLPlugin) replaceListField(logger *slog.Logger, entry map[string]any, field string, track bool, logField string) error {
+func (p *SSLPlugin) replaceListField(logger *slog.Logger, entry map[string]any, field string, logField string) error {
 	raw, ok := entry[field]
 	if !ok {
 		return nil
@@ -126,15 +118,12 @@ func (p *SSLPlugin) replaceListField(logger *slog.Logger, entry map[string]any, 
 		}
 		list[i] = content
 		p.logReplacement(logger, logField, name)
-		if track {
-			p.trackExpiration(logger, entry, fmt.Sprintf("%s[%d]", logField, i), name, content)
-		}
 	}
 	entry[field] = list
 	return nil
 }
 
-func (p *SSLPlugin) replaceNestedField(logger *slog.Logger, entry map[string]any, parent, field string, track bool, logField string) error {
+func (p *SSLPlugin) replaceNestedField(logger *slog.Logger, entry map[string]any, parent, field string, logField string) error {
 	raw, ok := entry[parent]
 	if !ok {
 		return nil
@@ -143,7 +132,7 @@ func (p *SSLPlugin) replaceNestedField(logger *slog.Logger, entry map[string]any
 	if !ok {
 		return fmt.Errorf("ssl plugin expects %s to be a map, got %T", parent, raw)
 	}
-	return p.replaceField(logger, parentMap, field, track, logField)
+	return p.replaceField(logger, parentMap, field, logField)
 }
 
 func (p *SSLPlugin) logReplacement(logger *slog.Logger, field string, name string) {
@@ -162,24 +151,6 @@ func (p *SSLPlugin) readFile(name string) (string, error) {
 		return "", fmt.Errorf("ssl plugin read %s: %w", name, err)
 	}
 	return "", fmt.Errorf("ssl plugin missing file: %s", name)
-}
-
-func (p *SSLPlugin) trackExpiration(logger *slog.Logger, entry map[string]any, field string, name string, content string) {
-	if p.Expirations == nil {
-		return
-	}
-	snis := p.entrySNIs(logger, entry)
-	if len(snis) == 0 {
-		return
-	}
-	notAfter, err := parseCertNotAfter(content)
-	if err != nil {
-		logger.Warn("ssl plugin failed to parse certificate expiration", "field", field, "file", name, "error", err)
-		return
-	}
-	for _, sni := range snis {
-		p.Expirations.RecordSNI(sni, notAfter)
-	}
 }
 
 func (p *SSLPlugin) entrySNIs(logger *slog.Logger, entry map[string]any) []string {
@@ -206,26 +177,6 @@ func (p *SSLPlugin) entrySNIs(logger *slog.Logger, entry map[string]any) []strin
 	return snis
 }
 
-func parseCertNotAfter(content string) (time.Time, error) {
-	data := []byte(content)
-	for len(data) > 0 {
-		block, rest := pem.Decode(data)
-		if block == nil {
-			break
-		}
-		data = rest
-		if block.Type != "CERTIFICATE" {
-			continue
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return time.Time{}, err
-		}
-		return cert.NotAfter, nil
-	}
-	return time.Time{}, errors.New("no certificate data")
-}
-
 func (p *SSLPlugin) handleACME(logger *slog.Logger, entry map[string]any) error {
 	raw, ok := entry["cert"]
 	if !ok {
@@ -250,15 +201,19 @@ func (p *SSLPlugin) handleACME(logger *slog.Logger, entry map[string]any) error 
 		return errors.New("ssl plugin acme requires exactly one sni")
 	}
 	sni := snis[0]
-	cert, err := p.ACME.RequestCertificate(context.Background(), provider, sni)
+	cert, err := p.ACME.RequestCertificate(context.Background(), testutil.Logger(), provider, sni)
 	if err != nil {
-		return err
+		fallback, fallbackErr := p.ACME.FallbackCertificate()
+		if fallbackErr != nil {
+			return fmt.Errorf("ssl plugin acme failed: %w", err)
+		}
+		entry["cert"] = string(fallback.CertPEM)
+		entry["key"] = string(fallback.KeyPEM)
+		logger.Warn("ssl plugin acme failed, using fallback certificate", "provider", provider, "sni", sni, "error", err)
+		return nil
 	}
 	entry["cert"] = string(cert.CertPEM)
 	entry["key"] = string(cert.KeyPEM)
 	logger.Info("ssl plugin acme certificate loaded", "provider", provider, "sni", sni)
-	if p.Expirations != nil && !cert.NotAfter.IsZero() {
-		p.Expirations.RecordSNI(sni, cert.NotAfter)
-	}
 	return nil
 }

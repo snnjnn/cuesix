@@ -21,7 +21,7 @@ type Validator interface {
 }
 
 type Reloader interface {
-	Apply(ctx context.Context, logger *slog.Logger, payload []byte) error
+	Apply(ctx context.Context, logger *slog.Logger, payload []byte, useApi bool) error
 }
 
 // Config wires the dispatcher dependencies and runtime options.
@@ -150,7 +150,7 @@ func (d *Dispatcher) handle(ctx context.Context, logger *slog.Logger) error {
 
 	stageStart = time.Now()
 	logger.Info("reload stage start")
-	if err := d.config.Reloader.Apply(ctx, logger, normalized); err != nil {
+	if err := d.config.Reloader.Apply(ctx, logger, normalized, true); err != nil {
 		dispatcherDuration.WithLabelValues("reload").Observe(time.Since(stageStart).Seconds())
 		dispatcherErrors.WithLabelValues("reload").Inc()
 		return err
