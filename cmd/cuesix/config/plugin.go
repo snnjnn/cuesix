@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"path/filepath"
 	"time"
 
 	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
@@ -26,4 +27,25 @@ func (c *Plugins) RegisterFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.FallbackCert, "plugin-ssl-fallback-cert", envString("CUESIX_PLUGIN_SSL_FALLBACK_CERT"), "ssl plugin fallback certificate path")
 	fs.StringVar(&c.FallbackKey, "plugin-ssl-fallback-key", envString("CUESIX_PLUGIN_SSL_FALLBACK_KEY"), "ssl plugin fallback key path")
 	fs.Var(&stringSliceValue{target: &c.SSLPaths}, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
+}
+
+func (c *Plugins) LoadFallbackCertificate(apisixHome string, certmagicEnabled bool) (ssl.Certificate, bool, error) {
+	if len(c.SSLPaths) == 0 && !certmagicEnabled {
+		return ssl.Certificate{}, false, nil
+	}
+	certPath := c.FallbackCert
+	if certPath == "" {
+		certPath = filepath.Join(apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.crt")
+	}
+	keyPath := c.FallbackKey
+	if keyPath == "" {
+		keyPath = filepath.Join(apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.key")
+	}
+	cert, err := ssl.LoadFallbackCertificate(certPath, keyPath)
+	if err != nil {
+		return ssl.Certificate{}, true, err
+	}
+	c.FallbackCert = certPath
+	c.FallbackKey = keyPath
+	return cert, true, nil
 }

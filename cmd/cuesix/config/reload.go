@@ -3,6 +3,8 @@ package config
 import (
 	"flag"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -28,4 +30,19 @@ func (c *Reload) RegisterFlags(fs *flag.FlagSet) {
 	fs.DurationVar(&c.RetryInitial, "retry-initial", envDuration("CUESIX_RETRY_INITIAL", 200*time.Millisecond), "reload initial backoff")
 	fs.DurationVar(&c.RetryMaxDelay, "retry-max-delay", envDuration("CUESIX_RETRY_MAX_DELAY", 2*time.Second), "reload max backoff")
 	fs.Float64Var(&c.RetryMultiplier, "retry-multiplier", envFloat("CUESIX_RETRY_MULTIPLIER", 2), "reload backoff multiplier")
+}
+
+func (c Reload) BuildURL() (string, error) {
+	if strings.TrimSpace(c.URL) == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(strings.TrimSpace(c.URL))
+	if err != nil {
+		return "", err
+	}
+	parsed.Path = "/apisix/admin/configs"
+	query := parsed.Query()
+	query.Set("reload", "true")
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
 }

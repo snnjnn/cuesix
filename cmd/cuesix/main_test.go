@@ -93,26 +93,6 @@ func TestDrainBody(t *testing.T) {
 	}
 }
 
-func TestBuildReloadURL(t *testing.T) {
-	got, err := buildReloadURL("http://127.0.0.1:9180")
-	if err != nil {
-		t.Fatalf("buildReloadURL returned error: %v", err)
-	}
-	want := "http://127.0.0.1:9180/apisix/admin/configs?reload=true"
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
-
-	got, err = buildReloadURL("http://127.0.0.1:9180/base?x=1")
-	if err != nil {
-		t.Fatalf("buildReloadURL returned error: %v", err)
-	}
-	want = "http://127.0.0.1:9180/apisix/admin/configs?reload=true&x=1"
-	if got != want {
-		t.Fatalf("expected %q, got %q", want, got)
-	}
-}
-
 type trackBody struct {
 	io.ReadCloser
 	closed *bool

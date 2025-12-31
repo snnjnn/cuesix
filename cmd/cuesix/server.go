@@ -5,20 +5,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
+
+	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
 )
 
-type serverTimeouts struct {
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-}
-
 // buildServer creates an HTTP server with standard timeouts.
-func buildServer(listenAddr string, handler http.Handler, timeouts serverTimeouts) *http.Server {
+func buildServer(listenAddr string, handler http.Handler, timeouts config.Timeouts) *http.Server {
 	return &http.Server{
 		Addr:              listenAddr,
 		Handler:           drainBody(handler),
@@ -51,17 +44,4 @@ func serverShutdown(ctx context.Context, logger *slog.Logger, name string, serve
 		}
 		return nil
 	}
-}
-
-// buildReloadURL builds the APISIX reload URL from the base admin URL.
-func buildReloadURL(base string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(base))
-	if err != nil {
-		return "", err
-	}
-	parsed.Path = "/apisix/admin/configs"
-	query := parsed.Query()
-	query.Set("reload", "true")
-	parsed.RawQuery = query.Encode()
-	return parsed.String(), nil
 }

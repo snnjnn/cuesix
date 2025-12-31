@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -58,12 +57,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	srvTimeouts := serverTimeouts{
-		ReadHeaderTimeout: serverCfg.ReadHeaderTimeout,
-		ReadTimeout:       serverCfg.ReadTimeout,
-		WriteTimeout:      serverCfg.WriteTimeout,
-		IdleTimeout:       serverCfg.IdleTimeout,
-	}
+	srvTimeouts := serverCfg.Timeouts()
 
 	// Build input filesystem views.
 	fses, err := buildFilesystems(inputCfg.InputDirs)
@@ -73,18 +67,12 @@ func main() {
 
 	// Load fallback certificate for SSL plugin.
 	var fallbackCert ssl.Certificate
-	if len(pluginCfg.SSLPaths) > 0 || certmagicCfg.Enabled {
-		if pluginCfg.FallbackCert == "" {
-			pluginCfg.FallbackCert = filepath.Join(apisixCfg.Home, "conf", "cert", "ssl_PLACE_HOLDER.crt")
-		}
-		if pluginCfg.FallbackKey == "" {
-			pluginCfg.FallbackKey = filepath.Join(apisixCfg.Home, "conf", "cert", "ssl_PLACE_HOLDER.key")
-		}
-		fallbackCert, err = ssl.LoadFallbackCertificate(pluginCfg.FallbackCert, pluginCfg.FallbackKey)
+	if cert, ok, err := pluginCfg.LoadFallbackCertificate(apisixCfg.Home, certmagicCfg.Enabled); ok {
 		if err != nil {
 			logger.Error("failed to load fallback certificate", "certPath", pluginCfg.FallbackCert, "keyPath", pluginCfg.FallbackKey, "error", err)
 			os.Exit(1)
 		}
+		fallbackCert = cert
 	}
 
 	// Configure certmagic manager + watcher.
@@ -191,16 +179,13 @@ func main() {
 		logger.Error("prepare apisix mirror failed", "error", err)
 		os.Exit(1)
 	}
-	configPath := validator.BuildConfigPath(apisixCfg.Home, pluginCfg.EnableYAML)
+	configPath := apisixCfg.ConfigPath(pluginCfg.EnableYAML)
 
 	// Reload target configuration.
-	reloadURL := ""
-	if reloadCfg.URL != "" {
-		reloadURL, err = buildReloadURL(reloadCfg.URL)
-		if err != nil {
-			logger.Error("invalid apisix url", "error", err)
-			os.Exit(1)
-		}
+	reloadURL, err := reloadCfg.BuildURL()
+	if err != nil {
+		logger.Error("invalid apisix url", "error", err)
+		os.Exit(1)
 	}
 
 	// Wire reloader (or dry-run).
