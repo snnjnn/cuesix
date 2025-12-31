@@ -92,7 +92,7 @@ func TestRefreshManagerWatchTriggersWhenActive(t *testing.T) {
 	calls := 0
 	watcher := func(_ context.Context) bool {
 		calls++
-		return calls == 1
+		return calls > 1
 	}
 
 	manager.Watch(context.Background(), logger, watcher)
@@ -114,7 +114,7 @@ func TestRefreshManagerWatchIgnoresWhenInactive(t *testing.T) {
 	calls := 0
 	watcher := func(_ context.Context) bool {
 		calls++
-		return calls == 1
+		return calls > 1
 	}
 
 	manager.Watch(context.Background(), logger, watcher)

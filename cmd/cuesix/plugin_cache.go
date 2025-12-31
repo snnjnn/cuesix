@@ -104,22 +104,3 @@ func buildPostRender(enableJQ bool, enableYAML bool, jqTimeout time.Duration) (p
 	}
 	return plugins, nil
 }
-
-func sslCleanupLoop(groupCtx context.Context, logger *slog.Logger, acmeManager *certmagicmgr.Manager, acmeWatcher *certmagicmgr.Watcher, cleanupInterval, expiredGrace, untrackedGrace time.Duration) error {
-	// Launch the acme tracking cleanup
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-groupCtx.Done():
-			return nil
-		case <-ticker.C:
-			if err := acmeWatcher.RemoveUntracked(groupCtx, logger, untrackedGrace); err != nil {
-				logger.Error("remove untracked certmagic entries failed", "error", err)
-			}
-			if err := acmeManager.RemoveExpired(groupCtx, logger, cleanupInterval, expiredGrace); err != nil {
-				logger.Error("remove expired certificates failed", "error", err)
-			}
-		}
-	}
-}

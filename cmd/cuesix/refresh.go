@@ -17,9 +17,9 @@ type Reloader interface {
 }
 
 // Watch is a source of events that trigger work execution.
-// Returns false to break the loop
+// Returns true to break the loop
 // (that is, when the context is canceled)
-type Watch func(ctx context.Context) (canceled bool)
+type Watch func(ctx context.Context) (cancelled bool)
 
 // refreshManager coordinates reload readiness and cert-driven refreshes.
 type refreshManager struct {
@@ -49,7 +49,7 @@ func (r *refreshManager) Apply(ctx context.Context, logger *slog.Logger, payload
 
 // Watch subscribes to certificate updates and triggers the dispatcher when active.
 func (r *refreshManager) Watch(ctx context.Context, logger *slog.Logger, watcher Watch) {
-	for watcher(ctx) {
+	for !watcher(ctx) {
 		if r.active.Load() {
 			logger.Info("triggering reload by watcher")
 			r.active.Store(false)

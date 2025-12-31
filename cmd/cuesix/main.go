@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -16,8 +15,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
 	"github.com/warpcomdev/cuesix/internal/cache"
-	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin"
@@ -76,43 +75,16 @@ func main() {
 	}
 
 	// Configure certmagic manager + watcher.
-	var (
-		acmeManager *certmagicmgr.Manager
-		acmeWatcher *certmagicmgr.Watcher
-		events      chan certmagicmgr.CertEvent
-	)
-	if certmagicCfg.Enabled {
-		if certmagicCfg.ChallengeAddr == "" {
-			logger.Error("certmagic enabled but challenge address is missing")
-			os.Exit(1)
-		}
-		providers, err := buildCertmagicProviders(certmagicCfg.Providers)
-		if err != nil {
-			logger.Error("certmagic provider config invalid", "error", err)
-			os.Exit(1)
-		}
-		events = make(chan certmagicmgr.CertEvent, 32)
-		acmeManager, err = certmagicmgr.NewManager(certmagicmgr.Config{
-			Providers:       providers,
-			DefaultProvider: strings.TrimSpace(certmagicCfg.DefaultProvider),
-			DataDir:         strings.TrimSpace(certmagicCfg.DataDir),
-			DefaultTimeout:  certmagicCfg.Timeout,
-		}, logger, events)
-		if err != nil {
-			logger.Error("certmagic init failed", "error", err)
-			os.Exit(1)
-		}
-		acmeWatcher, err = certmagicmgr.NewWatcher(acmeManager, events)
-		if err != nil {
-			logger.Error("certmagic watcher init failed", "error", err)
-			os.Exit(1)
-		}
+	acmeSetup, err := newAcmeSetup(logger, certmagicCfg)
+	if err != nil {
+		logger.Error("certmagic init failed", "error", err)
+		os.Exit(1)
 	}
 
 	// Build plugin pipelines.
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
-			plugins, pluginErr := buildPreRender(pluginCfg.SSLPaths, acmeWatcher, fallbackCert, pluginCfg.SSLACMETimeout)
+			plugins, pluginErr := buildPreRender(pluginCfg.SSLPaths, acmeSetup.acmeWatcher, fallbackCert, pluginCfg.SSLACMETimeout)
 			if pluginErr != nil {
 				logger.Error("pre-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -242,7 +214,7 @@ func main() {
 	// ACME challenge server.
 	var acmeServer *http.Server
 	if strings.TrimSpace(certmagicCfg.ChallengeAddr) != "" {
-		acmeServer = buildServer(certmagicCfg.ChallengeAddr, acmeManager.ChallengeHandler(logger), srvTimeouts)
+		acmeServer = buildServer(certmagicCfg.ChallengeAddr, acmeSetup.acmeManager.ChallengeHandler(logger), srvTimeouts)
 	}
 
 	// Run loop and shutdown wiring.
@@ -267,7 +239,7 @@ func main() {
 	if acmeServer != nil {
 		// Start the cert watcher
 		group.Go(func() error {
-			acmeWatcher.RunWatch(groupCtx, logger, certmagicCfg.WatchInterval)
+			acmeSetup.acmeWatcher.RunWatch(groupCtx, logger, certmagicCfg.WatchInterval)
 			return nil
 		})
 		// And the acme server
@@ -295,33 +267,26 @@ func main() {
 	})
 
 	// Ready the notifiers
-	if acmeWatcher != nil {
+	if acmeSetup.acmeWatcher != nil {
 		// Start the monitor that will reconfigure apisix when
 		// certificates are renewed
 		group.Go(func() error {
+			acmeCursor := cursor.New(acmeSetup.acmeWatcher, 16)
+			defer acmeCursor.Close()
 			var err error
-			subs := acmeWatcher.Subscribe(32)
-			defer acmeWatcher.Unsubscribe(subs)
 			refreshManager.Watch(groupCtx, logger, func(ctx context.Context) bool {
-				select {
-				case <-ctx.Done():
-					return true
-				case _, ok := <-subs:
-					if !ok {
-						err = fmt.Errorf("acme watcher channel closed")
-						return true
-					}
-					return false
-				}
+				var cancelled bool
+				cancelled, _, err = acmeCursor.Next(ctx)
+				return cancelled
 			})
 			return err
 		})
 	}
 
 	// Launch the acme tracking cleanup
-	if acmeWatcher != nil && certmagicCfg.CleanupInterval > 0 && certmagicCfg.ExpiredGrace > 0 && certmagicCfg.UntrackedGrace > 0 {
+	if acmeSetup.acmeWatcher != nil && acmeSetup.shouldCleanup(certmagicCfg) {
 		group.Go(func() error {
-			return sslCleanupLoop(groupCtx, logger, acmeManager, acmeWatcher, certmagicCfg.CleanupInterval, certmagicCfg.ExpiredGrace, certmagicCfg.UntrackedGrace)
+			return acmeSetup.cleanupLoop(groupCtx, logger, certmagicCfg)
 		})
 	}
 
