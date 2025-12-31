@@ -10,20 +10,25 @@ import (
 
 // ACMEManager provides access to ACME certificates.
 type ACMEManager interface {
-	RequestCertificate(ctx context.Context, logger *slog.Logger, providerName string, sni string) error
+	// Clears the tracking cache, to start a new cycle
 	ClearTracking(*slog.Logger)
-	Update(ctx context.Context, buffer int, action func(provider, sni string, cert Certificate))
+	// Requests a certificate, add to the track list
+	RequestCertificate(ctx context.Context, logger *slog.Logger, providerName string, sni string) error
+	// Watch updates on the track list
+	Watch(ctx context.Context, buffer int, action func(provider, sni string, cert Certificate))
 }
 
 type ACMEHandler struct {
-	AcmeManager ACMEManager
+	ACME ACMEManager
 }
 
 func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, fallback Certificate) {
 	targetsBySNI := make(map[string][]certTargets)
+	if a.ACME == nil {
+		logger.Error("ssl plugin acme requires acme manager and tracker")
+	}
 	for _, target := range targets {
-		if a.AcmeManager == nil {
-			logger.Error("ssl plugin acme requires acme manager and tracker", "target", target)
+		if a.ACME == nil {
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
 			continue
 		}
@@ -39,7 +44,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 		return
 	}
 	// Clear ACME tracking, since we are about to overwrite it
-	a.AcmeManager.ClearTracking(logger)
+	a.ACME.ClearTracking(logger)
 	cancelCtx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelFunc()
 	var (
@@ -51,6 +56,10 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	for sni := range targetsBySNI {
 		pendingTargets[sni] = struct{}{}
 	}
+	// Keep track of how many pending certificates are there
+	// Pending certificates can be cleared if:
+	// - A certificate is received
+	// - The async certificate request fails
 	clearPending := func(sni string) bool {
 		lock.Lock()
 		before := len(pendingTargets)
@@ -64,13 +73,10 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	}
 	ready := make(chan struct{}, 1)
 	wg.Go(func() {
-		defer close(ready)
-		ready <- struct{}{}
-		a.AcmeManager.Update(cancelCtx, 2*len(targetsBySNI), func(provider, sni string, cert Certificate) {
-			if !cert.NotAfter.IsZero() {
-				if clearPending(sni) {
-					certsBySNI[sni] = cert
-				}
+		close(ready) // signal the main thread
+		a.ACME.Watch(cancelCtx, 2*len(targetsBySNI), func(provider, sni string, cert Certificate) {
+			if !cert.NotAfter.IsZero() && clearPending(sni) {
+				certsBySNI[sni] = cert
 			}
 		})
 	})
@@ -79,7 +85,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 		sniSuccess := false
 		for _, target := range targets {
 			provider := strings.TrimPrefix(target.cert, acmePrefix)
-			err := a.AcmeManager.RequestCertificate(cancelCtx, logger, provider, sni)
+			err := a.ACME.RequestCertificate(cancelCtx, logger, provider, sni)
 			if err == nil {
 				sniSuccess = true
 				break

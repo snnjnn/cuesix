@@ -47,9 +47,9 @@ type sslTracker struct {
 	*certmagicmgr.Watcher
 }
 
-// Update ejecuta la acción cada vez que hay cambios
+// Watch ejecuta la acción cada vez que hay cambios
 // en los certificados
-func (w sslTracker) Update(ctx context.Context, buffer int, action func(provider, sni string, cert ssl.Certificate)) {
+func (w sslTracker) Watch(ctx context.Context, buffer int, action func(provider, sni string, cert ssl.Certificate)) {
 	stream := w.Watcher.Subscribe(buffer)
 	defer w.Watcher.Unsubscribe(stream)
 	for {
@@ -82,7 +82,7 @@ func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallba
 				Filesystems: sslFSes,
 			},
 			ACMEHandler: ssl.ACMEHandler{
-				AcmeManager: sslTracker{
+				ACME: sslTracker{
 					Watcher: acmeWatcher,
 				},
 			},

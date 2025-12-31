@@ -117,7 +117,7 @@ func TestSSLPluginACMEFallbackOnRequestError(t *testing.T) {
 			Filesystems: []fs.FS{fstest.MapFS{}},
 		},
 		ACMEHandler: ACMEHandler{
-			AcmeManager: &fakeACME{err: errors.New("acme failed")},
+			ACME: &fakeACME{err: errors.New("acme failed")},
 		},
 		Fallback: fallback,
 	}
@@ -159,7 +159,7 @@ func TestSSLPluginACMESuccess(t *testing.T) {
 			Filesystems: []fs.FS{fstest.MapFS{}},
 		},
 		ACMEHandler: ACMEHandler{
-			AcmeManager: &fakeACME{notifyCert: acmeCert},
+			ACME: &fakeACME{notifyCert: acmeCert},
 		},
 		Fallback: fallback,
 	}
@@ -196,7 +196,7 @@ func TestSSLPluginACMEInvalidSNIUsesFallback(t *testing.T) {
 			Filesystems: []fs.FS{fstest.MapFS{}},
 		},
 		ACMEHandler: ACMEHandler{
-			AcmeManager: &fakeACME{notifyCert: fallback},
+			ACME: &fakeACME{notifyCert: fallback},
 		},
 		Fallback: fallback,
 	}
@@ -383,7 +383,7 @@ func (f *fakeACME) RequestCertificate(_ context.Context, _ *slog.Logger, _ strin
 	return nil
 }
 
-func (f *fakeACME) Update(ctx context.Context, _ int, action func(provider, sni string, cert Certificate)) {
+func (f *fakeACME) Watch(ctx context.Context, _ int, action func(provider, sni string, cert Certificate)) {
 	f.mu.Lock()
 	f.actions = append(f.actions, action)
 	f.mu.Unlock()
