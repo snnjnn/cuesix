@@ -13,5 +13,11 @@ cover:
 build:
     GOEXPERIMENT={{GOEXPERIMENT}} CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ./bin/cuesix ./cmd/cuesix
 
+doc:
+    # Needs pkgsite installed
+    # go install golang.org/x/pkgsite/cmd/pkgsite@latest
+    # by default installed to $HOME/go/bin
+    pkgsite -open .
+
 tag TAG:
     docker build -t {{TAG}} .

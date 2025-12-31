@@ -10,11 +10,13 @@ Tecnologías:
 
 Generalidades:
 
-- La API http de la aplicación solo está para provocar el disparo de la compilación. No se espera recibir ninguna información en la petición, y la respuesta siempre será un 204 No Content.
-- Las rutas a los directorios con los ficheros yaml se proporcionarán como parámetros de la línea de comandos.
+- La API http de la aplicacion solo esta para provocar el disparo de la compilacion en modo servidor. No se espera recibir ninguna informacion en la peticion, y la respuesta siempre sera un 204 No Content.
+- En modo servidor se exponen `POST /compile`, `GET /live` y `GET /ready`.
+- Las rutas a los directorios con los ficheros yaml se proporcionaran como parametros de la linea de comandos.
 - La aplicación debe soportar múltiples directorios de entrada.
-- También se le proporcionarán como flags: la ruta al home de apisix, la URL de apisix y la ruta opcional para el mirror de APISIX.
-- Todos los flags deben poder ser especificados también como variables de entorno.
+- Tambien se le proporcionaran como flags: la ruta al home de apisix, la URL de apisix y la ruta opcional para el mirror de APISIX.
+- Todos los flags deben poder ser especificados tambien como variables de entorno.
+- El plugin SSL debe poder configurarse con paths de certificados, timeout ACME y certificado fallback (cert/key).
 - El post-render plugin `jq` aplica una cascada de expresiones definidas en una clave de primer nivel `jq` del JSON resultante y elimina esa clave antes de continuar.
 
 Reglas de fusión APISIX:
@@ -61,3 +63,4 @@ Desarrollo:
 - La serialización y deserialización JSON deben usar `encoding/json/v2` con `Deterministic` activado.
 - La serialización y deserialización YAML deben usar `go.yaml.in/yaml/v4`.
 - En el arranque se debe copiar el home de apisix a un directorio temporal espejo; ese espejo se usa para validación y se elimina al terminar (o se recrea al arrancar).
+- En modo standalone no se valida ni se recarga APISIX; se emite el resultado por stdout.

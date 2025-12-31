@@ -13,14 +13,23 @@ El fichero combinado generado se almacena en primer lugar en el directorio mirro
 
 Si el fichero es válido, se reemplaza el fichero de configuración real y se utiliza la API de apisix para provocar su relectura.
 
-La aplicación funciona como un servidor web que expone una única ruta, "/compile". Cuando se recibe una petición POST a esa ruta, sin importar el payload o el contenido, se inicia el proceso de recompilación.
+La aplicacion tiene dos modos de ejecucion:
 
-La respuesta a /compile es inmediata, no espera a que se haya ejecutado la compilación. Internamente la aplicación hace throttling de las peticiones:
+- Modo standalone (por defecto): compila los fragmentos y escribe la configuracion resultante en stdout, sin validar ni recargar APISIX.
+- Modo servidor (`--serve`): expone endpoints HTTP para disparar la compilacion y, si procede, validar y recargar APISIX.
+
+En modo servidor, la aplicacion expone una ruta "/compile". Cuando se recibe una peticion POST a esa ruta, sin importar el payload o el contenido, se inicia el proceso de recompilacion. Tambien expone endpoints de salud `/live` y `/ready`.
+
+La respuesta a /compile es inmediata, no espera a que se haya ejecutado la compilacion. Internamente la aplicacion hace throttling de las peticiones:
 
 - Si se reciben peticiones /compile nuevas mientras la aplicación está compilando, esas peticiones se encolan, devolviendo inmediatamente la respuesta al cliente.
 - Tras cada compilación, hay un periodo de cooldown. El tiempo mínimo entre compilaciones es configurable.
 
-La aplicación mantiene un hash de la última configuración compilada. El hash se basa en una ordenación determinista y repetible del fichero generado por el modulo cache. Si el resultado de una compilación coincide con el anterior, la aplicación no continúa con su proceso.
+La aplicacion mantiene un hash de la ultima configuracion compilada. El hash se basa en una ordenacion determinista y repetible del fichero generado por el modulo cache. Si el resultado de una compilacion coincide con el anterior, la aplicacion no continua con su proceso.
+
+Cuando el plugin SSL esta activo, se usa un certificado de fallback configurado por flags para resolver referencias `file://` faltantes o errores ACME.
+
+La aplicacion puede exponer un servidor de metricas y un servidor para desafios ACME si esas direcciones estan configuradas.
 
 La aplicación se divide en los siguientes componentes:
 

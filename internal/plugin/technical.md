@@ -13,6 +13,8 @@ Plugin `ssl`:
 - Si una resolución válida falla (I/O, ACME, timeout), el plugin usa un certificado placeholder configurado para completar la entrada `ssl`.
 - Entradas mal formadas (tipos incorrectos o longitudes distintas) se dejan sin tocar.
 - El plugin se activa desde el ejecutable con `--plugin-ssl-path` o `CUESIX_PLUGIN_SSL_PATHS`.
+- El timeout ACME se configura con `--plugin-ssl-acme-timeout` o `CUESIX_PLUGIN_SSL_ACME_TIMEOUT`.
+- El certificado fallback se configura con `--plugin-ssl-fallback-cert`/`--plugin-ssl-fallback-key` o sus variables de entorno.
 
 Plugin `jq`:
 
