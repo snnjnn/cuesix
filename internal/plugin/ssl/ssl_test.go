@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
@@ -22,14 +21,16 @@ func TestSSLPluginReplacesFields(t *testing.T) {
 		"chain.pem":  {Data: []byte("chain-data")},
 		"client.pem": {Data: []byte("client-data")},
 	}
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fsOne},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fsOne},
+		},
+		Fallback: fallback,
 	}
 
 	input := map[string]any{
@@ -73,14 +74,16 @@ func TestSSLPluginReplacesFields(t *testing.T) {
 }
 
 func TestSSLPluginMissingFile(t *testing.T) {
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fstest.MapFS{}},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fstest.MapFS{}},
+		},
+		Fallback: fallback,
 	}
 	input := map[string]any{
 		"ssls": []any{
@@ -104,15 +107,19 @@ func TestSSLPluginMissingFile(t *testing.T) {
 }
 
 func TestSSLPluginACMEFallbackOnRequestError(t *testing.T) {
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fstest.MapFS{}},
-		ACME:        &fakeACME{err: errors.New("acme failed")},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fstest.MapFS{}},
+		},
+		ACMEHandler: ACMEHandler{
+			AcmeManager: &fakeACME{err: errors.New("acme failed")},
+		},
+		Fallback: fallback,
 	}
 	input := map[string]any{
 		"ssls": []any{
@@ -137,20 +144,24 @@ func TestSSLPluginACMEFallbackOnRequestError(t *testing.T) {
 }
 
 func TestSSLPluginACMESuccess(t *testing.T) {
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
-	acmeCert := certmagicmgr.Certificate{
+	acmeCert := Certificate{
 		CertPEM:  []byte("acme-cert"),
 		KeyPEM:   []byte("acme-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fstest.MapFS{}},
-		ACME:        &fakeACME{notifyCert: acmeCert},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fstest.MapFS{}},
+		},
+		ACMEHandler: ACMEHandler{
+			AcmeManager: &fakeACME{notifyCert: acmeCert},
+		},
+		Fallback: fallback,
 	}
 	input := map[string]any{
 		"ssls": []any{
@@ -175,15 +186,19 @@ func TestSSLPluginACMESuccess(t *testing.T) {
 }
 
 func TestSSLPluginACMEInvalidSNIUsesFallback(t *testing.T) {
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fstest.MapFS{}},
-		ACME:        &fakeACME{notifyCert: fallback},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fstest.MapFS{}},
+		},
+		ACMEHandler: ACMEHandler{
+			AcmeManager: &fakeACME{notifyCert: fallback},
+		},
+		Fallback: fallback,
 	}
 	input := map[string]any{
 		"ssls": []any{
@@ -208,14 +223,16 @@ func TestSSLPluginACMEInvalidSNIUsesFallback(t *testing.T) {
 }
 
 func TestSSLPluginLeavesInvalidCertKeyUntouched(t *testing.T) {
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fstest.MapFS{}},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fstest.MapFS{}},
+		},
+		Fallback: fallback,
 	}
 	input := map[string]any{
 		"ssls": []any{
@@ -239,14 +256,16 @@ func TestSSLPluginLeavesInvalidCertKeyUntouched(t *testing.T) {
 }
 
 func TestSSLPluginLeavesInvalidListUntouched(t *testing.T) {
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fstest.MapFS{}},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fstest.MapFS{}},
+		},
+		Fallback: fallback,
 	}
 	expectedEntry := map[string]any{
 		"certs": []any{"file://cert.pem", 123},
@@ -271,14 +290,16 @@ func TestSSLPluginCertsKeysReplaceFiles(t *testing.T) {
 	fsOne := fstest.MapFS{
 		"cert.pem": {Data: []byte("cert-data")},
 	}
-	fallback := certmagicmgr.Certificate{
+	fallback := Certificate{
 		CertPEM:  []byte("fallback-cert"),
 		KeyPEM:   []byte("fallback-key"),
 		NotAfter: time.Now().Add(24 * time.Hour),
 	}
 	plugin := &SSLPlugin{
-		Filesystems: []fs.FS{fsOne},
-		Fallback:    fallback,
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fsOne},
+		},
+		Fallback: fallback,
 	}
 	input := map[string]any{
 		"ssls": []any{
@@ -303,11 +324,50 @@ func TestSSLPluginCertsKeysReplaceFiles(t *testing.T) {
 	}
 }
 
+func TestSSLPluginCertsKeysReplaceFilesKeepsIndex(t *testing.T) {
+	fsOne := fstest.MapFS{
+		"first.pem":  {Data: []byte("first-cert")},
+		"second.pem": {Data: []byte("second-cert")},
+	}
+	fallback := Certificate{
+		CertPEM:  []byte("fallback-cert"),
+		KeyPEM:   []byte("fallback-key"),
+		NotAfter: time.Now().Add(24 * time.Hour),
+	}
+	plugin := &SSLPlugin{
+		FileHandler: FileHandler{
+			Filesystems: []fs.FS{fsOne},
+		},
+		Fallback: fallback,
+	}
+	input := map[string]any{
+		"ssls": []any{
+			map[string]any{
+				"certs": []string{"file://first.pem", "file://second.pem"},
+				"keys":  []string{"first-key", "second-key"},
+			},
+		},
+	}
+	got, err := plugin.Update(testutil.Logger(), input)
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	entry := got["ssls"].([]any)[0].(map[string]any)
+	certs := entry["certs"].([]string)
+	keys := entry["keys"].([]string)
+	if certs[0] != "first-cert" || certs[1] != "second-cert" {
+		t.Fatalf("expected certs to keep index order, got %#v", certs)
+	}
+	if keys[0] != "first-key" || keys[1] != "second-key" {
+		t.Fatalf("expected keys to keep index order, got %#v", keys)
+	}
+}
+
 type fakeACME struct {
 	mu         sync.Mutex
-	notifyCert certmagicmgr.Certificate
+	notifyCert Certificate
 	err        error
-	subs       []chan certmagicmgr.Notification
+	actions    []func(provider, sni string, cert Certificate)
 }
 
 func (f *fakeACME) RequestCertificate(_ context.Context, _ *slog.Logger, _ string, sni string) error {
@@ -315,31 +375,19 @@ func (f *fakeACME) RequestCertificate(_ context.Context, _ *slog.Logger, _ strin
 		return f.err
 	}
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, ch := range f.subs {
-		ch <- certmagicmgr.Notification{SNI: sni, Cert: f.notifyCert}
+	actions := append([]func(provider, sni string, cert Certificate){}, f.actions...)
+	f.mu.Unlock()
+	for _, action := range actions {
+		action("", sni, f.notifyCert)
 	}
 	return nil
 }
 
-func (f *fakeACME) Subscribe(buffer int) chan certmagicmgr.Notification {
-	ch := make(chan certmagicmgr.Notification, buffer)
+func (f *fakeACME) Update(ctx context.Context, _ int, action func(provider, sni string, cert Certificate)) {
 	f.mu.Lock()
-	f.subs = append(f.subs, ch)
+	f.actions = append(f.actions, action)
 	f.mu.Unlock()
-	return ch
-}
-
-func (f *fakeACME) Unsubscribe(ch chan certmagicmgr.Notification) {
-	f.mu.Lock()
-	for i, sub := range f.subs {
-		if sub == ch {
-			f.subs = append(f.subs[:i], f.subs[i+1:]...)
-			break
-		}
-	}
-	f.mu.Unlock()
-	close(ch)
+	<-ctx.Done()
 }
 
 func (f *fakeACME) ClearTracking(*slog.Logger) {}

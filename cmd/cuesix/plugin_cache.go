@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -40,6 +41,34 @@ func (p *pluginCache) Changed(logger *slog.Logger, value map[string]any) ([]byte
 	return output, nil
 }
 
+// Esta estructura adapta el watcher de certmagicmgr a lo que
+// espera el ssl plugin, para desacoplar ambos módulos.
+type sslTracker struct {
+	*certmagicmgr.Watcher
+}
+
+// Update ejecuta la acción cada vez que hay cambios
+// en los certificados
+func (w sslTracker) Update(ctx context.Context, buffer int, action func(provider, sni string, cert ssl.Certificate)) {
+	stream := w.Watcher.Subscribe(buffer)
+	defer w.Watcher.Unsubscribe(stream)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case n, ok := <-stream:
+			if !ok {
+				return
+			}
+			action(n.Provider, n.SNI, ssl.Certificate{
+				CertPEM:  n.Cert.CertPEM,
+				KeyPEM:   n.Cert.KeyPEM,
+				NotAfter: n.Cert.NotAfter,
+			})
+		}
+	}
+}
+
 // buildPreRender constructs the pre-render plugin chain.
 func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallback certmagicmgr.Certificate) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
@@ -49,9 +78,19 @@ func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallba
 			return nil, err
 		}
 		plugins = append(plugins, &ssl.SSLPlugin{
-			Filesystems: sslFSes,
-			ACME:        acmeWatcher,
-			Fallback:    fallback,
+			FileHandler: ssl.FileHandler{
+				Filesystems: sslFSes,
+			},
+			ACMEHandler: ssl.ACMEHandler{
+				AcmeManager: sslTracker{
+					Watcher: acmeWatcher,
+				},
+			},
+			Fallback: ssl.Certificate{
+				CertPEM:  fallback.CertPEM,
+				KeyPEM:   fallback.KeyPEM,
+				NotAfter: fallback.NotAfter,
+			},
 		})
 	}
 	return plugins, nil
