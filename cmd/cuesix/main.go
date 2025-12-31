@@ -312,7 +312,7 @@ func main() {
 	if acmeServer != nil {
 		// Start the cert watcher
 		group.Go(func() error {
-			acmeWatcher.RunWatch(groupCtx, logger, 60*time.Second)
+			acmeWatcher.RunWatch(groupCtx, logger, 1*time.Hour)
 			return nil
 		})
 		// And the acme server

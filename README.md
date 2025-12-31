@@ -70,9 +70,9 @@ Besides merging files, cuesix implements some quality-of-life features that expa
 
 ### Certificate inlining
 
-The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `file://...` or `acme://...` values.
+The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `file://...` or `acme://...` values in both `cert`/`key` and `certs`/`keys`.
 
-- If the certificate URL is `file://...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml.
+- If a certificate or key URL is `file://...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml. Missing files are replaced with the fallback certificate/key.
 
 For example, a config snippet like:
 
@@ -94,6 +94,9 @@ ssls:
 - If the certificate URL is `acme://...`, it will try to generate a new ACME certificate.
   - Acme certificates and SANs is a complicated story, so this mode only works when the `ssls` entry has a single `sni`.
   - The `key` entry is ignored, it is overriden with the acme key.
+  - If ACME is unavailable or fails, the fallback certificate/key is used.
+
+If an `ssls` entry has malformed `cert`/`key` or `certs`/`keys` (wrong types or list length mismatch), it is left untouched.
 
 ### Config-wide transformations
 
@@ -142,7 +145,7 @@ To enable API reload of APISIX, you need to provide the URL of the apisix contro
 
 Standalone (default): compiles and prints the merged config to stdout. No validation or reload.
 
-Server mode (`--serve`): exposes `POST /compile`, runs the pipeline, validates the result, and reloads APISIX on success.
+Server mode (`--serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and reloads APISIX on success. `/ready` returns 200 only after a successful reload has been delivered at least once.
 
 ## Flags and environment variables
 
@@ -188,7 +191,7 @@ Certmagic:
 - `--certmagic-fallback-cert` / `CUESIX_CERTMAGIC_FALLBACK_CERT`: fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
 - `--certmagic-fallback-key` / `CUESIX_CERTMAGIC_FALLBACK_KEY`: fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
 
-When an ACME certificate cannot be obtained, cuesix will use the fallback certificate to keep the `ssls` entry valid and will retry in the background, updating APISIX via the Admin API when the certificate becomes available.
+When an ACME certificate cannot be obtained, cuesix will use the fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available cuesix triggers a new compile/reload cycle (once a valid config has been delivered before).
 
 ## Usage
 

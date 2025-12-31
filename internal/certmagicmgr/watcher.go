@@ -140,6 +140,8 @@ func (w *Watcher) ClearTracking(logger *slog.Logger) {
 func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh time.Duration) {
 	ticker := time.NewTicker(refresh)
 	defer ticker.Stop()
+	expiredTicker := time.NewTicker(24 * time.Hour)
+	defer expiredTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -169,14 +171,14 @@ func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh tim
 				}
 			})
 		case <-ticker.C:
-			// Periodically, walk over al faile certificates, to see
+			// Periodically, walk over al failed certificates, to see
 			// if some of them has been fixed
 			snapshot := make(map[trackKey]Certificate)
 			w.withLock(func() {
 				maps.Copy(snapshot, w.track)
 				w.cleared = false
 			})
-			for key, expiration := range snapshot {
+			for key, cachedCert := range snapshot {
 				providerView, err := w.manager.resolveProviderView(key.provider)
 				if err != nil {
 					logger.Error("failed to resolve provider", "error", err)
@@ -186,7 +188,7 @@ func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh tim
 				if !ok {
 					continue
 				}
-				if expiration.NotAfter.IsZero() || best.NotAfter.After(expiration.NotAfter) {
+				if cachedCert.NotAfter.IsZero() || best.NotAfter.After(cachedCert.NotAfter) {
 					snapshot[key] = best
 				}
 			}
@@ -206,6 +208,10 @@ func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh tim
 					}
 				}
 			})
+		case <-expiredTicker.C:
+			if err := w.manager.RemoveExpired(ctx, logger); err != nil {
+				logger.Error("failed to remove expired certificates", "error", err)
+			}
 		}
 	}
 }

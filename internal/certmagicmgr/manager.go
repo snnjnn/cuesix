@@ -33,14 +33,6 @@ type Config struct {
 	DefaultTimeout  time.Duration
 }
 
-// ManagedCert describes a managed certificate entry.
-type ManagedCert struct {
-	SNI        string
-	Provider   string
-	NotAfter   time.Time
-	ObtainedAt time.Time
-}
-
 // Certificate bundles a certificate chain and key in PEM format.
 type Certificate struct {
 	CertPEM  []byte
