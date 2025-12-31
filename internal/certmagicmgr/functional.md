@@ -12,3 +12,4 @@ Comportamiento observable:
 - Cada solicitud de certificado inicia la obtencion en segundo plano y respeta el timeout configurado.
 - Las solicitudes se serializan por proveedor para evitar problemas de reentrancia.
 - El watcher notifica cambios de certificados y mantiene un cache de seguimiento por SNI/proveedor.
+- El proceso puede ejecutar limpiezas periodicas para dejar de seguir entradas no observadas dentro del periodo de gracia.

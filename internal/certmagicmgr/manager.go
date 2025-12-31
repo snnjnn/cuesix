@@ -43,13 +43,14 @@ type provider struct {
 
 type CertEvent struct {
 	sni      string
-	provider ProviderView
+	provider providerView
 }
 
-// ProviderView exposes provider operations needed by Watcher.
-type ProviderView interface {
+// providerView exposes provider operations needed by Watcher.
+type providerView interface {
 	Name() string
 	BestMatchFor(sni string, logger *slog.Logger) (ssl.Certificate, bool)
+	RemoveManaged(logger *slog.Logger, sni string)
 }
 
 // Manager owns certmagic configuration and serialized operations.
@@ -130,24 +131,6 @@ func (m *Manager) FallbackCertificate() (ssl.Certificate, error) {
 	return m.fallback, nil
 }
 
-// RemoveManaged stops tracking the SNI for future listings.
-func (m *Manager) RemoveManaged(logger *slog.Logger, providerName string, sni string) {
-	provider, err := m.resolveProvider(providerName)
-	if err != nil {
-		logger.Error("removing managed cert", "error", err)
-		return
-	}
-	provider.Lock()
-	defer provider.Unlock()
-	for _, issuer := range provider.magic.Issuers {
-		c := certmagic.SubjectIssuer{
-			Subject:   sni,
-			IssuerKey: issuer.IssuerKey(),
-		}
-		provider.cache.RemoveManaged([]certmagic.SubjectIssuer{c})
-	}
-}
-
 func (m *Manager) RemoveExpired(ctx context.Context, logger *slog.Logger) error {
 	return certmagic.CleanStorage(ctx, m.storage, certmagic.CleanStorageOptions{
 		Interval:               12 * time.Hour,
@@ -179,7 +162,7 @@ func (m *Manager) resolveProvider(name string) (*provider, error) {
 	return nil, errors.New("provider is required")
 }
 
-func (m *Manager) resolveProviderView(name string) (ProviderView, error) {
+func (m *Manager) resolveProviderView(name string) (providerView, error) {
 	p, err := m.resolveProvider(name)
 	if err != nil {
 		return nil, err
@@ -247,6 +230,19 @@ func (p *provider) BestMatchFor(sni string, logger *slog.Logger) (ssl.Certificat
 	return bestMatchForCandidates(matches, logger)
 }
 
+// RemoveManaged stops tracking the SNI for future listings.
+func (p *provider) RemoveManaged(logger *slog.Logger, sni string) {
+	p.Lock()
+	defer p.Unlock()
+	for _, issuer := range p.magic.Issuers {
+		c := certmagic.SubjectIssuer{
+			Subject:   sni,
+			IssuerKey: issuer.IssuerKey(),
+		}
+		p.cache.RemoveManaged([]certmagic.SubjectIssuer{c})
+	}
+}
+
 func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 	var certPEM []byte
 	for _, der := range cert.Certificate.Certificate {
@@ -266,9 +262,15 @@ func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 		Type:  "PRIVATE KEY",
 		Bytes: key,
 	})
-	notAfter, err := leafNotAfter(cert.Certificate.Certificate)
-	if err != nil {
-		return ssl.Certificate{}, err
+	notAfter := time.Time{}
+	if cert.Leaf != nil {
+		notAfter = cert.Leaf.NotAfter
+	} else {
+		var err error
+		notAfter, err = leafNotAfter(cert.Certificate.Certificate)
+		if err != nil {
+			return ssl.Certificate{}, err
+		}
 	}
 	return ssl.Certificate{
 		CertPEM:  certPEM,

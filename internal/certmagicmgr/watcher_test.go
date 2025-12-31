@@ -23,6 +23,10 @@ func (f fakeProvider) BestMatchFor(_ string, _ *slog.Logger) (ssl.Certificate, b
 	return f.cert, true
 }
 
+func (f fakeProvider) RemoveManaged(logger *slog.Logger, sni string) {
+	// no op
+}
+
 func TestWatcherSubscribeAndUnsubscribe(t *testing.T) {
 	events := make(chan CertEvent, 1)
 	watcher, err := NewWatcher(nil, events)

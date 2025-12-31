@@ -27,8 +27,9 @@ API principal:
   - Inicia la obtencion asincrona del certificado.
   - Usa timeout por proveedor o el timeout global.
   - Serializa el acceso a certmagic con un mutex.
-- `RemoveManaged(logger, provider, sni)` elimina la entrada del inventario (no elimina almacenamiento en disco).
-- `ClearTracking()` reinicia el mapa de seguimiento de SNIs y elimina el tracking gestionado en certmagic para evitar renovaciones innecesarias.
+- `RemoveUntracked(ctx, logger, gracePeriod)` elimina el tracking gestionado en certmagic para entradas que no se hayan observado dentro del periodo de gracia.
+  - Si no se puede resolver el proveedor, no elimina la entrada de seguimiento local.
+- `ClearTracking()` marca una nueva generacion de seguimiento para que `RemoveUntracked` considere candidatas las entradas antiguas.
 - `ProviderView.BestMatchFor(sni)` devuelve el mejor certificado conocido para el SNI (el de mayor expiracion).
 - `LoadFallbackCertificate(certPath, keyPath)` carga un certificado placeholder para el plugin SSL.
 

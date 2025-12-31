@@ -80,6 +80,8 @@ func main() {
 	certmagicDataDir := flag.String("certmagic-data-dir", envString("CUESIX_CERTMAGIC_DATA_DIR"), "certmagic data directory")
 	certmagicChallengeAddr := flag.String("certmagic-challenge-addr", envString("CUESIX_CERTMAGIC_CHALLENGE_ADDR"), "certmagic HTTP-01 challenge address")
 	certmagicTimeout := flag.Duration("certmagic-timeout", envDuration("CUESIX_CERTMAGIC_TIMEOUT", 0), "certmagic default certificate obtain timeout")
+	certmagicUntrackedInterval := flag.Duration("certmagic-untracked-interval", envDuration("CUESIX_CERTMAGIC_UNTRACKED_INTERVAL", 24*time.Hour), "interval for removing untracked certmagic entries")
+	certmagicUntrackedGrace := flag.Duration("certmagic-untracked-grace", envDuration("CUESIX_CERTMAGIC_UNTRACKED_GRACE", 7*24*time.Hour), "grace period for removing untracked certmagic entries")
 	certmagicFallbackCert := flag.String("certmagic-fallback-cert", envString("CUESIX_CERTMAGIC_FALLBACK_CERT"), "fallback certificate path")
 	certmagicFallbackKey := flag.String("certmagic-fallback-key", envString("CUESIX_CERTMAGIC_FALLBACK_KEY"), "fallback key path")
 	certmagicProvidersFlag := &stringSliceFlag{}
@@ -361,6 +363,24 @@ func main() {
 				}
 			})
 			return err
+		})
+	}
+
+	// Launch the acme tracking cleanup
+	if acmeWatcher != nil && *certmagicUntrackedInterval > 0 {
+		group.Go(func() error {
+			ticker := time.NewTicker(*certmagicUntrackedInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-groupCtx.Done():
+					return nil
+				case <-ticker.C:
+					if err := acmeWatcher.RemoveUntracked(groupCtx, logger, *certmagicUntrackedGrace); err != nil {
+						logger.Error("remove untracked certmagic entries failed", "error", err)
+					}
+				}
+			}
 		})
 	}
 
