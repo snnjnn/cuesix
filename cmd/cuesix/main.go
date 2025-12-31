@@ -379,6 +379,9 @@ func main() {
 					if err := acmeWatcher.RemoveUntracked(groupCtx, logger, *certmagicUntrackedGrace); err != nil {
 						logger.Error("remove untracked certmagic entries failed", "error", err)
 					}
+					if err := acmeManager.RemoveExpired(groupCtx, logger); err != nil {
+						logger.Error("remove expired certificates failed", "error", err)
+					}
 				}
 			}
 		})

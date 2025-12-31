@@ -108,7 +108,7 @@ func (w *Watcher) RequestCertificate(ctx context.Context, logger *slog.Logger, p
 	return err
 }
 
-// RemoveUntracked stops tracking the SNI for future listings.
+// RemoveUntracked stops tracking the SNI for future listings
 func (w *Watcher) RemoveUntracked(ctx context.Context, logger *slog.Logger, gracePeriod time.Duration) error {
 	candidates := w.collectUntracked(gracePeriod)
 	if len(candidates) == 0 {
@@ -154,8 +154,6 @@ func (w *Watcher) ClearTracking(logger *slog.Logger) {
 func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh time.Duration) {
 	ticker := time.NewTicker(refresh)
 	defer ticker.Stop()
-	expiredTicker := time.NewTicker(24 * time.Hour)
-	defer expiredTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -231,10 +229,6 @@ func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh tim
 					}
 				}
 			})
-		case <-expiredTicker.C:
-			if err := w.manager.RemoveExpired(ctx, logger); err != nil {
-				logger.Error("failed to remove expired certificates", "error", err)
-			}
 		}
 	}
 }
