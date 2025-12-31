@@ -22,6 +22,7 @@ import (
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 	"github.com/warpcomdev/cuesix/internal/reloader"
 	"github.com/warpcomdev/cuesix/internal/validator"
 	"golang.org/x/sync/errgroup"
@@ -102,7 +103,7 @@ func main() {
 	}
 
 	// Load fallback certificate for SSL plugin and certmagic.
-	var fallbackCert certmagicmgr.Certificate
+	var fallbackCert ssl.Certificate
 	if len(sslPathsFlag.values) > 0 || *certmagicEnabled {
 		if *certmagicFallbackCert == "" {
 			*certmagicFallbackCert = filepath.Join(*apisixHome, "conf", "cert", "ssl_PLACE_HOLDER.crt")

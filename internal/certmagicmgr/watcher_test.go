@@ -6,18 +6,20 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 type fakeProvider struct {
 	name string
-	cert Certificate
+	cert ssl.Certificate
 }
 
 func (f fakeProvider) Name() string {
 	return f.name
 }
 
-func (f fakeProvider) BestMatchFor(_ string, _ *slog.Logger) (Certificate, bool) {
+func (f fakeProvider) BestMatchFor(_ string, _ *slog.Logger) (ssl.Certificate, bool) {
 	return f.cert, true
 }
 
@@ -70,7 +72,7 @@ func TestWatcherRunWatchEmitsNotifications(t *testing.T) {
 		sni: "example.com",
 		provider: fakeProvider{
 			name: "p1",
-			cert: Certificate{NotAfter: time.Now().UTC().Add(time.Hour)},
+			cert: ssl.Certificate{NotAfter: time.Now().UTC().Add(time.Hour)},
 		},
 	}
 

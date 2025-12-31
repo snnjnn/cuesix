@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/warpcomdev/cuesix/internal/cache"
-	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 func TestPluginCacheChangedRunsPipelineInOrder(t *testing.T) {
@@ -101,7 +101,7 @@ func TestPluginCacheChangedStopsOnPreRenderError(t *testing.T) {
 
 func TestBuildPreRenderInvalidPath(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
-	if _, err := buildPreRender([]string{missing}, nil, certmagicmgr.Certificate{}); err == nil {
+	if _, err := buildPreRender([]string{missing}, nil, ssl.Certificate{}); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
 }

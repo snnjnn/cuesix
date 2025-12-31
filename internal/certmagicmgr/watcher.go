@@ -7,6 +7,8 @@ import (
 	"maps"
 	"sync"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 type trackKey struct {
@@ -17,7 +19,7 @@ type trackKey struct {
 type Notification struct {
 	Provider string
 	SNI      string
-	Cert     Certificate
+	Cert     ssl.Certificate
 }
 
 // Watcher tracks certificate updates from certmagic.
@@ -25,7 +27,7 @@ type Watcher struct {
 	manager *Manager
 	lock    sync.Mutex
 	events  chan CertEvent
-	track   map[trackKey]Certificate
+	track   map[trackKey]ssl.Certificate
 	watch   map[chan Notification]struct{}
 	cleared bool
 }
@@ -38,7 +40,7 @@ func NewWatcher(manager *Manager, events chan CertEvent) (*Watcher, error) {
 	return &Watcher{
 		manager: manager,
 		events:  events,
-		track:   make(map[trackKey]Certificate),
+		track:   make(map[trackKey]ssl.Certificate),
 		watch:   make(map[chan Notification]struct{}),
 	}, nil
 }
@@ -53,7 +55,7 @@ func (w *Watcher) RequestCertificate(ctx context.Context, logger *slog.Logger, p
 	key := trackKey{provider: resolvedName, sni: sni}
 	w.withLock(func() {
 		if _, ok := w.track[key]; !ok {
-			w.track[key] = Certificate{}
+			w.track[key] = ssl.Certificate{}
 		}
 	})
 	err = w.manager.RequestCertificate(ctx, logger, resolvedName, sni)
@@ -128,7 +130,7 @@ func (w *Watcher) ClearTracking(logger *slog.Logger) {
 		for key := range w.track {
 			toRemove = append(toRemove, key)
 		}
-		w.track = make(map[trackKey]Certificate)
+		w.track = make(map[trackKey]ssl.Certificate)
 		w.cleared = true
 	})
 	for _, key := range toRemove {
@@ -173,7 +175,7 @@ func (w *Watcher) RunWatch(ctx context.Context, logger *slog.Logger, refresh tim
 		case <-ticker.C:
 			// Periodically, walk over al failed certificates, to see
 			// if some of them has been fixed
-			snapshot := make(map[trackKey]Certificate)
+			snapshot := make(map[trackKey]ssl.Certificate)
 			w.withLock(func() {
 				maps.Copy(snapshot, w.track)
 				w.cleared = false

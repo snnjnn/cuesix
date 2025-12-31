@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 // ProviderConfig configures a single ACME provider.
@@ -33,13 +34,6 @@ type Config struct {
 	DefaultTimeout  time.Duration
 }
 
-// Certificate bundles a certificate chain and key in PEM format.
-type Certificate struct {
-	CertPEM  []byte
-	KeyPEM   []byte
-	NotAfter time.Time
-}
-
 type provider struct {
 	sync.Mutex
 	cfg   ProviderConfig
@@ -55,7 +49,7 @@ type CertEvent struct {
 // ProviderView exposes provider operations needed by Watcher.
 type ProviderView interface {
 	Name() string
-	BestMatchFor(sni string, logger *slog.Logger) (Certificate, bool)
+	BestMatchFor(sni string, logger *slog.Logger) (ssl.Certificate, bool)
 }
 
 // Manager owns certmagic configuration and serialized operations.
@@ -63,7 +57,7 @@ type Manager struct {
 	cfg       Config
 	storage   certmagic.Storage
 	providers map[string]*provider
-	fallback  Certificate
+	fallback  ssl.Certificate
 }
 
 // NewManager builds a certmagic manager and validates configuration.
@@ -129,9 +123,9 @@ func (m *Manager) RequestCertificate(ctx context.Context, logger *slog.Logger, p
 }
 
 // FallbackCertificate returns the configured fallback certificate.
-func (m *Manager) FallbackCertificate() (Certificate, error) {
+func (m *Manager) FallbackCertificate() (ssl.Certificate, error) {
 	if len(m.fallback.CertPEM) == 0 || len(m.fallback.KeyPEM) == 0 {
-		return Certificate{}, errors.New("fallback certificate not configured")
+		return ssl.Certificate{}, errors.New("fallback certificate not configured")
 	}
 	return m.fallback, nil
 }
@@ -242,10 +236,10 @@ func (p *provider) Name() string {
 	return p.cfg.Name
 }
 
-func (p *provider) BestMatchFor(sni string, logger *slog.Logger) (Certificate, bool) {
+func (p *provider) BestMatchFor(sni string, logger *slog.Logger) (ssl.Certificate, bool) {
 	sni = strings.TrimSpace(sni)
 	if sni == "" {
-		return Certificate{}, false
+		return ssl.Certificate{}, false
 	}
 	p.Lock()
 	matches := append([]certmagic.Certificate(nil), p.cache.AllMatchingCertificates(sni)...)
@@ -253,7 +247,7 @@ func (p *provider) BestMatchFor(sni string, logger *slog.Logger) (Certificate, b
 	return bestMatchForCandidates(matches, logger)
 }
 
-func MarshalCertificate(cert certmagic.Certificate) (Certificate, error) {
+func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 	var certPEM []byte
 	for _, der := range cert.Certificate.Certificate {
 		certPEM = append(certPEM, pem.EncodeToMemory(&pem.Block{
@@ -262,11 +256,11 @@ func MarshalCertificate(cert certmagic.Certificate) (Certificate, error) {
 		})...)
 	}
 	if len(certPEM) == 0 {
-		return Certificate{}, errors.New("empty certificate chain")
+		return ssl.Certificate{}, errors.New("empty certificate chain")
 	}
 	key, err := x509.MarshalPKCS8PrivateKey(cert.Certificate.PrivateKey)
 	if err != nil {
-		return Certificate{}, err
+		return ssl.Certificate{}, err
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "PRIVATE KEY",
@@ -274,35 +268,35 @@ func MarshalCertificate(cert certmagic.Certificate) (Certificate, error) {
 	})
 	notAfter, err := leafNotAfter(cert.Certificate.Certificate)
 	if err != nil {
-		return Certificate{}, err
+		return ssl.Certificate{}, err
 	}
-	return Certificate{
+	return ssl.Certificate{
 		CertPEM:  certPEM,
 		KeyPEM:   keyPEM,
 		NotAfter: notAfter,
 	}, nil
 }
 
-func LoadFallbackCertificate(certPath string, keyPath string) (Certificate, error) {
+func LoadFallbackCertificate(certPath string, keyPath string) (ssl.Certificate, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("read fallback cert: %w", err)
+		return ssl.Certificate{}, fmt.Errorf("read fallback cert: %w", err)
 	}
 	if len(certPEM) == 0 {
-		return Certificate{}, errors.New("fallback cert is empty")
+		return ssl.Certificate{}, errors.New("fallback cert is empty")
 	}
 	keyPEM, err := os.ReadFile(keyPath)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("read fallback key: %w", err)
+		return ssl.Certificate{}, fmt.Errorf("read fallback key: %w", err)
 	}
 	if len(keyPEM) == 0 {
-		return Certificate{}, errors.New("fallback key is empty")
+		return ssl.Certificate{}, errors.New("fallback key is empty")
 	}
 	notAfter, err := parseCertNotAfter(certPEM)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("parse fallback cert: %w", err)
+		return ssl.Certificate{}, fmt.Errorf("parse fallback cert: %w", err)
 	}
-	return Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
+	return ssl.Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
 }
 
 func parseCertNotAfter(certPEM []byte) (time.Time, error) {
@@ -343,7 +337,7 @@ func parseLeaf(chain [][]byte) (*x509.Certificate, error) {
 	return x509.ParseCertificate(chain[0])
 }
 
-func bestMatchForCandidates(matches []certmagic.Certificate, logger *slog.Logger) (Certificate, bool) {
+func bestMatchForCandidates(matches []certmagic.Certificate, logger *slog.Logger) (ssl.Certificate, bool) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -371,7 +365,7 @@ func bestMatchForCandidates(matches []certmagic.Certificate, logger *slog.Logger
 		})
 	}
 	if len(candidates) == 0 {
-		return Certificate{}, false
+		return ssl.Certificate{}, false
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].notAfter.After(candidates[j].notAfter)
@@ -384,5 +378,5 @@ func bestMatchForCandidates(matches []certmagic.Certificate, logger *slog.Logger
 		}
 		return cert, true
 	}
-	return Certificate{}, false
+	return ssl.Certificate{}, false
 }
