@@ -41,14 +41,13 @@ func (p *pluginCache) Changed(logger *slog.Logger, value map[string]any) ([]byte
 	return output, nil
 }
 
-// Esta estructura adapta el watcher de certmagicmgr a lo que
-// espera el ssl plugin, para desacoplar ambos módulos.
+// This struct adapts the certmagicmgr watcher to what the ssl plugin expects,
+// to keep both modules decoupled.
 type sslTracker struct {
 	*certmagicmgr.Watcher
 }
 
-// Watch ejecuta la acción cada vez que hay cambios
-// en los certificados
+// Watch runs the action whenever certificates change.
 func (w sslTracker) Watch(ctx context.Context, buffer int, action func(provider, sni string, cert ssl.Certificate)) {
 	stream := w.Watcher.Subscribe(buffer)
 	defer w.Watcher.Unsubscribe(stream)
@@ -100,7 +99,7 @@ func buildPostRender(enableJQ bool, enableYAML bool, jqTimeout time.Duration) (p
 		plugins = append(plugins, &plugin.JQPlugin{Timeout: jqTimeout})
 	}
 	if enableYAML {
-		// YAMLPlugin siempre debe ser el ultimo plugin.
+		// YAMLPlugin must always be the last plugin.
 		plugins = append(plugins, &plugin.YAMLPlugin{})
 	}
 	return plugins, nil

@@ -7,5 +7,5 @@ import (
 type TextHandler struct{}
 
 func (f TextHandler) replaceTargets(logger *slog.Logger, targets []certTargets, fallback Certificate) {
-	// no op, se dejan como están
+	// no-op; leave entries unchanged
 }

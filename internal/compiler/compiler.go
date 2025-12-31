@@ -39,9 +39,8 @@ type MergingRule struct {
 // DefaultMergingRules returns the APISIX-specific merge rules for top-level lists.
 func DefaultMergingRules() MergingRule {
 
-	// Muchos tipos comparten labels y plugins en su schema,
-	// generalmente todos los podremos unificar siempre que
-	// contengan claves disjuntas.
+	// Many types share labels and plugins in their schema; we can usually merge
+	// them as long as they contain disjoint keys.
 	basicRules := func(prev string, other map[string]MergingRule) map[string]MergingRule {
 		basic := map[string]MergingRule{
 			"plugins": {

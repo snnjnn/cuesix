@@ -6,19 +6,19 @@ import (
 	"sync/atomic"
 )
 
-// Representa la API del proceso que se encarga realmente del trabajo.
+// Dispatcher is the expected API of the process that performs the actual work.
 type Dispatcher interface {
 	Notify()
 }
 
-// Representa la API del proceso que aplica el resultado del trabajo
+// Reloader is the expected API of the process that applies the work result.
 type Reloader interface {
 	Apply(context.Context, *slog.Logger, []byte, bool) error
 }
 
-// Representa una fuenta de eventos que provocan la ejecución del trabajo.
-// Devuelve "false" para interrumpir el bucle
-// (es decir, cuando el contexto se cancela)
+// Watch is a source of events that trigger work execution.
+// Returns false to break the loop
+// (that is, when the context is canceled)
 type Watch func(ctx context.Context) (canceled bool)
 
 // refreshManager coordinates reload readiness and cert-driven refreshes.
