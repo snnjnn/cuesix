@@ -104,6 +104,7 @@ func (d *Dispatcher) Run(ctx context.Context, logger *slog.Logger) error {
 	}
 }
 
+// Internal function that models the pipeline
 func (d *Dispatcher) handle(ctx context.Context, logger *slog.Logger) error {
 	start := time.Now()
 	defer dispatcherDuration.WithLabelValues("total").Observe(time.Since(start).Seconds())

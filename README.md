@@ -72,7 +72,7 @@ Besides merging files, cuesix implements some quality-of-life features that expa
 
 The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `file://...` or `acme://...` values in both `cert`/`key` and `certs`/`keys`.
 
-- If a certificate or key URL is `file://...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml. Missing files are replaced with the fallback certificate/key.
+- If a certificate or key URL is `file://...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml. Missing files are replaced with the fallback certificate/key configured via `--plugin-ssl-fallback-cert`/`--plugin-ssl-fallback-key`.
 
 For example, a config snippet like:
 
@@ -185,6 +185,8 @@ Plugins:
 - `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
 - `--plugin-ssl-acme-timeout` / `CUESIX_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests.
+- `--plugin-ssl-fallback-cert` / `CUESIX_PLUGIN_SSL_FALLBACK_CERT`: ssl plugin fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
+- `--plugin-ssl-fallback-key` / `CUESIX_PLUGIN_SSL_FALLBACK_KEY`: ssl plugin fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
 Certmagic:
@@ -197,12 +199,9 @@ Certmagic:
 - `--certmagic-watch-interval` / `CUESIX_CERTMAGIC_WATCH_INTERVAL`: refresh interval for certmagic certificate updates (default `1h`).
 - `--certmagic-untracked-interval` / `CUESIX_CERTMAGIC_UNTRACKED_INTERVAL`: interval for removing untracked certmagic entries (default `24h`).
 - `--certmagic-untracked-grace` / `CUESIX_CERTMAGIC_UNTRACKED_GRACE`: grace period for removing untracked certmagic entries (default `168h`).
-- `--certmagic-expired-interval` / `CUESIX_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `12h`).
+- `--certmagic-cleanup-interval` / `CUESIX_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `24h`).
 - `--certmagic-expired-grace` / `CUESIX_CERTMAGIC_EXPIRED_GRACE`: grace period for removing expired certmagic entries (default `125h`).
-- `--certmagic-fallback-cert` / `CUESIX_CERTMAGIC_FALLBACK_CERT`: fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
-- `--certmagic-fallback-key` / `CUESIX_CERTMAGIC_FALLBACK_KEY`: fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
-
-When an ACME certificate cannot be obtained, cuesix will use the fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available cuesix triggers a new compile/reload cycle (once a valid config has been delivered before).
+When an ACME certificate cannot be obtained, cuesix will use the SSL plugin fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available cuesix triggers a new compile/reload cycle (once a valid config has been delivered before).
 
 ## Usage
 

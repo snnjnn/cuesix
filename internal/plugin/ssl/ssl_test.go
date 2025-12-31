@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -363,6 +365,21 @@ func TestSSLPluginCertsKeysReplaceFilesKeepsIndex(t *testing.T) {
 	}
 	if keys[0] != "first-key" || keys[1] != "second-key" {
 		t.Fatalf("expected keys to keep index order, got %#v", keys)
+	}
+}
+
+func TestLoadFallbackCertificateEmptyFiles(t *testing.T) {
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "empty.crt")
+	keyPath := filepath.Join(dir, "empty.key")
+	if err := os.WriteFile(certPath, []byte{}, 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte{}, 0o644); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if _, err := LoadFallbackCertificate(certPath, keyPath); err == nil {
+		t.Fatalf("expected error for empty files")
 	}
 }
 

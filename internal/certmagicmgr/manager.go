@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -277,48 +276,6 @@ func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 		KeyPEM:   keyPEM,
 		NotAfter: notAfter,
 	}, nil
-}
-
-func LoadFallbackCertificate(certPath string, keyPath string) (ssl.Certificate, error) {
-	certPEM, err := os.ReadFile(certPath)
-	if err != nil {
-		return ssl.Certificate{}, fmt.Errorf("read fallback cert: %w", err)
-	}
-	if len(certPEM) == 0 {
-		return ssl.Certificate{}, errors.New("fallback cert is empty")
-	}
-	keyPEM, err := os.ReadFile(keyPath)
-	if err != nil {
-		return ssl.Certificate{}, fmt.Errorf("read fallback key: %w", err)
-	}
-	if len(keyPEM) == 0 {
-		return ssl.Certificate{}, errors.New("fallback key is empty")
-	}
-	notAfter, err := parseCertNotAfter(certPEM)
-	if err != nil {
-		return ssl.Certificate{}, fmt.Errorf("parse fallback cert: %w", err)
-	}
-	return ssl.Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
-}
-
-func parseCertNotAfter(certPEM []byte) (time.Time, error) {
-	rest := certPEM
-	for {
-		var block *pem.Block
-		block, rest = pem.Decode(rest)
-		if block == nil {
-			break
-		}
-		if block.Type != "CERTIFICATE" {
-			continue
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return time.Time{}, err
-		}
-		return cert.NotAfter, nil
-	}
-	return time.Time{}, errors.New("fallback cert missing certificate block")
 }
 
 func leafNotAfter(chain [][]byte) (time.Time, error) {

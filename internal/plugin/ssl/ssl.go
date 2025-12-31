@@ -1,10 +1,13 @@
 package ssl
 
 import (
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -213,4 +216,46 @@ func (p *SSLPlugin) entrySNIs(entry map[string]any) []string {
 		}
 	}
 	return slices.Collect(maps.Keys(snis))
+}
+
+func LoadFallbackCertificate(certPath string, keyPath string) (Certificate, error) {
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return Certificate{}, fmt.Errorf("read fallback cert: %w", err)
+	}
+	if len(certPEM) == 0 {
+		return Certificate{}, errors.New("fallback cert is empty")
+	}
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return Certificate{}, fmt.Errorf("read fallback key: %w", err)
+	}
+	if len(keyPEM) == 0 {
+		return Certificate{}, errors.New("fallback key is empty")
+	}
+	notAfter, err := parseCertNotAfter(certPEM)
+	if err != nil {
+		return Certificate{}, fmt.Errorf("parse fallback cert: %w", err)
+	}
+	return Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
+}
+
+func parseCertNotAfter(certPEM []byte) (time.Time, error) {
+	rest := certPEM
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return cert.NotAfter, nil
+	}
+	return time.Time{}, errors.New("fallback cert missing certificate block")
 }

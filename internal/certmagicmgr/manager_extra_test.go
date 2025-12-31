@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 func TestNewManagerValidatesConfig(t *testing.T) {
@@ -104,7 +106,7 @@ func TestLoadFallbackCertificateReadsPEM(t *testing.T) {
 	notAfter := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Second)
 	certPath, keyPath := writeFallbackCert(t, dir, notAfter)
 
-	cert, err := LoadFallbackCertificate(certPath, keyPath)
+	cert, err := ssl.LoadFallbackCertificate(certPath, keyPath)
 	if err != nil {
 		t.Fatalf("LoadFallbackCertificate returned error: %v", err)
 	}
@@ -113,21 +115,6 @@ func TestLoadFallbackCertificateReadsPEM(t *testing.T) {
 	}
 	if !timeClose(cert.NotAfter, notAfter, time.Second) {
 		t.Fatalf("unexpected notAfter: %v", cert.NotAfter)
-	}
-}
-
-func TestLoadFallbackCertificateEmptyFiles(t *testing.T) {
-	dir := t.TempDir()
-	certPath := filepath.Join(dir, "empty.crt")
-	keyPath := filepath.Join(dir, "empty.key")
-	if err := os.WriteFile(certPath, []byte{}, 0o644); err != nil {
-		t.Fatalf("write cert: %v", err)
-	}
-	if err := os.WriteFile(keyPath, []byte{}, 0o644); err != nil {
-		t.Fatalf("write key: %v", err)
-	}
-	if _, err := LoadFallbackCertificate(certPath, keyPath); err == nil {
-		t.Fatalf("expected error for empty files")
 	}
 }
 
