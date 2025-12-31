@@ -145,14 +145,13 @@ To enable API reload of APISIX, you need to provide the URL of the apisix contro
 
 Standalone (default): compiles and prints the merged config to stdout. No validation or reload.
 
-Server mode (`--serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and reloads APISIX on success. `/ready` returns 200 only after a successful reload has been delivered at least once.
+Server mode (`cuesix serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and reloads APISIX on success. `/ready` returns 200 only after a successful reload has been delivered at least once. Certmagic is only available in this mode.
 
 ## Flags and environment variables
 
 All flags can be provided as environment variables.
 
 Input and runtime mode:
-- `--serve` / `CUESIX_SERVE` (bool): enable server mode with `POST /compile`.
 - `--listen` / `CUESIX_LISTEN`: listen address for server mode (default `127.0.0.1:8080`).
 - `--metrics` / `CUESIX_METRICS_LISTEN`: listen address for `/metrics` (empty disables).
 - `--server-read-header-timeout` / `CUESIX_SERVER_READ_HEADER_TIMEOUT`: HTTP server read header timeout (default `5s`).
@@ -181,6 +180,7 @@ Reload behavior:
 - `--retry-multiplier` / `CUESIX_RETRY_MULTIPLIER`: backoff multiplier between retries.
 
 Plugins:
+- `--plugin-ssl` / `CUESIX_PLUGIN_SSL`: enable ssl pre-render plugin (required to process `acme://` without certmagic).
 - `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
 - `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
@@ -189,9 +189,9 @@ Plugins:
 - `--plugin-ssl-fallback-key` / `CUESIX_PLUGIN_SSL_FALLBACK_KEY`: ssl plugin fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
-Certmagic:
+Certmagic (serve only):
 - `--certmagic` / `CUESIX_CERTMAGIC` (bool): enable certmagic ACME manager.
-- `--certmagic-provider` (repeatable) / `CUESIX_CERTMAGIC_PROVIDERS` (semicolon-separated): provider specs (`name=...,ca=...,email=...[,timeout=...]`).
+- `--certmagic-provider` (repeatable) / `CUESIX_CERTMAGIC_PROVIDERS` (comma-separated): provider specs (`name|email|ca`).
 - `--certmagic-default-provider` / `CUESIX_CERTMAGIC_DEFAULT_PROVIDER`: default provider name.
 - `--certmagic-data-dir` / `CUESIX_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
 - `--certmagic-challenge-addr` / `CUESIX_CERTMAGIC_CHALLENGE_ADDR`: HTTP-01 challenge listen address.
@@ -208,13 +208,13 @@ When an ACME certificate cannot be obtained, cuesix will use the SSL plugin fall
 Standalone:
 
 ```bash
-cuesix --input ./configs --input ./more-configs
+cuesix compile --input ./configs --input ./more-configs
 ```
 
 Server mode:
 
 ```bash
-cuesix --serve \
+cuesix serve \
   --listen :8080 \
   --metrics :9090 \
   --input ./configs \

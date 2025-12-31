@@ -2,21 +2,37 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"time"
+
+	"github.com/urfave/cli/v2"
 )
 
 type Input struct {
-	Serve     bool
 	InputDirs []string
 	Cooldown  time.Duration
 }
 
-func (c *Input) RegisterFlags(fs *flag.FlagSet) {
-	c.InputDirs = splitComma(envString("CUESIX_INPUT_DIRS"))
-	fs.BoolVar(&c.Serve, "serve", envBool("CUESIX_SERVE", false), "run HTTP server")
-	fs.DurationVar(&c.Cooldown, "cooldown", envDuration("CUESIX_COOLDOWN", 0), "cooldown duration")
-	fs.Var(&stringSliceValue{target: &c.InputDirs}, "input", "input directory (repeatable)")
+func (c *Input) Flags() []cli.Flag {
+	return []cli.Flag{
+		&cli.DurationFlag{
+			Name:     "cooldown",
+			Usage:    "cooldown duration",
+			EnvVars:  []string{"CUESIX_COOLDOWN"},
+			Value:    0,
+			Category: "Input",
+		},
+		&cli.StringSliceFlag{
+			Name:     "input",
+			Usage:    "input directory (repeatable)",
+			EnvVars:  []string{"CUESIX_INPUT_DIRS"},
+			Category: "Input",
+		},
+	}
+}
+
+func (c *Input) Apply(ctx *cli.Context) {
+	c.Cooldown = ctx.Duration("cooldown")
+	c.InputDirs = ctx.StringSlice("input")
 }
 
 func (c *Input) Validate() error {

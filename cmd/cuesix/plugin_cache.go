@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
 	"github.com/warpcomdev/cuesix/internal/cache"
 	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
 	"github.com/warpcomdev/cuesix/internal/plugin"
@@ -65,30 +66,30 @@ func (w sslTracker) Watch(ctx context.Context, buffer int, action func(provider,
 }
 
 // buildPreRender constructs the pre-render plugin chain.
-func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallback ssl.Certificate, acmeTimeout time.Duration) (plugin.PreRender, error) {
+func buildPreRender(cfg config.Plugins, acmeWatcher *certmagicmgr.Watcher, fallback ssl.Certificate) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
-	if len(sslPaths) > 0 {
-		sslFSes, err := buildFilesystems(sslPaths)
-		if err != nil {
-			return nil, err
-		}
-		plugins = append(plugins, &ssl.SSLPlugin{
-			FileHandler: ssl.FileHandler{
-				Filesystems: sslFSes,
-			},
-			ACMEHandler: ssl.ACMEHandler{
-				ACME: sslTracker{
-					Watcher: acmeWatcher,
-				},
-				RequestTimeout: acmeTimeout,
-			},
-			Fallback: ssl.Certificate{
-				CertPEM:  fallback.CertPEM,
-				KeyPEM:   fallback.KeyPEM,
-				NotAfter: fallback.NotAfter,
-			},
-		})
+	if !cfg.EnableSSL {
+		return plugins, nil
 	}
+	// Collect SSLPaths
+	sslFSes, err := buildFilesystems(cfg.SSLPaths)
+	if err != nil {
+		return nil, err
+	}
+	// Prepare ACME handler
+	handler := ssl.ACMEHandler{
+		RequestTimeout: cfg.SSLACMETimeout,
+	}
+	if acmeWatcher != nil {
+		handler.ACME = sslTracker{Watcher: acmeWatcher}
+	}
+	plugins = append(plugins, &ssl.SSLPlugin{
+		FileHandler: ssl.FileHandler{
+			Filesystems: sslFSes,
+		},
+		ACMEHandler: handler,
+		Fallback:    fallback,
+	})
 	return plugins, nil
 }
 

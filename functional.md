@@ -16,7 +16,7 @@ Si el fichero es válido, se reemplaza el fichero de configuración real y se ut
 La aplicacion tiene dos modos de ejecucion:
 
 - Modo standalone (por defecto): compila los fragmentos y escribe la configuracion resultante en stdout, sin validar ni recargar APISIX.
-- Modo servidor (`--serve`): expone endpoints HTTP para disparar la compilacion y, si procede, validar y recargar APISIX.
+- Modo servidor (`cuesix serve`): expone endpoints HTTP para disparar la compilacion y, si procede, validar y recargar APISIX.
 
 En modo servidor, la aplicacion expone una ruta "/compile". Cuando se recibe una peticion POST a esa ruta, sin importar el payload o el contenido, se inicia el proceso de recompilacion. Tambien expone endpoints de salud `/live` y `/ready`.
 
@@ -29,7 +29,7 @@ La aplicacion mantiene un hash de la ultima configuracion compilada. El hash se 
 
 Cuando el plugin SSL esta activo, se usa un certificado de fallback configurado por flags para resolver referencias `file://` faltantes o errores ACME.
 
-La aplicacion puede exponer un servidor de metricas y un servidor para desafios ACME si esas direcciones estan configuradas.
+La aplicacion puede exponer un servidor de metricas y un servidor para desafios ACME si esas direcciones estan configuradas. Certmagic solo se usa en modo servidor; en modo standalone las referencias ACME usan el certificado fallback.
 
 La aplicación se divide en los siguientes componentes:
 

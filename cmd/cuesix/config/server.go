@@ -1,8 +1,9 @@
 package config
 
 import (
-	"flag"
 	"time"
+
+	"github.com/urfave/cli/v2"
 )
 
 type Server struct {
@@ -22,14 +23,68 @@ type Timeouts struct {
 	IdleTimeout       time.Duration
 }
 
-func (c *Server) RegisterFlags(fs *flag.FlagSet) {
-	fs.StringVar(&c.ListenAddr, "listen", envStringDefault("CUESIX_LISTEN", "127.0.0.1:8080"), "listen address")
-	fs.StringVar(&c.MetricsAddr, "metrics", envStringDefault("CUESIX_METRICS_LISTEN", ":8081"), "metrics listen address (empty to disable)")
-	fs.DurationVar(&c.ReadHeaderTimeout, "server-read-header-timeout", envDuration("CUESIX_SERVER_READ_HEADER_TIMEOUT", 5*time.Second), "http server read header timeout")
-	fs.DurationVar(&c.ReadTimeout, "server-read-timeout", envDuration("CUESIX_SERVER_READ_TIMEOUT", 10*time.Second), "http server read timeout")
-	fs.DurationVar(&c.WriteTimeout, "server-write-timeout", envDuration("CUESIX_SERVER_WRITE_TIMEOUT", 10*time.Second), "http server write timeout")
-	fs.DurationVar(&c.IdleTimeout, "server-idle-timeout", envDuration("CUESIX_SERVER_IDLE_TIMEOUT", 60*time.Second), "http server idle timeout")
-	fs.DurationVar(&c.ShutdownTimeout, "server-shutdown-timeout", envDuration("CUESIX_SERVER_SHUTDOWN_TIMEOUT", 10*time.Second), "http server shutdown timeout")
+func (c *Server) Flags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:     "listen",
+			Usage:    "listen address",
+			EnvVars:  []string{"CUESIX_LISTEN"},
+			Value:    "127.0.0.1:8080",
+			Category: "Server",
+		},
+		&cli.StringFlag{
+			Name:     "metrics",
+			Usage:    "metrics listen address (empty to disable)",
+			EnvVars:  []string{"CUESIX_METRICS_LISTEN"},
+			Value:    ":8081",
+			Category: "Server",
+		},
+		&cli.DurationFlag{
+			Name:     "server-read-header-timeout",
+			Usage:    "http server read header timeout",
+			EnvVars:  []string{"CUESIX_SERVER_READ_HEADER_TIMEOUT"},
+			Value:    5 * time.Second,
+			Category: "Server",
+		},
+		&cli.DurationFlag{
+			Name:     "server-read-timeout",
+			Usage:    "http server read timeout",
+			EnvVars:  []string{"CUESIX_SERVER_READ_TIMEOUT"},
+			Value:    10 * time.Second,
+			Category: "Server",
+		},
+		&cli.DurationFlag{
+			Name:     "server-write-timeout",
+			Usage:    "http server write timeout",
+			EnvVars:  []string{"CUESIX_SERVER_WRITE_TIMEOUT"},
+			Value:    10 * time.Second,
+			Category: "Server",
+		},
+		&cli.DurationFlag{
+			Name:     "server-idle-timeout",
+			Usage:    "http server idle timeout",
+			EnvVars:  []string{"CUESIX_SERVER_IDLE_TIMEOUT"},
+			Value:    60 * time.Second,
+			Category: "Server",
+		},
+		&cli.DurationFlag{
+			Name:     "server-shutdown-timeout",
+			Usage:    "http server shutdown timeout",
+			EnvVars:  []string{"CUESIX_SERVER_SHUTDOWN_TIMEOUT"},
+			Value:    10 * time.Second,
+			Category: "Server",
+		},
+	}
+}
+
+func (c *Server) Apply(ctx *cli.Context) {
+	c.ListenAddr = ctx.String("listen")
+	c.MetricsAddr = ctx.String("metrics")
+	c.ReadHeaderTimeout = ctx.Duration("server-read-header-timeout")
+	c.ReadTimeout = ctx.Duration("server-read-timeout")
+	c.WriteTimeout = ctx.Duration("server-write-timeout")
+	c.IdleTimeout = ctx.Duration("server-idle-timeout")
+	c.ShutdownTimeout = ctx.Duration("server-shutdown-timeout")
 }
 
 func (c Server) Timeouts() Timeouts {

@@ -1,9 +1,9 @@
 package config
 
 import (
-	"flag"
 	"time"
 
+	"github.com/urfave/cli/v2"
 	"github.com/warpcomdev/cuesix/internal/validator"
 )
 
@@ -14,11 +14,42 @@ type APISIX struct {
 	ValidationTimeout time.Duration
 }
 
-func (c *APISIX) RegisterFlags(fs *flag.FlagSet) {
-	fs.StringVar(&c.Home, "apisix-home", envStringDefault("CUESIX_APISIX_HOME", "/usr/local/apisix"), "apisix home path")
-	fs.StringVar(&c.MirrorDir, "mirror-dir", envString("CUESIX_MIRROR_DIR"), "apisix mirror directory (optional)")
-	fs.BoolVar(&c.KeepMirror, "keep-mirror", envBool("CUESIX_KEEP_MIRROR", false), "Do not remove mirror on startup")
-	fs.DurationVar(&c.ValidationTimeout, "validation-timeout", envDuration("CUESIX_VALIDATION_TIMEOUT", 30*time.Second), "timeout for apisix test")
+func (c *APISIX) Flags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:     "apisix-home",
+			Usage:    "apisix home path",
+			EnvVars:  []string{"CUESIX_APISIX_HOME"},
+			Value:    "/usr/local/apisix",
+			Category: "APISIX",
+		},
+		&cli.StringFlag{
+			Name:     "mirror-dir",
+			Usage:    "apisix mirror directory (optional)",
+			EnvVars:  []string{"CUESIX_MIRROR_DIR"},
+			Category: "APISIX",
+		},
+		&cli.BoolFlag{
+			Name:     "keep-mirror",
+			Usage:    "Do not remove mirror on startup",
+			EnvVars:  []string{"CUESIX_KEEP_MIRROR"},
+			Category: "APISIX",
+		},
+		&cli.DurationFlag{
+			Name:     "validation-timeout",
+			Usage:    "timeout for apisix test",
+			EnvVars:  []string{"CUESIX_VALIDATION_TIMEOUT"},
+			Value:    30 * time.Second,
+			Category: "APISIX",
+		},
+	}
+}
+
+func (c *APISIX) Apply(ctx *cli.Context) {
+	c.Home = ctx.String("apisix-home")
+	c.MirrorDir = ctx.String("mirror-dir")
+	c.KeepMirror = ctx.Bool("keep-mirror")
+	c.ValidationTimeout = ctx.Duration("validation-timeout")
 }
 
 func (c APISIX) ConfigPath(outputYAML bool) string {

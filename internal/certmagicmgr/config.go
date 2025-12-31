@@ -3,45 +3,23 @@ package certmagicmgr
 import (
 	"fmt"
 	"strings"
-	"time"
 )
 
-// ParseProviderSpec parses a comma-separated provider definition.
-// Example: "name=letsencrypt,ca=https://...,email=ops@example.com,timeout=30s"
+const ProviderFieldSeparator = "|"
+
+// ParseProviderSpec parses a pipe-separated provider definition.
+// Format: "name|email|ca"
 func ParseProviderSpec(spec string) (ProviderConfig, error) {
 	var cfg ProviderConfig
-	parts := strings.Split(spec, ",")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		key, value, ok := strings.Cut(part, "=")
-		if !ok {
-			return ProviderConfig{}, fmt.Errorf("invalid provider field: %q", part)
-		}
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		switch key {
-		case "name":
-			cfg.Name = value
-		case "ca":
-			cfg.CA = value
-		case "email":
-			cfg.Email = value
-		case "timeout":
-			if value == "" {
-				cfg.Timeout = 0
-				continue
-			}
-			parsed, err := time.ParseDuration(value)
-			if err != nil {
-				return ProviderConfig{}, fmt.Errorf("invalid timeout: %w", err)
-			}
-			cfg.Timeout = parsed
-		default:
-			return ProviderConfig{}, fmt.Errorf("unknown provider field: %s", key)
-		}
+	parts := strings.Split(spec, ProviderFieldSeparator)
+	if len(parts) != 3 {
+		return ProviderConfig{}, fmt.Errorf("invalid provider format, expected name|email|ca")
+	}
+	cfg.Name = strings.TrimSpace(parts[0])
+	cfg.Email = strings.TrimSpace(parts[1])
+	cfg.CA = strings.TrimSpace(parts[2])
+	if cfg.Name == "" || cfg.Email == "" || cfg.CA == "" {
+		return ProviderConfig{}, fmt.Errorf("provider requires name, email, and ca")
 	}
 	return cfg, nil
 }

@@ -22,7 +22,6 @@ type ProviderConfig struct {
 	Name    string
 	CA      string
 	Email   string
-	Timeout time.Duration
 }
 
 // Config describes the certmagic manager configuration.
@@ -105,13 +104,9 @@ func (m *Manager) RequestCertificate(ctx context.Context, logger *slog.Logger, p
 	if err != nil {
 		return err
 	}
-	timeout := p.cfg.Timeout
-	if timeout <= 0 {
-		timeout = m.cfg.DefaultTimeout
-	}
-	if timeout > 0 {
+	if m.cfg.DefaultTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(ctx, m.cfg.DefaultTimeout)
 		defer cancel()
 	}
 	p.Lock()
@@ -202,12 +197,8 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 		Email:  providerCfg.Email,
 		Agreed: true,
 	}
-	timeout := providerCfg.Timeout
-	if timeout <= 0 {
-		timeout = cfg.DefaultTimeout
-	}
-	if timeout > 0 {
-		issuerCfg.CertObtainTimeout = timeout
+	if cfg.DefaultTimeout > 0 {
+		issuerCfg.CertObtainTimeout = cfg.DefaultTimeout
 	}
 	issuer := certmagic.NewACMEIssuer(p.magic, issuerCfg)
 	p.magic.Issuers = []certmagic.Issuer{issuer}
