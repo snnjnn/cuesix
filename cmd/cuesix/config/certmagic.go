@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type Certmagic struct {
@@ -25,72 +25,72 @@ func (c *Certmagic) Flags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:     "certmagic",
 			Usage:    "enable certmagic acme manager",
-			EnvVars:  []string{"CUESIX_CERTMAGIC"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC"),
 			Category: "Certmagic",
 		},
 		&cli.StringFlag{
 			Name:     "certmagic-default-provider",
 			Usage:    "certmagic default provider",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_DEFAULT_PROVIDER"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_DEFAULT_PROVIDER"),
 			Category: "Certmagic",
 		},
 		&cli.StringFlag{
 			Name:     "certmagic-data-dir",
 			Usage:    "certmagic data directory",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_DATA_DIR"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_DATA_DIR"),
 			Category: "Certmagic",
 		},
 		&cli.StringFlag{
 			Name:     "certmagic-challenge-addr",
 			Usage:    "certmagic HTTP-01 challenge address",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_CHALLENGE_ADDR"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_CHALLENGE_ADDR"),
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
 			Name:     "certmagic-timeout",
 			Usage:    "certmagic default certificate obtain timeout",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_TIMEOUT"),
 			Value:    0,
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
 			Name:     "certmagic-watch-interval",
 			Usage:    "certmagic certificate refresh interval",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_WATCH_INTERVAL"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_WATCH_INTERVAL"),
 			Value:    time.Hour,
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
 			Name:     "certmagic-untracked-grace",
 			Usage:    "grace period for removing untracked certmagic entries",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_UNTRACKED_GRACE"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_UNTRACKED_GRACE"),
 			Value:    7 * 24 * time.Hour,
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
 			Name:     "certmagic-cleanup-interval",
 			Usage:    "interval for removing expired certmagic entries",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_CLEANUP_INTERVAL"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_CLEANUP_INTERVAL"),
 			Value:    24 * time.Hour,
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
 			Name:     "certmagic-expired-grace",
 			Usage:    "grace period for expired certmagic entries",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_EXPIRED_GRACE"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_EXPIRED_GRACE"),
 			Value:    125 * time.Hour,
 			Category: "Certmagic",
 		},
 		&cli.StringSliceFlag{
 			Name:     "certmagic-provider",
 			Usage:    "certmagic provider config (repeatable, format name|email|ca)",
-			EnvVars:  []string{"CUESIX_CERTMAGIC_PROVIDERS"},
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_PROVIDERS"),
 			Category: "Certmagic",
 		},
 	}
 }
 
-func (c *Certmagic) Apply(ctx *cli.Context) {
+func (c *Certmagic) Apply(ctx *cli.Command) {
 	c.Enabled = ctx.Bool("certmagic")
 	c.DefaultProvider = ctx.String("certmagic-default-provider")
 	c.DataDir = ctx.String("certmagic-data-dir")

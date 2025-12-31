@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type Input struct {
@@ -17,20 +17,20 @@ func (c *Input) Flags() []cli.Flag {
 		&cli.DurationFlag{
 			Name:     "cooldown",
 			Usage:    "cooldown duration",
-			EnvVars:  []string{"CUESIX_COOLDOWN"},
+			Sources:  cli.EnvVars("CUESIX_COOLDOWN"),
 			Value:    0,
 			Category: "Input",
 		},
 		&cli.StringSliceFlag{
 			Name:     "input",
 			Usage:    "input directory (repeatable)",
-			EnvVars:  []string{"CUESIX_INPUT_DIRS"},
+			Sources:  cli.EnvVars("CUESIX_INPUT_DIRS"),
 			Category: "Input",
 		},
 	}
 }
 
-func (c *Input) Apply(ctx *cli.Context) {
+func (c *Input) Apply(ctx *cli.Command) {
 	c.Cooldown = ctx.Duration("cooldown")
 	c.InputDirs = ctx.StringSlice("input")
 }

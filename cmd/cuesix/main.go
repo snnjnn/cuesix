@@ -12,8 +12,10 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-isatty"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
 	"github.com/warpcomdev/cuesix/internal/cache"
 	"github.com/warpcomdev/cuesix/internal/compiler"
@@ -28,9 +30,15 @@ import (
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	//logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	//	Level: slog.LevelInfo,
+	//}))
+	w := os.Stderr
+	logger := slog.New(
+		tint.NewHandler(w, &tint.Options{
+			NoColor: !isatty.IsTerminal(w.Fd()),
+		}),
+	)
 	slog.SetDefault(logger)
 
 	commonFlags := func(inputCfg *config.Input, apisixCfg *config.APISIX, pluginCfg *config.Plugins) []cli.Flag {
@@ -48,7 +56,7 @@ func main() {
 		return flags
 	}
 
-	app := &cli.App{
+	app := &cli.Command{
 		Name:  "cuesix",
 		Usage: "compile APISIX standalone config from fragments",
 		Commands: []*cli.Command{
@@ -61,14 +69,14 @@ func main() {
 					pluginCfg := &config.Plugins{}
 					return commonFlags(inputCfg, apisixCfg, pluginCfg)
 				}(),
-				Action: func(ctx *cli.Context) error {
+				Action: func(ctx context.Context, cmd *cli.Command) error {
 					inputCfg := config.Input{}
 					apisixCfg := config.APISIX{}
 					pluginCfg := config.Plugins{}
 
-					inputCfg.Apply(ctx)
-					apisixCfg.Apply(ctx)
-					pluginCfg.Apply(ctx)
+					inputCfg.Apply(cmd)
+					apisixCfg.Apply(cmd)
+					pluginCfg.Apply(cmd)
 
 					if err := inputCfg.Validate(); err != nil {
 						return err
@@ -91,7 +99,7 @@ func main() {
 					flags = append(flags, serveFlags(serverCfg, reloadCfg, certmagicCfg)...)
 					return flags
 				}(),
-				Action: func(ctx *cli.Context) error {
+				Action: func(ctx context.Context, cmd *cli.Command) error {
 					inputCfg := config.Input{}
 					apisixCfg := config.APISIX{}
 					pluginCfg := config.Plugins{}
@@ -99,12 +107,12 @@ func main() {
 					serverCfg := config.Server{}
 					reloadCfg := config.Reload{}
 
-					inputCfg.Apply(ctx)
-					apisixCfg.Apply(ctx)
-					pluginCfg.Apply(ctx)
-					certmagicCfg.Apply(ctx)
-					serverCfg.Apply(ctx)
-					reloadCfg.Apply(ctx)
+					inputCfg.Apply(cmd)
+					apisixCfg.Apply(cmd)
+					pluginCfg.Apply(cmd)
+					certmagicCfg.Apply(cmd)
+					serverCfg.Apply(cmd)
+					reloadCfg.Apply(cmd)
 
 					if err := inputCfg.Validate(); err != nil {
 						return err
@@ -119,7 +127,7 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		log.Fatal(err)
 	}
 }

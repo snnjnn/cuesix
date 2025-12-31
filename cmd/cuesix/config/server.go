@@ -3,7 +3,7 @@ package config
 import (
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type Server struct {
@@ -28,56 +28,56 @@ func (c *Server) Flags() []cli.Flag {
 		&cli.StringFlag{
 			Name:     "listen",
 			Usage:    "listen address",
-			EnvVars:  []string{"CUESIX_LISTEN"},
+			Sources:  cli.EnvVars("CUESIX_LISTEN"),
 			Value:    "127.0.0.1:8080",
 			Category: "Server",
 		},
 		&cli.StringFlag{
 			Name:     "metrics",
 			Usage:    "metrics listen address (empty to disable)",
-			EnvVars:  []string{"CUESIX_METRICS_LISTEN"},
+			Sources:  cli.EnvVars("CUESIX_METRICS_LISTEN"),
 			Value:    ":8081",
 			Category: "Server",
 		},
 		&cli.DurationFlag{
 			Name:     "server-read-header-timeout",
 			Usage:    "http server read header timeout",
-			EnvVars:  []string{"CUESIX_SERVER_READ_HEADER_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_SERVER_READ_HEADER_TIMEOUT"),
 			Value:    5 * time.Second,
 			Category: "Server",
 		},
 		&cli.DurationFlag{
 			Name:     "server-read-timeout",
 			Usage:    "http server read timeout",
-			EnvVars:  []string{"CUESIX_SERVER_READ_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_SERVER_READ_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Server",
 		},
 		&cli.DurationFlag{
 			Name:     "server-write-timeout",
 			Usage:    "http server write timeout",
-			EnvVars:  []string{"CUESIX_SERVER_WRITE_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_SERVER_WRITE_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Server",
 		},
 		&cli.DurationFlag{
 			Name:     "server-idle-timeout",
 			Usage:    "http server idle timeout",
-			EnvVars:  []string{"CUESIX_SERVER_IDLE_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_SERVER_IDLE_TIMEOUT"),
 			Value:    60 * time.Second,
 			Category: "Server",
 		},
 		&cli.DurationFlag{
 			Name:     "server-shutdown-timeout",
 			Usage:    "http server shutdown timeout",
-			EnvVars:  []string{"CUESIX_SERVER_SHUTDOWN_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_SERVER_SHUTDOWN_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Server",
 		},
 	}
 }
 
-func (c *Server) Apply(ctx *cli.Context) {
+func (c *Server) Apply(ctx *cli.Command) {
 	c.ListenAddr = ctx.String("listen")
 	c.MetricsAddr = ctx.String("metrics")
 	c.ReadHeaderTimeout = ctx.Duration("server-read-header-timeout")

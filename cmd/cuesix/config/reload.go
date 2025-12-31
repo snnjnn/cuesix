@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 type Reload struct {
@@ -26,67 +26,67 @@ func (c *Reload) Flags() []cli.Flag {
 		&cli.StringFlag{
 			Name:     "apisix-url",
 			Usage:    "apisix admin base url",
-			EnvVars:  []string{"CUESIX_APISIX_URL"},
+			Sources:  cli.EnvVars("CUESIX_APISIX_URL"),
 			Category: "Reload",
 		},
 		&cli.BoolFlag{
 			Name:     "dry-run",
 			Usage:    "run pipeline without writing config or reloading apisix",
-			EnvVars:  []string{"CUESIX_DRY_RUN"},
+			Sources:  cli.EnvVars("CUESIX_DRY_RUN"),
 			Category: "Reload",
 		},
 		&cli.StringFlag{
 			Name:     "apisix-api-key",
 			Usage:    "apisix admin api key",
-			EnvVars:  []string{"CUESIX_APISIX_API_KEY"},
+			Sources:  cli.EnvVars("CUESIX_APISIX_API_KEY"),
 			Category: "Reload",
 		},
 		&cli.StringFlag{
 			Name:     "reload-method",
 			Usage:    "reload HTTP method",
-			EnvVars:  []string{"CUESIX_RELOAD_METHOD"},
+			Sources:  cli.EnvVars("CUESIX_RELOAD_METHOD"),
 			Value:    http.MethodPost,
 			Category: "Reload",
 		},
 		&cli.DurationFlag{
 			Name:     "reload-timeout",
 			Usage:    "timeout for reload HTTP request",
-			EnvVars:  []string{"CUESIX_RELOAD_TIMEOUT"},
+			Sources:  cli.EnvVars("CUESIX_RELOAD_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Reload",
 		},
 		&cli.IntFlag{
 			Name:     "retry-max",
 			Usage:    "reload retry attempts",
-			EnvVars:  []string{"CUESIX_RETRY_MAX"},
+			Sources:  cli.EnvVars("CUESIX_RETRY_MAX"),
 			Value:    0,
 			Category: "Reload",
 		},
 		&cli.DurationFlag{
 			Name:     "retry-initial",
 			Usage:    "reload initial backoff",
-			EnvVars:  []string{"CUESIX_RETRY_INITIAL"},
+			Sources:  cli.EnvVars("CUESIX_RETRY_INITIAL"),
 			Value:    200 * time.Millisecond,
 			Category: "Reload",
 		},
 		&cli.DurationFlag{
 			Name:     "retry-max-delay",
 			Usage:    "reload max backoff",
-			EnvVars:  []string{"CUESIX_RETRY_MAX_DELAY"},
+			Sources:  cli.EnvVars("CUESIX_RETRY_MAX_DELAY"),
 			Value:    2 * time.Second,
 			Category: "Reload",
 		},
 		&cli.Float64Flag{
 			Name:     "retry-multiplier",
 			Usage:    "reload backoff multiplier",
-			EnvVars:  []string{"CUESIX_RETRY_MULTIPLIER"},
+			Sources:  cli.EnvVars("CUESIX_RETRY_MULTIPLIER"),
 			Value:    2,
 			Category: "Reload",
 		},
 	}
 }
 
-func (c *Reload) Apply(ctx *cli.Context) {
+func (c *Reload) Apply(ctx *cli.Command) {
 	c.URL = ctx.String("apisix-url")
 	c.DryRun = ctx.Bool("dry-run")
 	c.APIKey = ctx.String("apisix-api-key")
