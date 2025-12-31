@@ -27,6 +27,9 @@ type ACMEHandler struct {
 }
 
 func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, fallback Certificate) {
+	if len(targets) == 0 {
+		return
+	}
 	targetsBySNI := make(map[string][]certTargets)
 	if a.ACME == nil {
 		logger.Error("ssl plugin acme requires acme manager and tracker")
@@ -37,7 +40,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 			continue
 		}
 		if len(target.snis) != 1 {
-			logger.Error("ssl plugin acme requires exactly one sni", "target", target)
+			logger.Error("ssl plugin acme requires exactly one sni", "sslid", target.sslId, "snis", target.snis)
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
 			continue
 		}
@@ -98,7 +101,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 				sniSuccess = true
 				break
 			}
-			logger.Error("ssl plugin acme request failed", "provider", provider, "sni", sni, "err", err)
+			logger.Error("ssl plugin acme request failed", "sslid", target.sslId, "provider", provider, "sni", sni, "err", err)
 		}
 		if !sniSuccess {
 			clearPending(sni)

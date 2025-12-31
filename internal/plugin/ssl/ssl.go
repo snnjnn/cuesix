@@ -36,6 +36,7 @@ type certUpdater func(cert, key []byte)
 // `cert`, `key` fields, or the `certs`, `keys` list),
 // together with the list of SNIs in that same entry.
 type certTargets struct {
+	sslId   string
 	cert    string
 	key     string
 	snis    []string
@@ -140,12 +141,19 @@ func (p *SSLPlugin) collectTargets(entries []any) (map[targetType][]certTargets,
 }
 
 func (p *SSLPlugin) collectEntryTargets(entry map[string]any, targets map[targetType][]certTargets) {
+	var sslIdString string
+	sslId, ok := entry["id"]
+	if ok {
+		if sslIdString, ok = sslId.(string); !ok {
+			sslIdString = fmt.Sprintf("%v", sslId)
+		}
+	}
 	snis := p.entrySNIs(entry)
-	p.collectSinglePair(entry, snis, targets)
-	p.collectListPairs(entry, snis, targets)
+	p.collectSinglePair(entry, sslIdString, snis, targets)
+	p.collectListPairs(entry, sslIdString, snis, targets)
 }
 
-func (p *SSLPlugin) collectSinglePair(entry map[string]any, snis []string, targets map[targetType][]certTargets) {
+func (p *SSLPlugin) collectSinglePair(entry map[string]any, id string, snis []string, targets map[targetType][]certTargets) {
 	cert, certOk := entry["cert"]
 	key, keyOk := entry["key"]
 	if !certOk || !keyOk {
@@ -158,9 +166,10 @@ func (p *SSLPlugin) collectSinglePair(entry map[string]any, snis []string, targe
 	}
 	targetKind := resolveTargetType(certText, keyText)
 	targets[targetKind] = append(targets[targetKind], certTargets{
-		cert: certText,
-		key:  keyText,
-		snis: snis,
+		sslId: id,
+		cert:  certText,
+		key:   keyText,
+		snis:  snis,
 		replace: func(cert, key []byte) {
 			entry["cert"] = string(cert)
 			entry["key"] = string(key)
@@ -168,7 +177,7 @@ func (p *SSLPlugin) collectSinglePair(entry map[string]any, snis []string, targe
 	})
 }
 
-func (p *SSLPlugin) collectListPairs(entry map[string]any, snis []string, targets map[targetType][]certTargets) {
+func (p *SSLPlugin) collectListPairs(entry map[string]any, id string, snis []string, targets map[targetType][]certTargets) {
 	certs, keys := p.certPairs(entry)
 	if len(certs) == 0 || len(keys) == 0 {
 		return
@@ -180,9 +189,10 @@ func (p *SSLPlugin) collectListPairs(entry map[string]any, snis []string, target
 		targetKind := resolveTargetType(certText, keyText)
 		index := idx
 		targets[targetKind] = append(targets[targetKind], certTargets{
-			cert: certText,
-			key:  keyText,
-			snis: snis,
+			sslId: id,
+			cert:  certText,
+			key:   keyText,
+			snis:  snis,
 			replace: func(cert, key []byte) {
 				certs[index] = string(cert)
 				keys[index] = string(key)

@@ -16,15 +16,18 @@ func (f FileHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	if len(targets) == 0 {
 		return
 	}
+	if len(f.Filesystems) == 0 {
+		logger.Error("ssl plugin requires at least one filesystem")
+	}
 	for _, target := range targets {
 		certBytes, certErr := f.resolveValue(target.cert)
 		keyBytes, keyErr := f.resolveValue(target.key)
 		if certErr != nil {
-			logger.Error("ssl plugin failed to resolve cert", "error", certErr)
+			logger.Error("ssl plugin failed to resolve cert", "error", certErr, "sslid", target.sslId, "snis", target.snis)
 			certBytes = fallback.CertPEM
 		}
 		if keyErr != nil {
-			logger.Error("ssl plugin failed to resolve key", "error", keyErr)
+			logger.Error("ssl plugin failed to resolve key", "error", keyErr, "sslid", target.sslId, "snis", target.snis)
 			keyBytes = fallback.KeyPEM
 		}
 		target.replace(certBytes, keyBytes)
@@ -33,9 +36,6 @@ func (f FileHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 
 func (f FileHandler) resolveValue(text string) ([]byte, error) {
 	if strings.HasPrefix(text, filePrefix) {
-		if len(f.Filesystems) == 0 {
-			return nil, errors.New("ssl plugin requires at least one filesystem")
-		}
 		name := strings.TrimPrefix(text, filePrefix)
 		if name == "" {
 			return nil, errors.New("ssl plugin empty file reference")
