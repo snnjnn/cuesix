@@ -7,11 +7,16 @@ import (
 )
 
 type stubNotifier struct {
+	ready bool
 	calls int
 }
 
 func (s *stubNotifier) Notify() {
 	s.calls++
+}
+
+func (s *stubNotifier) Ready() bool {
+	return s.ready
 }
 
 func TestHandlerCompile(t *testing.T) {

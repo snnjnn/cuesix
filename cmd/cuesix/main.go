@@ -5,12 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"io/fs"
 	"log"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -25,60 +22,10 @@ import (
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin"
-	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 	"github.com/warpcomdev/cuesix/internal/reloader"
 	"github.com/warpcomdev/cuesix/internal/validator"
 	"golang.org/x/sync/errgroup"
 )
-
-type compilerAdapter struct{}
-
-func (compilerAdapter) Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
-	return compiler.Compile(logger, fses...)
-}
-
-type pluginCache struct {
-	preRender  plugin.PreRender
-	postRender plugin.PostRender
-	cache      *cache.Cache
-}
-
-func (p *pluginCache) Changed(logger *slog.Logger, value map[string]any) ([]byte, error) {
-	logger.Info("pre-render plugins start")
-	updated, err := p.preRender.Update(logger, value)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("pre-render plugins complete")
-	logger.Info("cache normalization start")
-	result, err := p.cache.Changed(logger, updated)
-	if result == nil || err != nil {
-		return nil, err
-	}
-	logger.Info("cache normalization complete")
-	logger.Info("post-render plugins start")
-	output, err := p.postRender.Update(logger, result)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("post-render plugins complete")
-	return output, nil
-}
-
-type stringSliceFlag struct {
-	values []string
-	set    bool
-}
-
-func (s *stringSliceFlag) String() string {
-	return strings.Join(s.values, ",")
-}
-
-func (s *stringSliceFlag) Set(value string) error {
-	s.set = true
-	s.values = append(s.values, value)
-	return nil
-}
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
@@ -92,17 +39,20 @@ func main() {
 		inputFlag.values = splitComma(envInputs)
 	}
 
+	// Input and runtime mode.
 	serve := flag.Bool("serve", envBool("CUESIX_SERVE", false), "run HTTP server")
 	listenAddr := flag.String("listen", envStringDefault("CUESIX_LISTEN", "127.0.0.1:8080"), "listen address")
 	metricsAddr := flag.String("metrics", envStringDefault("CUESIX_METRICS_LISTEN", ":8081"), "metrics listen address (empty to disable)")
 	cooldown := flag.Duration("cooldown", envDuration("CUESIX_COOLDOWN", 0), "cooldown duration")
 	flag.Var(inputFlag, "input", "input directory (repeatable)")
 
+	// APISIX paths and validation.
 	apisixHome := flag.String("apisix-home", envStringDefault("CUESIX_APISIX_HOME", "/usr/local/apisix"), "apisix home path")
 	mirrorDirFlag := flag.String("mirror-dir", envString("CUESIX_MIRROR_DIR"), "apisix mirror directory (optional)")
 	mirrorKeepFlag := flag.Bool("keep-mirror", envBool("CUESIX_KEEP_MIRROR", false), "Do not remove mirror on startup")
 	validationTimeout := flag.Duration("validation-timeout", envDuration("CUESIX_VALIDATION_TIMEOUT", 30*time.Second), "timeout for apisix test")
 
+	// Reload behavior.
 	apisixURL := flag.String("apisix-url", envString("CUESIX_APISIX_URL"), "apisix admin base url")
 	dryRun := flag.Bool("dry-run", envBool("CUESIX_DRY_RUN", false), "run pipeline without writing config or reloading apisix")
 	apiKey := flag.String("apisix-api-key", envString("CUESIX_APISIX_API_KEY"), "apisix admin api key")
@@ -113,6 +63,7 @@ func main() {
 	retryMaxDelay := flag.Duration("retry-max-delay", envDuration("CUESIX_RETRY_MAX_DELAY", 2*time.Second), "reload max backoff")
 	retryMultiplier := flag.Float64("retry-multiplier", envFloat("CUESIX_RETRY_MULTIPLIER", 2), "reload backoff multiplier")
 
+	// Plugins.
 	enableYAML := flag.Bool("plugin-yaml", envBool("CUESIX_PLUGIN_YAML", false), "enable yaml post-render plugin")
 	sslPathsFlag := &stringSliceFlag{}
 	if envSSLPaths := envString("CUESIX_PLUGIN_SSL_PATHS"); envSSLPaths != "" {
@@ -122,6 +73,7 @@ func main() {
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
 	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_PLUGIN_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 
+	// Certmagic.
 	certmagicEnabled := flag.Bool("certmagic", envBool("CUESIX_CERTMAGIC", false), "enable certmagic acme manager")
 	certmagicDefaultProvider := flag.String("certmagic-default-provider", envString("CUESIX_CERTMAGIC_DEFAULT_PROVIDER"), "certmagic default provider")
 	certmagicDataDir := flag.String("certmagic-data-dir", envString("CUESIX_CERTMAGIC_DATA_DIR"), "certmagic data directory")
@@ -143,11 +95,13 @@ func main() {
 		log.Fatal("at least one --input or CUESIX_INPUT_DIRS is required")
 	}
 
+	// Build input filesystem views.
 	fses, err := buildFilesystems(inputFlag.values)
 	if err != nil {
 		log.Fatalf("input dirs: %v", err)
 	}
 
+	// Load fallback certificate for SSL plugin and certmagic.
 	var fallbackCert certmagicmgr.Certificate
 	if len(sslPathsFlag.values) > 0 || *certmagicEnabled {
 		if *certmagicFallbackCert == "" {
@@ -163,6 +117,7 @@ func main() {
 		}
 	}
 
+	// Configure certmagic manager + watcher.
 	var (
 		acmeManager *certmagicmgr.Manager
 		acmeWatcher *certmagicmgr.Watcher
@@ -196,6 +151,7 @@ func main() {
 		}
 	}
 
+	// Build plugin pipelines.
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
 			plugins, pluginErr := buildPreRender(sslPathsFlag.values, acmeWatcher, fallbackCert)
@@ -216,6 +172,7 @@ func main() {
 		}(),
 	}
 
+	// Standalone compile mode.
 	if !*serve {
 		merged, err := compiler.Compile(logger, fses...)
 		if err != nil {
@@ -238,6 +195,7 @@ func main() {
 		return
 	}
 
+	// APISIX validation and mirror setup.
 	if strings.TrimSpace(*apisixHome) == "" {
 		logger.Error("missing apisix home path")
 		os.Exit(1)
@@ -265,9 +223,7 @@ func main() {
 	}
 	configPath := validator.BuildConfigPath(*apisixHome, *enableYAML)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
+	// Reload target configuration.
 	reloadURL := ""
 	if apisixURL != nil && *apisixURL != "" {
 		reloadURL, err = buildReloadURL(*apisixURL)
@@ -277,6 +233,7 @@ func main() {
 		}
 	}
 
+	// Wire reloader (or dry-run).
 	var reloadTarget dispatcher.Reloader
 	if *dryRun {
 		reloadTarget = &dryRunReloader{}
@@ -294,11 +251,13 @@ func main() {
 		}
 	}
 
+	// Dispatcher wiring.
+	refreshManager := newRefreshManager(reloadTarget)
 	disp, err := dispatcher.New(dispatcher.Config{
 		Compiler:    compilerAdapter{},
 		Cache:       pluginCacheInst,
 		Validator:   val,
-		Reloader:    reloadTarget,
+		Reloader:    refreshManager,
 		Filesystems: fses,
 		OutputYAML:  *enableYAML,
 		Cooldown:    *cooldown,
@@ -307,14 +266,17 @@ func main() {
 		logger.Error("dispatcher init failed", "error", err)
 		os.Exit(1)
 	}
+	refreshManager.realDispatcher = disp
 
-	handler, err := listener.NewHandler(disp)
+	// HTTP handlers.
+	handler, err := listener.NewHandler(refreshManager)
 	if err != nil {
 		logger.Error("listener init failed", "error", err)
 		os.Exit(1)
 	}
 	server := buildServer(*listenAddr, handler)
 
+	// Metrics server.
 	var metricsServer *http.Server
 	if strings.TrimSpace(*metricsAddr) != "" {
 		metricsMux := http.NewServeMux()
@@ -322,10 +284,15 @@ func main() {
 		metricsServer = buildServer(*metricsAddr, metricsMux)
 	}
 
+	// ACME challenge server.
 	var acmeServer *http.Server
 	if strings.TrimSpace(*certmagicChallengeAddr) != "" {
 		acmeServer = buildServer(*certmagicChallengeAddr, acmeManager.ChallengeHandler(logger))
 	}
+
+	// Run loop and shutdown wiring.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	group, groupCtx := errgroup.WithContext(ctx)
 
@@ -348,6 +315,7 @@ func main() {
 			acmeWatcher.RunWatch(groupCtx, logger, 60*time.Second)
 			return nil
 		})
+		// And the acme server
 		group.Go(func() error {
 			logger.Info("starting acme server", "addr", *certmagicChallengeAddr)
 			if err := acmeServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -358,8 +326,8 @@ func main() {
 		group.Go(serverShutdown(groupCtx, logger, "acme server", acmeServer, 10*time.Second))
 	}
 
+	// Ready the dispatcher
 	group.Go(func() error {
-		// Keep the dispatcher running until the context is cancelled
 		for {
 			if err := disp.Run(groupCtx, logger); err != nil {
 				if errors.Is(err, context.Canceled) {
@@ -370,6 +338,30 @@ func main() {
 			}
 		}
 	})
+
+	// Ready the notifiers
+	if acmeWatcher != nil {
+		// Start the monitor that will reconfigure apisix when
+		// certificates are renewed
+		group.Go(func() error {
+			var err error
+			subs := acmeWatcher.Subscribe(32)
+			defer acmeWatcher.Unsubscribe(subs)
+			refreshManager.Watch(groupCtx, logger, func(ctx context.Context) bool {
+				select {
+				case <-ctx.Done():
+					return true
+				case _, ok := <-subs:
+					if !ok {
+						err = fmt.Errorf("acme watcher channel closed")
+						return true
+					}
+					return false
+				}
+			})
+			return err
+		})
+	}
 
 	// launch the main service
 	group.Go(func() error {
@@ -384,192 +376,4 @@ func main() {
 	if err := group.Wait(); err != nil {
 		logger.Error("server error", "error", err)
 	}
-}
-
-func serverShutdown(ctx context.Context, logger *slog.Logger, name string, server *http.Server, timeout time.Duration) func() error {
-	return func() error {
-		<-ctx.Done()
-		cancelCtx, cancelFunc := context.WithTimeout(context.Background(), timeout)
-		defer cancelFunc()
-		if err := server.Shutdown(cancelCtx); err != nil {
-			logger.Error("server shutdown error", "server", name, "error", err)
-		}
-		return nil
-	}
-}
-
-func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallback certmagicmgr.Certificate) (plugin.PreRender, error) {
-	var plugins plugin.PreRenderChain
-	if len(sslPaths) > 0 {
-		sslFSes, err := buildFilesystems(sslPaths)
-		if err != nil {
-			return nil, err
-		}
-		plugins = append(plugins, &ssl.SSLPlugin{
-			Filesystems: sslFSes,
-			ACME:        acmeWatcher,
-			Fallback:    fallback,
-		})
-	}
-	return plugins, nil
-}
-
-func buildServer(listenAddr string, handler http.Handler) *http.Server {
-	return &http.Server{
-		Addr:              listenAddr,
-		Handler:           drainBody(handler),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
-}
-
-func buildPostRender(enableJQ bool, enableYAML bool, jqTimeout time.Duration) (plugin.PostRender, error) {
-	var plugins plugin.PostRenderChain
-	if enableJQ {
-		plugins = append(plugins, &plugin.JQPlugin{Timeout: jqTimeout})
-	}
-	if enableYAML {
-		// YAMLPlugin siempre debe ser el último plugin
-		plugins = append(plugins, &plugin.YAMLPlugin{})
-	}
-	return plugins, nil
-}
-
-func drainBody(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil {
-			_, _ = io.Copy(io.Discard, r.Body)
-			_ = r.Body.Close()
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func buildFilesystems(paths []string) ([]fs.FS, error) {
-	fses := make([]fs.FS, 0, len(paths))
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
-		clean := filepath.Clean(path)
-		if _, err := os.Stat(clean); err != nil {
-			return nil, err
-		}
-		fses = append(fses, os.DirFS(clean))
-	}
-	return fses, nil
-}
-
-func splitComma(value string) []string {
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
-}
-
-func splitSemicolon(value string) []string {
-	parts := strings.Split(value, ";")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
-}
-
-func buildCertmagicProviders(specs []string) ([]certmagicmgr.ProviderConfig, error) {
-	if len(specs) == 0 {
-		return nil, errors.New("at least one certmagic provider is required")
-	}
-	providers := make([]certmagicmgr.ProviderConfig, 0, len(specs))
-	for _, spec := range specs {
-		cfg, err := certmagicmgr.ParseProviderSpec(spec)
-		if err != nil {
-			return nil, err
-		}
-		providers = append(providers, cfg)
-	}
-	return providers, nil
-}
-
-func envString(key string) string {
-	return os.Getenv(key)
-}
-
-func envStringDefault(key, def string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return def
-}
-
-func envBool(key string, def bool) bool {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		switch strings.ToLower(value) {
-		case "1", "true", "yes", "y", "on":
-			return true
-		case "0", "false", "no", "n", "off":
-			return false
-		default:
-			return def
-		}
-	}
-	return def
-}
-
-func buildReloadURL(base string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(base))
-	if err != nil {
-		return "", err
-	}
-	parsed.Path = "/apisix/admin/configs"
-	query := parsed.Query()
-	query.Set("reload", "true")
-	parsed.RawQuery = query.Encode()
-	return parsed.String(), nil
-}
-
-type dryRunReloader struct{}
-
-func (r *dryRunReloader) Apply(_ context.Context, logger *slog.Logger, payload []byte, useApi bool) error {
-	logger.Info("dry-run reload skipped", "bytes", len(payload))
-	return nil
-}
-
-func envInt(key string, def int) int {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		var parsed int
-		if _, err := fmt.Sscanf(value, "%d", &parsed); err == nil {
-			return parsed
-		}
-	}
-	return def
-}
-
-func envFloat(key string, def float64) float64 {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		var parsed float64
-		if _, err := fmt.Sscanf(value, "%f", &parsed); err == nil {
-			return parsed
-		}
-	}
-	return def
-}
-
-func envDuration(key string, def time.Duration) time.Duration {
-	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-		if parsed, err := time.ParseDuration(value); err == nil {
-			return parsed
-		}
-	}
-	return def
 }

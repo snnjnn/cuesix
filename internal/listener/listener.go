@@ -8,6 +8,7 @@ import (
 // Notifier is notified when /compile is requested.
 type Notifier interface {
 	Notify()
+	Ready() bool
 }
 
 // NewHandler builds the HTTP handler that exposes POST /compile.
@@ -16,6 +17,16 @@ func NewHandler(notifier Notifier) (http.Handler, error) {
 		return nil, errors.New("notifier is required")
 	}
 	mux := http.NewServeMux()
+	mux.Handle("/live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	mux.Handle("/ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if notifier.Ready() {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusTooEarly)
+	}))
 	mux.Handle("/compile", compileHandler(notifier))
 	return mux, nil
 }
