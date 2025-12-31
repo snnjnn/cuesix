@@ -131,11 +131,11 @@ func (m *Manager) FallbackCertificate() (ssl.Certificate, error) {
 	return m.fallback, nil
 }
 
-func (m *Manager) RemoveExpired(ctx context.Context, logger *slog.Logger) error {
+func (m *Manager) RemoveExpired(ctx context.Context, logger *slog.Logger, interval time.Duration, gracePeriod time.Duration) error {
 	return certmagic.CleanStorage(ctx, m.storage, certmagic.CleanStorageOptions{
-		Interval:               12 * time.Hour,
+		Interval:               interval,
 		ExpiredCerts:           true,
-		ExpiredCertGracePeriod: 5 * 25 * time.Hour,
+		ExpiredCertGracePeriod: gracePeriod,
 	})
 }
 

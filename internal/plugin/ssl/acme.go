@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+const DefaultACMERequestTimeout = 10 * time.Second
+
 // ACMEManager provides access to ACME certificates.
 type ACMEManager interface {
 	// Clears the tracking cache, to start a new cycle
@@ -20,6 +22,8 @@ type ACMEManager interface {
 
 type ACMEHandler struct {
 	ACME ACMEManager
+	// RequestTimeout bounds the time spent waiting for ACME certificates.
+	RequestTimeout time.Duration
 }
 
 func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, fallback Certificate) {
@@ -45,7 +49,11 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	}
 	// Clear ACME tracking, since we are about to overwrite it
 	a.ACME.ClearTracking(logger)
-	cancelCtx, cancelFunc := context.WithTimeout(context.Background(), 10*time.Second)
+	timeout := a.RequestTimeout
+	if timeout <= 0 {
+		timeout = DefaultACMERequestTimeout
+	}
+	cancelCtx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
 	var (
 		lock sync.Mutex

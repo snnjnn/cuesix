@@ -66,7 +66,7 @@ func (w sslTracker) Watch(ctx context.Context, buffer int, action func(provider,
 }
 
 // buildPreRender constructs the pre-render plugin chain.
-func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallback ssl.Certificate) (plugin.PreRender, error) {
+func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallback ssl.Certificate, acmeTimeout time.Duration) (plugin.PreRender, error) {
 	var plugins plugin.PreRenderChain
 	if len(sslPaths) > 0 {
 		sslFSes, err := buildFilesystems(sslPaths)
@@ -81,6 +81,7 @@ func buildPreRender(sslPaths []string, acmeWatcher *certmagicmgr.Watcher, fallba
 				ACME: sslTracker{
 					Watcher: acmeWatcher,
 				},
+				RequestTimeout: acmeTimeout,
 			},
 			Fallback: ssl.Certificate{
 				CertPEM:  fallback.CertPEM,

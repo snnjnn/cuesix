@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/warpcomdev/cuesix/internal/cache"
 	"github.com/warpcomdev/cuesix/internal/plugin"
@@ -101,7 +102,7 @@ func TestPluginCacheChangedStopsOnPreRenderError(t *testing.T) {
 
 func TestBuildPreRenderInvalidPath(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
-	if _, err := buildPreRender([]string{missing}, nil, ssl.Certificate{}); err == nil {
+	if _, err := buildPreRender([]string{missing}, nil, ssl.Certificate{}, time.Second); err == nil {
 		t.Fatalf("expected error for invalid path")
 	}
 }

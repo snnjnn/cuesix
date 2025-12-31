@@ -117,7 +117,8 @@ func TestSSLPluginACMEFallbackOnRequestError(t *testing.T) {
 			Filesystems: []fs.FS{fstest.MapFS{}},
 		},
 		ACMEHandler: ACMEHandler{
-			ACME: &fakeACME{err: errors.New("acme failed")},
+			ACME:           &fakeACME{err: errors.New("acme failed")},
+			RequestTimeout: 10 * time.Second,
 		},
 		Fallback: fallback,
 	}
@@ -159,7 +160,8 @@ func TestSSLPluginACMESuccess(t *testing.T) {
 			Filesystems: []fs.FS{fstest.MapFS{}},
 		},
 		ACMEHandler: ACMEHandler{
-			ACME: &fakeACME{notifyCert: acmeCert},
+			ACME:           &fakeACME{notifyCert: acmeCert},
+			RequestTimeout: 10 * time.Second,
 		},
 		Fallback: fallback,
 	}
@@ -196,7 +198,8 @@ func TestSSLPluginACMEInvalidSNIUsesFallback(t *testing.T) {
 			Filesystems: []fs.FS{fstest.MapFS{}},
 		},
 		ACMEHandler: ACMEHandler{
-			ACME: &fakeACME{notifyCert: fallback},
+			ACME:           &fakeACME{notifyCert: fallback},
+			RequestTimeout: 10 * time.Second,
 		},
 		Fallback: fallback,
 	}

@@ -29,6 +29,7 @@ API principal:
   - Serializa el acceso a certmagic con un mutex.
 - `RemoveUntracked(ctx, logger, gracePeriod)` elimina el tracking gestionado en certmagic para entradas que no se hayan observado dentro del periodo de gracia.
   - Si no se puede resolver el proveedor, no elimina la entrada de seguimiento local.
+- `RemoveExpired(ctx, logger, interval, gracePeriod)` limpia certificados expirados en el almacenamiento con el intervalo y periodo de gracia configurados.
 - `ClearTracking()` marca una nueva generacion de seguimiento para que `RemoveUntracked` considere candidatas las entradas antiguas.
 - `ProviderView.BestMatchFor(sni)` devuelve el mejor certificado conocido para el SNI (el de mayor expiracion).
 - `LoadFallbackCertificate(certPath, keyPath)` carga un certificado placeholder para el plugin SSL.

@@ -10,15 +10,22 @@ import (
 	"time"
 )
 
+type serverTimeouts struct {
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+}
+
 // buildServer creates an HTTP server with standard timeouts.
-func buildServer(listenAddr string, handler http.Handler) *http.Server {
+func buildServer(listenAddr string, handler http.Handler, timeouts serverTimeouts) *http.Server {
 	return &http.Server{
 		Addr:              listenAddr,
 		Handler:           drainBody(handler),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: timeouts.ReadHeaderTimeout,
+		ReadTimeout:       timeouts.ReadTimeout,
+		WriteTimeout:      timeouts.WriteTimeout,
+		IdleTimeout:       timeouts.IdleTimeout,
 	}
 }
 

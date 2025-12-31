@@ -155,6 +155,11 @@ Input and runtime mode:
 - `--serve` / `CUESIX_SERVE` (bool): enable server mode with `POST /compile`.
 - `--listen` / `CUESIX_LISTEN`: listen address for server mode (default `127.0.0.1:8080`).
 - `--metrics` / `CUESIX_METRICS_LISTEN`: listen address for `/metrics` (empty disables).
+- `--server-read-header-timeout` / `CUESIX_SERVER_READ_HEADER_TIMEOUT`: HTTP server read header timeout (default `5s`).
+- `--server-read-timeout` / `CUESIX_SERVER_READ_TIMEOUT`: HTTP server read timeout (default `10s`).
+- `--server-write-timeout` / `CUESIX_SERVER_WRITE_TIMEOUT`: HTTP server write timeout (default `10s`).
+- `--server-idle-timeout` / `CUESIX_SERVER_IDLE_TIMEOUT`: HTTP server idle timeout (default `60s`).
+- `--server-shutdown-timeout` / `CUESIX_SERVER_SHUTDOWN_TIMEOUT`: HTTP server shutdown timeout (default `10s`).
 - `--input` (repeatable) / `CUESIX_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
 - `--cooldown` / `CUESIX_COOLDOWN`: minimum delay between queued compile runs.
 - `--dry-run` / `CUESIX_DRY_RUN` (bool): run pipeline without writing config or triggering reload.
@@ -179,6 +184,7 @@ Plugins:
 - `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
 - `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
+- `--plugin-ssl-acme-timeout` / `CUESIX_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests.
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
 Certmagic:
@@ -188,8 +194,11 @@ Certmagic:
 - `--certmagic-data-dir` / `CUESIX_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
 - `--certmagic-challenge-addr` / `CUESIX_CERTMAGIC_CHALLENGE_ADDR`: HTTP-01 challenge listen address.
 - `--certmagic-timeout` / `CUESIX_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
+- `--certmagic-watch-interval` / `CUESIX_CERTMAGIC_WATCH_INTERVAL`: refresh interval for certmagic certificate updates (default `1h`).
 - `--certmagic-untracked-interval` / `CUESIX_CERTMAGIC_UNTRACKED_INTERVAL`: interval for removing untracked certmagic entries (default `24h`).
 - `--certmagic-untracked-grace` / `CUESIX_CERTMAGIC_UNTRACKED_GRACE`: grace period for removing untracked certmagic entries (default `168h`).
+- `--certmagic-expired-interval` / `CUESIX_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `12h`).
+- `--certmagic-expired-grace` / `CUESIX_CERTMAGIC_EXPIRED_GRACE`: grace period for removing expired certmagic entries (default `125h`).
 - `--certmagic-fallback-cert` / `CUESIX_CERTMAGIC_FALLBACK_CERT`: fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
 - `--certmagic-fallback-key` / `CUESIX_CERTMAGIC_FALLBACK_KEY`: fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
 

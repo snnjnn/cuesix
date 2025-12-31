@@ -44,6 +44,11 @@ func main() {
 	serve := flag.Bool("serve", envBool("CUESIX_SERVE", false), "run HTTP server")
 	listenAddr := flag.String("listen", envStringDefault("CUESIX_LISTEN", "127.0.0.1:8080"), "listen address")
 	metricsAddr := flag.String("metrics", envStringDefault("CUESIX_METRICS_LISTEN", ":8081"), "metrics listen address (empty to disable)")
+	serverReadHeaderTimeout := flag.Duration("server-read-header-timeout", envDuration("CUESIX_SERVER_READ_HEADER_TIMEOUT", 5*time.Second), "http server read header timeout")
+	serverReadTimeout := flag.Duration("server-read-timeout", envDuration("CUESIX_SERVER_READ_TIMEOUT", 10*time.Second), "http server read timeout")
+	serverWriteTimeout := flag.Duration("server-write-timeout", envDuration("CUESIX_SERVER_WRITE_TIMEOUT", 10*time.Second), "http server write timeout")
+	serverIdleTimeout := flag.Duration("server-idle-timeout", envDuration("CUESIX_SERVER_IDLE_TIMEOUT", 60*time.Second), "http server idle timeout")
+	serverShutdownTimeout := flag.Duration("server-shutdown-timeout", envDuration("CUESIX_SERVER_SHUTDOWN_TIMEOUT", 10*time.Second), "http server shutdown timeout")
 	cooldown := flag.Duration("cooldown", envDuration("CUESIX_COOLDOWN", 0), "cooldown duration")
 	flag.Var(inputFlag, "input", "input directory (repeatable)")
 
@@ -71,6 +76,7 @@ func main() {
 		sslPathsFlag.values = splitComma(envSSLPaths)
 	}
 	flag.Var(sslPathsFlag, "plugin-ssl-path", "ssl plugin certificate path (repeatable)")
+	sslAcmeTimeout := flag.Duration("plugin-ssl-acme-timeout", envDuration("CUESIX_PLUGIN_SSL_ACME_TIMEOUT", ssl.DefaultACMERequestTimeout), "timeout for ssl plugin acme requests")
 	enableJQ := flag.Bool("plugin-jq", envBool("CUESIX_PLUGIN_JQ", true), "enable jq post-render plugin")
 	jqTimeout := flag.Duration("plugin-jq-timeout", envDuration("CUESIX_PLUGIN_JQ_TIMEOUT", 10*time.Second), "timeout for jq transforms")
 
@@ -80,8 +86,11 @@ func main() {
 	certmagicDataDir := flag.String("certmagic-data-dir", envString("CUESIX_CERTMAGIC_DATA_DIR"), "certmagic data directory")
 	certmagicChallengeAddr := flag.String("certmagic-challenge-addr", envString("CUESIX_CERTMAGIC_CHALLENGE_ADDR"), "certmagic HTTP-01 challenge address")
 	certmagicTimeout := flag.Duration("certmagic-timeout", envDuration("CUESIX_CERTMAGIC_TIMEOUT", 0), "certmagic default certificate obtain timeout")
+	certmagicWatchInterval := flag.Duration("certmagic-watch-interval", envDuration("CUESIX_CERTMAGIC_WATCH_INTERVAL", time.Hour), "certmagic certificate refresh interval")
 	certmagicUntrackedInterval := flag.Duration("certmagic-untracked-interval", envDuration("CUESIX_CERTMAGIC_UNTRACKED_INTERVAL", 24*time.Hour), "interval for removing untracked certmagic entries")
 	certmagicUntrackedGrace := flag.Duration("certmagic-untracked-grace", envDuration("CUESIX_CERTMAGIC_UNTRACKED_GRACE", 7*24*time.Hour), "grace period for removing untracked certmagic entries")
+	certmagicExpiredInterval := flag.Duration("certmagic-expired-interval", envDuration("CUESIX_CERTMAGIC_EXPIRED_INTERVAL", 12*time.Hour), "interval for removing expired certmagic entries")
+	certmagicExpiredGrace := flag.Duration("certmagic-expired-grace", envDuration("CUESIX_CERTMAGIC_EXPIRED_GRACE", 125*time.Hour), "grace period for expired certmagic entries")
 	certmagicFallbackCert := flag.String("certmagic-fallback-cert", envString("CUESIX_CERTMAGIC_FALLBACK_CERT"), "fallback certificate path")
 	certmagicFallbackKey := flag.String("certmagic-fallback-key", envString("CUESIX_CERTMAGIC_FALLBACK_KEY"), "fallback key path")
 	certmagicProvidersFlag := &stringSliceFlag{}
@@ -96,6 +105,16 @@ func main() {
 
 	if len(inputFlag.values) == 0 {
 		log.Fatal("at least one --input or CUESIX_INPUT_DIRS is required")
+	}
+	if *certmagicEnabled && *certmagicWatchInterval <= 0 {
+		log.Fatal("certmagic watch interval must be positive")
+	}
+
+	srvTimeouts := serverTimeouts{
+		ReadHeaderTimeout: *serverReadHeaderTimeout,
+		ReadTimeout:       *serverReadTimeout,
+		WriteTimeout:      *serverWriteTimeout,
+		IdleTimeout:       *serverIdleTimeout,
 	}
 
 	// Build input filesystem views.
@@ -157,7 +176,7 @@ func main() {
 	// Build plugin pipelines.
 	pluginCacheInst := &pluginCache{
 		preRender: func() plugin.PreRender {
-			plugins, pluginErr := buildPreRender(sslPathsFlag.values, acmeWatcher, fallbackCert)
+			plugins, pluginErr := buildPreRender(sslPathsFlag.values, acmeWatcher, fallbackCert, *sslAcmeTimeout)
 			if pluginErr != nil {
 				logger.Error("pre-render plugin init failed", "error", pluginErr)
 				os.Exit(1)
@@ -277,20 +296,20 @@ func main() {
 		logger.Error("listener init failed", "error", err)
 		os.Exit(1)
 	}
-	server := buildServer(*listenAddr, handler)
+	server := buildServer(*listenAddr, handler, srvTimeouts)
 
 	// Metrics server.
 	var metricsServer *http.Server
 	if strings.TrimSpace(*metricsAddr) != "" {
 		metricsMux := http.NewServeMux()
 		metricsMux.Handle("/metrics", promhttp.Handler())
-		metricsServer = buildServer(*metricsAddr, metricsMux)
+		metricsServer = buildServer(*metricsAddr, metricsMux, srvTimeouts)
 	}
 
 	// ACME challenge server.
 	var acmeServer *http.Server
 	if strings.TrimSpace(*certmagicChallengeAddr) != "" {
-		acmeServer = buildServer(*certmagicChallengeAddr, acmeManager.ChallengeHandler(logger))
+		acmeServer = buildServer(*certmagicChallengeAddr, acmeManager.ChallengeHandler(logger), srvTimeouts)
 	}
 
 	// Run loop and shutdown wiring.
@@ -309,13 +328,13 @@ func main() {
 			}
 			return nil
 		})
-		group.Go(serverShutdown(groupCtx, logger, "metrics server", metricsServer, 10*time.Second))
+		group.Go(serverShutdown(groupCtx, logger, "metrics server", metricsServer, *serverShutdownTimeout))
 	}
 
 	if acmeServer != nil {
 		// Start the cert watcher
 		group.Go(func() error {
-			acmeWatcher.RunWatch(groupCtx, logger, 1*time.Hour)
+			acmeWatcher.RunWatch(groupCtx, logger, *certmagicWatchInterval)
 			return nil
 		})
 		// And the acme server
@@ -326,7 +345,7 @@ func main() {
 			}
 			return nil
 		})
-		group.Go(serverShutdown(groupCtx, logger, "acme server", acmeServer, 10*time.Second))
+		group.Go(serverShutdown(groupCtx, logger, "acme server", acmeServer, *serverShutdownTimeout))
 	}
 
 	// Ready the dispatcher
@@ -379,7 +398,7 @@ func main() {
 					if err := acmeWatcher.RemoveUntracked(groupCtx, logger, *certmagicUntrackedGrace); err != nil {
 						logger.Error("remove untracked certmagic entries failed", "error", err)
 					}
-					if err := acmeManager.RemoveExpired(groupCtx, logger); err != nil {
+					if err := acmeManager.RemoveExpired(groupCtx, logger, *certmagicExpiredInterval, *certmagicExpiredGrace); err != nil {
 						logger.Error("remove expired certificates failed", "error", err)
 					}
 				}
@@ -395,7 +414,7 @@ func main() {
 		}
 		return nil
 	})
-	group.Go(serverShutdown(groupCtx, logger, "server", server, 10*time.Second))
+	group.Go(serverShutdown(groupCtx, logger, "server", server, *serverShutdownTimeout))
 
 	if err := group.Wait(); err != nil {
 		logger.Error("server error", "error", err)
