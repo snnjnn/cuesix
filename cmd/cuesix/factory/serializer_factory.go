@@ -196,7 +196,7 @@ func (s SerializerFactory) ExpireLoop(groupCtx context.Context, logger *slog.Log
 // Updates certificates recently renewed
 func (s SerializerFactory) CommitLoop(groupCtx context.Context, logger *slog.Logger, cleanupInterval, untrackedGrace time.Duration) {
 	s.loop(groupCtx, cleanupInterval, func() {
-		if len(s.CommittedCerts) > 0 {
+		if len(s.CommittedCerts) == 0 {
 			return
 		}
 		s.sslSetup.AcmeTracker.Commit(groupCtx, logger, s.CommittedCerts, untrackedGrace)

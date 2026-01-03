@@ -77,13 +77,8 @@ func (apisixCfg APISIX) BuildValidator(logger *slog.Logger) (zero validator.Vali
 		if tmpErr != nil {
 			return zero, fmt.Errorf("create apisix mirror dir failed: %w", tmpErr)
 		}
-		mirrorKeep = true // no need to recreate it
+		mirrorKeep = false // no need to recreate it
 		mirrorDir = tmp
-		defer func() {
-			if err := os.RemoveAll(mirrorDir); err != nil {
-				logger.Error("remove apisix mirror failed", "error", err)
-			}
-		}()
 	}
 	return validator.New(logger, apisixCfg.Home, mirrorDir, mirrorKeep, apisixCfg.ValidationTimeout, nil)
 }

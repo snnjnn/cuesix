@@ -107,7 +107,7 @@ func (c *Watcher[T]) NotifyAllLocked(ctx context.Context, v T) {
 // Grab the lock and notify all holders
 func (c *Watcher[T]) NotifyAll(ctx context.Context, v T) {
 	c.WithLock(func() {
-		c.NotifyAll(ctx, v)
+		c.NotifyAllLocked(ctx, v)
 	})
 }
 

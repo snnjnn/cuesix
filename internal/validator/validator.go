@@ -79,6 +79,11 @@ func (v Validator) Cleanup() error {
 	return os.RemoveAll(v.mirrorDir)
 }
 
+// MirrorDir returns the configured mirror directory path.
+func (v Validator) MirrorDir() string {
+	return v.mirrorDir
+}
+
 // ValidationError captures stderr and the underlying error from apisix test.
 type ValidationError struct {
 	Output []byte

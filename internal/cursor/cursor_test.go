@@ -65,3 +65,19 @@ func TestWatcherNotify(t *testing.T) {
 		t.Fatalf("expected value on topic watcher")
 	}
 }
+
+func TestNotifyAllUsesLock(t *testing.T) {
+	t.Parallel()
+	w := cursor.New(func(s string) string { return s })
+	events := w.Watch(1, "")
+	defer events.Close()
+	w.NotifyAll(context.Background(), "ping")
+	select {
+	case v := <-events.Cursor:
+		if v != "ping" {
+			t.Fatalf("expected ping, got %s", v)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("expected notification via NotifyAll")
+	}
+}
