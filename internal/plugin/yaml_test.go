@@ -1,16 +1,17 @@
-package plugin
+package plugin_test
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/warpcomdev/cuesix/internal/plugin"
 	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestYAMLPluginUpdate(t *testing.T) {
 	t.Parallel()
-	p := &YAMLPlugin{}
+	p := &plugin.YAMLPlugin{}
 
 	out, err := p.Update(testutil.Logger(), nil)
 	if err != nil {
