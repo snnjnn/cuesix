@@ -3,13 +3,15 @@ package certmagicmgr
 import (
 	"fmt"
 	"strings"
+
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 const ProviderFieldSeparator = "|"
 
-// ParseProviderSpec parses a pipe-separated provider definition.
+// ParseACMEProviderSpec parses a pipe-separated provider definition.
 // Format: "name|email|ca"
-func ParseProviderSpec(spec string) (ProviderConfig, error) {
+func ParseACMEProviderSpec(spec string) (ProviderConfig, error) {
 	var cfg ProviderConfig
 	parts := strings.Split(spec, ProviderFieldSeparator)
 	if len(parts) != 3 {
@@ -21,5 +23,7 @@ func ParseProviderSpec(spec string) (ProviderConfig, error) {
 	if cfg.Name == "" || cfg.Email == "" || cfg.CA == "" {
 		return ProviderConfig{}, fmt.Errorf("provider requires name, email, and ca")
 	}
+	// ACME providers must include acme prefix
+	cfg.Name = ssl.ACMEPrefix + cfg.Name
 	return cfg, nil
 }

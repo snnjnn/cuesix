@@ -6,20 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/runner"
 )
 
 // JQPlugin applies a jq pipeline defined in the top-level jq list.
 type JQPlugin struct {
-	Runner  jqRunner
+	Runner  Runner
 	Timeout time.Duration
 }
 
-type jqRunner interface {
-	Run(ctx context.Context, input []byte, expression string) ([]byte, []byte, error)
+type Runner interface {
+	RunCommand(ctx context.Context, workDir string, input []byte, name string, args ...string) ([]byte, []byte, error)
 }
 
 // JQTransform describes a single jq expression in the pipeline.
@@ -130,9 +131,9 @@ func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 		return transforms[i].Prio > transforms[j].Prio
 	})
 
-	runner := p.Runner
-	if runner == nil {
-		runner = systemJQRunner{}
+	r := p.Runner
+	if r == nil {
+		r = runner.New()
 	}
 	expression := buildJQPipeline(logger, transforms)
 	logger.Info("jq plugin executing", "transforms", len(transforms))
@@ -142,7 +143,7 @@ func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 		ctx, cancel = context.WithTimeout(ctx, p.Timeout)
 		defer cancel()
 	}
-	stdout, stderr, err := runner.Run(ctx, payload, expression)
+	stdout, stderr, err := r.RunCommand(ctx, "", payload, "jq", expression)
 	if err != nil || len(stderr) > 0 {
 		logger.Error("jq plugin execution failed", "error", err, "stderr", strings.TrimSpace(string(stderr)))
 		return nil, &JQExecError{
@@ -153,19 +154,6 @@ func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 	}
 	logger.Info("jq plugin complete", "bytes", len(stdout))
 	return stdout, nil
-}
-
-type systemJQRunner struct{}
-
-func (systemJQRunner) Run(ctx context.Context, input []byte, expression string) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, "jq", expression)
-	cmd.Stdin = bytes.NewReader(input)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 func buildJQPipeline(logger *slog.Logger, transforms []JQTransform) string {

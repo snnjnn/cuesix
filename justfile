@@ -1,7 +1,7 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-GOEXPERIMENT := "jsonv2"
-
+#GOEXPERIMENT := "jsonv2"
+GOEXPERIMENT := ""
 
 test:
     GOEXPERIMENT={{GOEXPERIMENT}} go test ./...

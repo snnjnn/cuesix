@@ -1,9 +1,9 @@
 package compiler
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"log/slog"
 	"maps"
 	"path/filepath"
@@ -188,50 +188,98 @@ func DefaultMergingRules() MergingRule {
 	}
 }
 
-// Compile reads YAML fragments from the provided filesystems and merges them.
-func Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
-	if len(fses) == 0 {
-		return nil, errors.New("no filesystems provided")
+type Snippet struct {
+	Path string
+	Data map[string]any
+}
+
+func Fetch(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Snippet, error] {
+	if logger == nil {
+		logger = slog.Default()
 	}
-
-	rootRule := DefaultMergingRules()
-	var merged map[string]any
-
-	for _, filesystem := range fses {
-		paths, err := listYAMLFiles(filesystem)
-		if err != nil {
-			return nil, err
-		}
-		for _, path := range paths {
-			logger.Info("compiler reading file", "path", path)
-			content, err := fs.ReadFile(filesystem, path)
+	return func(yield func(Snippet, error) bool) {
+		for _, filesystem := range fses {
+			paths, err := listYAMLFiles(filesystem)
 			if err != nil {
-				return nil, fmt.Errorf("read %s: %w", path, err)
-			}
-			value, err := decodeYAML(content)
-			if err != nil {
-				return nil, fmt.Errorf("parse %s: %w", path, err)
-			}
-			if merged == nil {
-				merged = value
+				if !yield(Snippet{}, err) {
+					return
+				}
 				continue
 			}
-			mergedAny, err := ApplyMergeRules(merged, value, rootRule)
-			if err != nil {
-				return nil, fmt.Errorf("merge %s: %w", path, err)
-			}
-			var ok bool
-			merged, ok = mergedAny.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("merged root is not a map after %s", path)
+			for _, path := range paths {
+				logger.Info("compiler reading file", "path", path)
+				content, err := fs.ReadFile(filesystem, path)
+				if err != nil {
+					if !yield(Snippet{}, fmt.Errorf("read %s: %w", path, err)) {
+						return
+					}
+					continue
+				}
+				value, err := decodeYAML(content)
+				if err != nil {
+					if !yield(Snippet{}, fmt.Errorf("parse %s: %w", path, err)) {
+						return
+					}
+					continue
+				}
+				if !yield(Snippet{Path: path, Data: value}, nil) {
+					return
+				}
 			}
 		}
 	}
+}
 
-	if merged == nil {
-		return map[string]any{}, nil
+// Compile reads YAML fragments from the provided filesystems and merges them.
+func Merge(logger *slog.Logger, snippets iter.Seq[Snippet]) (map[string]any, error) {
+	if logger == nil {
+		logger = slog.Default()
 	}
+	rootRule := DefaultMergingRules()
+	var merged map[string]any
+	for value := range snippets {
+		if merged == nil {
+			merged = value.Data
+			continue
+		}
+		mergedAny, err := ApplyMergeRules(merged, value.Data, rootRule)
+		if err != nil {
+			return nil, fmt.Errorf("merging path %s: %w", value.Path, err)
+		}
+		var ok bool
+		merged, ok = mergedAny.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("wrong format (not map) after merging %s", value.Path)
+		}
+	}
+	return merged, nil
+}
 
+func Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	var fetchErr error
+	untilError := func(items iter.Seq2[Snippet, error]) iter.Seq[Snippet] {
+		return func(yield func(Snippet) bool) {
+			for snippet, err := range items {
+				if err != nil {
+					fetchErr = err
+					return
+				}
+				if !yield(snippet) {
+					return
+				}
+			}
+		}
+	}
+	if fetchErr != nil {
+		return nil, fetchErr
+	}
+	merged, err := Merge(logger, untilError(Fetch(logger, fses...)))
+	if err != nil {
+		return nil, err
+	}
 	return merged, nil
 }
 

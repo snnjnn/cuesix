@@ -26,6 +26,7 @@ type SSLPlugin struct {
 	TextHandler
 	FileHandler
 	ACMEHandler
+	Logger *slog.Logger
 }
 
 // This function describes a closure that updates a (cert, key) pair
@@ -53,13 +54,23 @@ const (
 )
 
 const (
-	acmePrefix = "acme://"
-	filePrefix = "file://"
+	ACMEPrefix = "acme://"
+	FilePrefix = "file://"
 )
 
-func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[string]any, error) {
+func (p *SSLPlugin) Update(value map[string]any, record map[ACMEKey]time.Time) (map[string]any, error) {
+	if p == nil {
+		return nil, errors.New("ssl plugin is nil")
+	}
 	if len(p.Fallback.CertPEM) == 0 || len(p.Fallback.KeyPEM) == 0 {
 		return nil, errors.New("ssl plugin requires a fallback certificate")
+	}
+	if value == nil {
+		return nil, errors.New("value map is nil")
+	}
+	logger := p.Logger
+	if logger == nil {
+		logger = slog.Default()
 	}
 	logger.Info("ssl plugin start")
 	sslsRaw, ok := value["ssls"]
@@ -81,7 +92,7 @@ func (p *SSLPlugin) Update(logger *slog.Logger, value map[string]any) (map[strin
 	}
 	p.TextHandler.replaceTargets(logger, targets[textTarget], p.Fallback)
 	p.FileHandler.replaceTargets(logger, targets[fileTarget], p.Fallback)
-	p.ACMEHandler.replaceTargets(logger, targets[acmeTarget], p.Fallback)
+	p.ACMEHandler.replaceTargets(logger, targets[acmeTarget], record, p.Fallback)
 	logger.Info("ssl plugin complete", "entries", len(entries))
 	return value, nil
 }
@@ -108,6 +119,9 @@ func asStringSlice(input any) []string {
 }
 
 func (p *SSLPlugin) certPairs(entry map[string]any) ([]string, []string) {
+	if p == nil || entry == nil {
+		return nil, nil
+	}
 	certsRaw, certsOk := entry["certs"]
 	keysRaw, keysOk := entry["keys"]
 	if !certsOk || !keysOk {
@@ -125,6 +139,9 @@ func (p *SSLPlugin) certPairs(entry map[string]any) ([]string, []string) {
 }
 
 func (p *SSLPlugin) collectTargets(entries []any) (map[targetType][]certTargets, error) {
+	if p == nil {
+		return nil, errors.New("ssl plugin is nil")
+	}
 	targets := map[targetType][]certTargets{
 		textTarget: make([]certTargets, 0, len(entries)),
 		fileTarget: make([]certTargets, 0, len(entries)),
@@ -141,6 +158,9 @@ func (p *SSLPlugin) collectTargets(entries []any) (map[targetType][]certTargets,
 }
 
 func (p *SSLPlugin) collectEntryTargets(entry map[string]any, targets map[targetType][]certTargets) {
+	if p == nil || entry == nil || targets == nil {
+		return
+	}
 	var sslIdString string
 	sslId, ok := entry["id"]
 	if ok {
@@ -154,6 +174,9 @@ func (p *SSLPlugin) collectEntryTargets(entry map[string]any, targets map[target
 }
 
 func (p *SSLPlugin) collectSinglePair(entry map[string]any, id string, snis []string, targets map[targetType][]certTargets) {
+	if p == nil || entry == nil || targets == nil {
+		return
+	}
 	cert, certOk := entry["cert"]
 	key, keyOk := entry["key"]
 	if !certOk || !keyOk {
@@ -178,6 +201,9 @@ func (p *SSLPlugin) collectSinglePair(entry map[string]any, id string, snis []st
 }
 
 func (p *SSLPlugin) collectListPairs(entry map[string]any, id string, snis []string, targets map[targetType][]certTargets) {
+	if p == nil || entry == nil || targets == nil {
+		return
+	}
 	certs, keys := p.certPairs(entry)
 	if len(certs) == 0 || len(keys) == 0 {
 		return
@@ -202,19 +228,22 @@ func (p *SSLPlugin) collectListPairs(entry map[string]any, id string, snis []str
 }
 
 func resolveTargetType(certText, keyText string) targetType {
-	if strings.HasPrefix(certText, acmePrefix) {
+	if strings.HasPrefix(certText, ACMEPrefix) {
 		return acmeTarget
 	}
-	if strings.HasPrefix(certText, filePrefix) {
+	if strings.HasPrefix(certText, FilePrefix) {
 		return fileTarget
 	}
-	if strings.HasPrefix(keyText, filePrefix) {
+	if strings.HasPrefix(keyText, FilePrefix) {
 		return fileTarget
 	}
 	return textTarget
 }
 
 func (p *SSLPlugin) entrySNIs(entry map[string]any) []string {
+	if p == nil || entry == nil {
+		return nil
+	}
 	raw, ok := entry["snis"]
 	if !ok {
 		return nil

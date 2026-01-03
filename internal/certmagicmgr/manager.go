@@ -10,130 +10,86 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 // ProviderConfig configures a single ACME provider.
 type ProviderConfig struct {
-	Name    string
-	CA      string
-	Email   string
+	Name  string
+	CA    string
+	Email string
 }
 
 // Config describes the certmagic manager configuration.
 type Config struct {
-	Providers       []ProviderConfig
-	DefaultProvider string
-	DataDir         string
-	DefaultTimeout  time.Duration
+	Providers         []ProviderConfig
+	DefaultProvider   string
+	DataDir           string
+	CertObtainTimeout time.Duration
 }
 
-type provider struct {
-	sync.Mutex
-	cfg   ProviderConfig
-	cache *certmagic.Cache
-	magic *certmagic.Config
-}
-
-type CertEvent struct {
-	sni      string
-	provider providerView
-}
-
-// providerView exposes provider operations needed by Watcher.
-type providerView interface {
-	Name() string
-	BestMatchFor(sni string, logger *slog.Logger) (ssl.Certificate, bool)
-	RemoveManaged(logger *slog.Logger, sni string)
+type Provider struct {
+	cursor.Lock
+	cfg    ProviderConfig
+	cache  *certmagic.Cache
+	magic  *certmagic.Config
+	logger *slog.Logger
 }
 
 // Manager owns certmagic configuration and serialized operations.
 type Manager struct {
 	cfg       Config
 	storage   certmagic.Storage
-	providers map[string]*provider
+	providers map[string]*Provider
 	fallback  ssl.Certificate
+	logger    *slog.Logger
 }
 
 // NewManager builds a certmagic manager and validates configuration.
-func NewManager(cfg Config, logger *slog.Logger, events chan CertEvent) (*Manager, error) {
+func NewManager(logger *slog.Logger, cfg Config, events chan ssl.ACMEKey, fallback ssl.Certificate) (Manager, error) {
 	if logger == nil {
-		return nil, errors.New("logger is required")
+		logger = slog.Default()
 	}
 	if len(cfg.Providers) == 0 {
-		return nil, errors.New("at least one provider is required")
+		return Manager{}, errors.New("at least one provider is required")
 	}
 	if cfg.DataDir == "" {
-		return nil, errors.New("data dir is required")
+		return Manager{}, errors.New("data dir is required")
 	}
 	storage := &certmagic.FileStorage{Path: cfg.DataDir}
-	providers := make(map[string]*provider, len(cfg.Providers))
+	providers := make(map[string]*Provider, len(cfg.Providers))
 	for _, p := range cfg.Providers {
 		if p.Name == "" || p.CA == "" || p.Email == "" {
-			return nil, fmt.Errorf("provider %q requires name, ca, and email", p.Name)
+			return Manager{}, fmt.Errorf("provider %q requires name, ca, and email", p.Name)
 		}
 		if _, exists := providers[p.Name]; exists {
-			return nil, fmt.Errorf("duplicate provider name: %s", p.Name)
+			return Manager{}, fmt.Errorf("duplicate provider name: %s", p.Name)
 		}
 		providers[p.Name] = buildProvider(logger, cfg, p, storage, events)
 	}
-	return &Manager{
+	return Manager{
 		cfg:       cfg,
 		storage:   storage,
 		providers: providers,
+		fallback:  fallback,
+		logger:    logger,
 	}, nil
 }
 
 // RunChallengeServer exposes the HTTP-01 challenge handler.
-func (m *Manager) ChallengeHandler(logger *slog.Logger) http.Handler {
+func (m Manager) ChallengeHandler() http.Handler {
+	logger := m.logger
 	return certmagic.DefaultACME.HTTPChallengeHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Info("challenge request", "host", r.Host, "url", r.URL.String())
 	}))
 }
 
-// RequestCertificate obtains or loads a certificate for the given SNI.
-func (m *Manager) RequestCertificate(ctx context.Context, logger *slog.Logger, providerName string, sni string) error {
-	if strings.TrimSpace(sni) == "" {
-		return errors.New("sni is required")
-	}
-	p, err := m.resolveProvider(providerName)
-	if err != nil {
-		return err
-	}
-	if m.cfg.DefaultTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, m.cfg.DefaultTimeout)
-		defer cancel()
-	}
-	p.Lock()
-	defer p.Unlock()
-	if err := p.magic.ManageAsync(ctx, []string{sni}); err != nil {
-		return err
-	}
-	return nil
-}
-
-// FallbackCertificate returns the configured fallback certificate.
-func (m *Manager) FallbackCertificate() (ssl.Certificate, error) {
-	if len(m.fallback.CertPEM) == 0 || len(m.fallback.KeyPEM) == 0 {
-		return ssl.Certificate{}, errors.New("fallback certificate not configured")
-	}
-	return m.fallback, nil
-}
-
-func (m *Manager) RemoveExpired(ctx context.Context, logger *slog.Logger, interval time.Duration, gracePeriod time.Duration) error {
-	return certmagic.CleanStorage(ctx, m.storage, certmagic.CleanStorageOptions{
-		Interval:               interval,
-		ExpiredCerts:           true,
-		ExpiredCertGracePeriod: gracePeriod,
-	})
-}
-
-func (m *Manager) resolveProvider(name string) (*provider, error) {
+// Return the manager for a particular provider
+func (m Manager) ResolveProvider(name string) (*Provider, error) {
 	if name != "" {
 		p, ok := m.providers[name]
 		if !ok {
@@ -156,17 +112,84 @@ func (m *Manager) resolveProvider(name string) (*provider, error) {
 	return nil, errors.New("provider is required")
 }
 
-func (m *Manager) resolveProviderView(name string) (providerView, error) {
-	p, err := m.resolveProvider(name)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+// Remove expired certificates across all providers
+func (m Manager) RemoveExpired(ctx context.Context, interval time.Duration, gracePeriod time.Duration) error {
+	return certmagic.CleanStorage(ctx, m.storage, certmagic.CleanStorageOptions{
+		Interval:               interval,
+		ExpiredCerts:           true,
+		ExpiredCertGracePeriod: gracePeriod,
+	})
 }
 
-func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, storage certmagic.Storage, events chan CertEvent) *provider {
-	p := &provider{
-		cfg: providerCfg,
+// RequestCertificate obtains or loads a certificate for the given SNI.
+func (p *Provider) RequestCertificate(ctx context.Context, sni string) error {
+	if p == nil {
+		return errors.New("provider is nil")
+	}
+	if p.magic == nil {
+		return errors.New("provider magic is nil")
+	}
+	var key ssl.ACMEKey
+	if strings.TrimSpace(sni) == "" {
+		return errors.New("sni is required")
+	}
+	key.Provider = p.Name()
+	key.SNI = sni
+	var err error
+	p.WithLock(func() {
+		err = p.magic.ManageAsync(ctx, []string{key.SNI})
+	})
+	return err
+}
+
+func (p *Provider) Name() string {
+	if p == nil {
+		return ""
+	}
+	return p.cfg.Name
+}
+
+func (p *Provider) BestMatchFor(sni string) (ssl.Certificate, bool) {
+	if p == nil {
+		return ssl.Certificate{}, false
+	}
+	if p.cache == nil {
+		return ssl.Certificate{}, false
+	}
+	sni = strings.TrimSpace(sni)
+	if sni == "" {
+		return ssl.Certificate{}, false
+	}
+	var matches []certmagic.Certificate
+	p.WithLock(func() {
+		matches = append([]certmagic.Certificate(nil), p.cache.AllMatchingCertificates(sni)...)
+	})
+	return bestMatchForCandidates(matches, p.logger)
+}
+
+// RemoveManaged stops tracking the SNI for future listings.
+func (p *Provider) RemoveManaged(sni string) {
+	if p == nil || p.magic == nil || p.cache == nil {
+		return
+	}
+	p.WithLock(func() {
+		for _, issuer := range p.magic.Issuers {
+			c := certmagic.SubjectIssuer{
+				Subject:   sni,
+				IssuerKey: issuer.IssuerKey(),
+			}
+			p.cache.RemoveManaged([]certmagic.SubjectIssuer{c})
+		}
+	})
+}
+
+func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, storage certmagic.Storage, events chan ssl.ACMEKey) *Provider {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	p := &Provider{
+		cfg:    providerCfg,
+		logger: logger,
 	}
 	configTemplate := *certmagic.NewDefault()
 	configTemplate.Storage = storage
@@ -178,7 +201,7 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 					select {
 					case <-ctx.Done():
 						return nil
-					case events <- CertEvent{sni: sni, provider: p}:
+					case events <- ssl.ACMEKey{SNI: sni, Provider: p.Name()}:
 					default:
 					}
 				}
@@ -197,43 +220,18 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 		Email:  providerCfg.Email,
 		Agreed: true,
 	}
-	if cfg.DefaultTimeout > 0 {
-		issuerCfg.CertObtainTimeout = cfg.DefaultTimeout
+	if cfg.CertObtainTimeout > 0 {
+		issuerCfg.CertObtainTimeout = cfg.CertObtainTimeout
 	}
 	issuer := certmagic.NewACMEIssuer(p.magic, issuerCfg)
 	p.magic.Issuers = []certmagic.Issuer{issuer}
 	return p
 }
 
-func (p *provider) Name() string {
-	return p.cfg.Name
-}
-
-func (p *provider) BestMatchFor(sni string, logger *slog.Logger) (ssl.Certificate, bool) {
-	sni = strings.TrimSpace(sni)
-	if sni == "" {
-		return ssl.Certificate{}, false
-	}
-	p.Lock()
-	matches := append([]certmagic.Certificate(nil), p.cache.AllMatchingCertificates(sni)...)
-	p.Unlock()
-	return bestMatchForCandidates(matches, logger)
-}
-
-// RemoveManaged stops tracking the SNI for future listings.
-func (p *provider) RemoveManaged(logger *slog.Logger, sni string) {
-	p.Lock()
-	defer p.Unlock()
-	for _, issuer := range p.magic.Issuers {
-		c := certmagic.SubjectIssuer{
-			Subject:   sni,
-			IssuerKey: issuer.IssuerKey(),
-		}
-		p.cache.RemoveManaged([]certmagic.SubjectIssuer{c})
-	}
-}
-
 func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
+	if cert.PrivateKey == nil {
+		return ssl.Certificate{}, errors.New("private key is nil")
+	}
 	var certPEM []byte
 	for _, der := range cert.Certificate.Certificate {
 		certPEM = append(certPEM, pem.EncodeToMemory(&pem.Block{
@@ -244,7 +242,7 @@ func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 	if len(certPEM) == 0 {
 		return ssl.Certificate{}, errors.New("empty certificate chain")
 	}
-	key, err := x509.MarshalPKCS8PrivateKey(cert.Certificate.PrivateKey)
+	key, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
 	if err != nil {
 		return ssl.Certificate{}, err
 	}
@@ -252,7 +250,7 @@ func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 		Type:  "PRIVATE KEY",
 		Bytes: key,
 	})
-	notAfter := time.Time{}
+	var notAfter time.Time
 	if cert.Leaf != nil {
 		notAfter = cert.Leaf.NotAfter
 	} else {

@@ -1,0 +1,83 @@
+package factory
+
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
+	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+)
+
+type SSLSetup struct {
+	Enabled      bool
+	FallbackCert ssl.Certificate
+	AcmeManager  certmagicmgr.Manager
+	AcmeTracker  *ssl.Tracker
+	events       chan ssl.ACMEKey
+}
+
+func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apisixCfg config.APISIX) (SSLSetup, error) {
+	var setup SSLSetup
+	if cert, ok, err := pluginCfg.LoadFallbackCertificate(apisixCfg.Home, pluginCfg.EnableSSL); ok {
+		if err != nil {
+			logger.Error("failed to load fallback certificate", "certPath", pluginCfg.FallbackCert, "keyPath", pluginCfg.FallbackKey, "error", err)
+			return setup, err
+		}
+		setup.FallbackCert = cert
+	}
+	if !certmagicCfg.Enabled {
+		return setup, nil
+	}
+	if certmagicCfg.ChallengeAddr == "" {
+		return setup, errors.New("certmagic enabled but challenge address is missing")
+	}
+	providers, err := buildCertmagicProviders(certmagicCfg.Providers)
+	if err != nil {
+		return setup, fmt.Errorf("certmagic provider config invalid: %w", err)
+	}
+	setup.events = make(chan ssl.ACMEKey, 32)
+	setup.AcmeManager, err = certmagicmgr.NewManager(logger, certmagicmgr.Config{
+		Providers:         providers,
+		DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
+		DataDir:           strings.TrimSpace(certmagicCfg.DataDir),
+		CertObtainTimeout: certmagicCfg.Timeout,
+	}, setup.events, setup.FallbackCert)
+	if err != nil {
+		close(setup.events)
+		return setup, fmt.Errorf("certmagic init failed: %w", err)
+	}
+	setup.AcmeTracker, err = ssl.NewTracker(logger, adaptedManager{Manager: setup.AcmeManager})
+	if err != nil {
+		close(setup.events)
+		return setup, fmt.Errorf("certmagic watcher init failed: %w", err)
+	}
+	setup.Enabled = true
+	return setup, nil
+}
+
+type adaptedManager struct {
+	certmagicmgr.Manager
+}
+
+func (a adaptedManager) ResolveProvider(name string) (ssl.ACMEProvider, error) {
+	return a.Manager.ResolveProvider(name)
+}
+
+// buildCertmagicProviders parses certmagic provider specs.
+func buildCertmagicProviders(specs []string) ([]certmagicmgr.ProviderConfig, error) {
+	if len(specs) == 0 {
+		return nil, errors.New("at least one certmagic provider is required")
+	}
+	providers := make([]certmagicmgr.ProviderConfig, 0, len(specs))
+	for _, spec := range specs {
+		cfg, err := certmagicmgr.ParseACMEProviderSpec(spec)
+		if err != nil {
+			return nil, err
+		}
+		providers = append(providers, cfg)
+	}
+	return providers, nil
+}

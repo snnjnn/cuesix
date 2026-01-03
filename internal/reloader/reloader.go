@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 // Reloader replaces the live config and triggers APISIX reloads.
@@ -23,18 +25,23 @@ type Reloader struct {
 	APIKey string
 	// HTTPClient overrides the default client when provided.
 	HTTPClient *http.Client
-	// Retry* fields control backoff behavior for reload attempts.
-	RetryMax        int
-	RetryInitial    time.Duration
-	RetryMaxDelay   time.Duration
-	RetryMultiplier float64
+	// Backoff controls retry behavior for reload attempts.
+	Backoff backoff.BackOff
 	// RequestTimeout caps the reload HTTP request duration.
 	RequestTimeout time.Duration
+	// Logger for this reloader instance.
+	Logger *slog.Logger
 }
 
 // Apply writes the payload to ConfigPath and triggers the reload endpoint.
-func (r *Reloader) Apply(ctx context.Context, logger *slog.Logger, payload []byte, useApi bool) error {
-	logger = ensureLogger(logger)
+func (r *Reloader) Apply(ctx context.Context, payload []byte, useApi bool) error {
+	if r == nil {
+		return errors.New("reloader is nil")
+	}
+	logger := r.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	if r.ConfigPath == "" {
 		return errors.New("config path is required")
 	}
@@ -63,43 +70,16 @@ func (r *Reloader) Apply(ctx context.Context, logger *slog.Logger, payload []byt
 }
 
 func (r *Reloader) triggerReload(ctx context.Context) error {
-	retries := r.RetryMax
-	if retries < 0 {
-		retries = 0
+	if r == nil {
+		return errors.New("reloader is nil")
 	}
-	delay := r.RetryInitial
-	if delay <= 0 {
-		delay = 200 * time.Millisecond
+	bo := r.Backoff
+	if bo == nil {
+		bo = backoff.NewExponentialBackOff()
 	}
-	maxDelay := r.RetryMaxDelay
-	if maxDelay <= 0 {
-		maxDelay = 2 * time.Second
-	}
-	multiplier := r.RetryMultiplier
-	if multiplier <= 1 {
-		multiplier = 2
-	}
-
-	var lastErr error
-	for attempt := 0; attempt <= retries; attempt++ {
-		if attempt > 0 {
-			sleep := delay
-			if sleep > maxDelay {
-				sleep = maxDelay
-			}
-			if err := sleepContext(ctx, sleep); err != nil {
-				return err
-			}
-			delay = time.Duration(float64(delay) * multiplier)
-		}
-
-		if err := r.doReloadRequest(ctx); err != nil {
-			lastErr = err
-			continue
-		}
-		return nil
-	}
-	return lastErr
+	return backoff.Retry(func() error {
+		return r.doReloadRequest(ctx)
+	}, backoff.WithContext(bo, ctx))
 }
 
 func (r *Reloader) doReloadRequest(ctx context.Context) error {
@@ -127,30 +107,14 @@ func (r *Reloader) doReloadRequest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("reload failed: status %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
-}
-
-func sleepContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func ensureLogger(logger *slog.Logger) *slog.Logger {
-	if logger == nil {
-		return slog.Default()
-	}
-	return logger
 }
 
 func replaceWithPayload(payload []byte, destPath string) error {

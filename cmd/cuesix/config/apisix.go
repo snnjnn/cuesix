@@ -1,6 +1,11 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/urfave/cli/v3"
@@ -54,4 +59,31 @@ func (c *APISIX) Apply(ctx *cli.Command) {
 
 func (c APISIX) ConfigPath(outputYAML bool) string {
 	return validator.BuildConfigPath(c.Home, outputYAML)
+}
+
+func (apisixCfg APISIX) BuildValidator(logger *slog.Logger) (zero validator.Validator, err error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	// APISIX validation and mirror setup.
+	if strings.TrimSpace(apisixCfg.Home) == "" {
+		logger.Error("missing apisix home path")
+		return zero, errors.New("missing apisix home path")
+	}
+	mirrorKeep := apisixCfg.KeepMirror
+	mirrorDir := apisixCfg.MirrorDir
+	if mirrorDir == "" {
+		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
+		if tmpErr != nil {
+			return zero, fmt.Errorf("create apisix mirror dir failed: %w", tmpErr)
+		}
+		mirrorKeep = true // no need to recreate it
+		mirrorDir = tmp
+		defer func() {
+			if err := os.RemoveAll(mirrorDir); err != nil {
+				logger.Error("remove apisix mirror failed", "error", err)
+			}
+		}()
+	}
+	return validator.New(logger, apisixCfg.Home, mirrorDir, mirrorKeep, apisixCfg.ValidationTimeout, nil)
 }

@@ -6,36 +6,40 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
 const DefaultACMERequestTimeout = 10 * time.Second
 
-// ACMEManager provides access to ACME certificates.
-type ACMEManager interface {
-	// Clears the tracking cache, to start a new cycle
-	ClearTracking(*slog.Logger)
-	// Requests a certificate, add to the track list
-	RequestCertificate(ctx context.Context, logger *slog.Logger, providerName string, sni string) error
-	// Watch updates on the track list
-	Watch(ctx context.Context, buffer int, action func(provider, sni string, cert Certificate))
+type ACMETracker interface {
+	RequestCertificate(ctx context.Context, providerName string, sni string) (ACMEKey, error)
+	Watch(buffer int, topic string) cursor.Owned[ACMECertificate]
 }
 
 type ACMEHandler struct {
-	ACME ACMEManager
+	// Shared tracker to avoid hitting upstream manager with repeated manage / unmanage requests
+	Tracker ACMETracker
 	// RequestTimeout bounds the time spent waiting for ACME certificates.
 	RequestTimeout time.Duration
+	// Record of certificates requested to the tracker by this handler
+	Record map[ACMEKey]time.Time
 }
 
-func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, fallback Certificate) {
+func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, record map[ACMEKey]time.Time, fallback Certificate) {
 	if len(targets) == 0 {
 		return
 	}
-	targetsBySNI := make(map[string][]certTargets)
-	if a.ACME == nil {
-		logger.Error("ssl plugin acme requires acme manager and tracker")
+	if logger == nil {
+		logger = slog.Default()
 	}
+	targetsBySNI := make(map[string][]certTargets)
+	if a.Tracker == nil {
+		logger.Error("ssl plugin acme requires acme tracker")
+	}
+	// First step: collect SNIs
 	for _, target := range targets {
-		if a.ACME == nil {
+		if a.Tracker == nil {
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
 			continue
 		}
@@ -50,8 +54,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	if len(targetsBySNI) == 0 {
 		return
 	}
-	// Clear ACME tracking, since we are about to overwrite it
-	a.ACME.ClearTracking(logger)
+	// Now we will request all the certs, while waiting for notifications
 	timeout := a.RequestTimeout
 	if timeout <= 0 {
 		timeout = DefaultACMERequestTimeout
@@ -62,7 +65,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 		lock sync.Mutex
 		wg   sync.WaitGroup
 	)
-	certsBySNI := make(map[string]Certificate)
+	certsBySNI := make(map[string]ACMECertificate)
 	pendingTargets := make(map[string]struct{})
 	for sni := range targetsBySNI {
 		pendingTargets[sni] = struct{}{}
@@ -84,20 +87,28 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	}
 	ready := make(chan struct{}, 1)
 	wg.Go(func() {
+		events := a.Tracker.Watch(2*len(targetsBySNI), "")
+		defer events.Close()
 		close(ready) // signal the main thread
-		a.ACME.Watch(cancelCtx, 2*len(targetsBySNI), func(provider, sni string, cert Certificate) {
-			if !cert.NotAfter.IsZero() && clearPending(sni) {
-				certsBySNI[sni] = cert
+		for cert := range cursor.All(cancelCtx, events.Cursor) {
+			if !cert.NotAfter.IsZero() && clearPending(cert.SNI) {
+				certsBySNI[cert.SNI] = cert
 			}
-		})
+		}
 	})
+	// Wait until the watcher is ready, and begin requesting targets
 	<-ready
 	for sni, targets := range targetsBySNI {
 		sniSuccess := false
 		for _, target := range targets {
-			provider := strings.TrimPrefix(target.cert, acmePrefix)
-			err := a.ACME.RequestCertificate(cancelCtx, logger, provider, sni)
+			provider := strings.TrimPrefix(target.cert, ACMEPrefix)
+			key, err := a.Tracker.RequestCertificate(cancelCtx, provider, sni)
 			if err == nil {
+				if record != nil {
+					// Track the request.
+					// We do not provide a time because we don't have any at this point.
+					record[key] = time.Time{}
+				}
 				sniSuccess = true
 				break
 			}
@@ -108,8 +119,12 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 		}
 	}
 	wg.Wait()
+	// Finally, perform the replacement
 	for sni, targets := range targetsBySNI {
 		if cert, ok := certsBySNI[sni]; ok {
+			if record != nil {
+				record[cert.ACMEKey] = cert.NotAfter
+			}
 			for _, target := range targets {
 				target.replace(cert.CertPEM, cert.KeyPEM)
 			}

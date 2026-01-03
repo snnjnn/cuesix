@@ -17,14 +17,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v3"
 	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
-	"github.com/warpcomdev/cuesix/internal/cache"
+	"github.com/warpcomdev/cuesix/cmd/cuesix/factory"
 	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/cursor"
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
-	"github.com/warpcomdev/cuesix/internal/reloader"
-	"github.com/warpcomdev/cuesix/internal/validator"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -133,47 +130,31 @@ func main() {
 }
 
 func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, apisixCfg config.APISIX, reloadCfg config.Reload, pluginCfg config.Plugins, certmagicCfg config.Certmagic, serve bool) error {
-	srvTimeouts := serverCfg.Timeouts()
 
 	// Build input filesystem views.
-	fses, err := buildFilesystems(inputCfg.InputDirs)
+	fses, err := factory.BuildFilesystems(inputCfg.InputDirs)
 	if err != nil {
 		return fmt.Errorf("input dirs: %w", err)
 	}
 
-	// Load fallback certificate for SSL plugin.
-	var fallbackCert ssl.Certificate
-	enableSSL := pluginCfg.EnableSSL || len(pluginCfg.SSLPaths) > 0 || certmagicCfg.Enabled
-	if cert, ok, err := pluginCfg.LoadFallbackCertificate(apisixCfg.Home, enableSSL); ok {
-		if err != nil {
-			logger.Error("failed to load fallback certificate", "certPath", pluginCfg.FallbackCert, "keyPath", pluginCfg.FallbackKey, "error", err)
-			return err
-		}
-		fallbackCert = cert
+	// Configure SSL dependencies
+	sslSetup, err := factory.NewSSLSetup(logger, pluginCfg, certmagicCfg, apisixCfg)
+	if err != nil {
+		logger.Error("SSL setup init failed", "error", err)
+		return err
 	}
 
-	// Configure certmagic manager + watcher.
-	acmeSetup, err := newAcmeSetup(logger, certmagicCfg)
-	if err != nil {
-		logger.Error("certmagic init failed", "error", err)
-		return err
+	// Build Compiler factory
+	compFactory := factory.CompilerFactory{
+		Logger: logger,
 	}
 
 	// Build plugin pipelines.
-	preRender, err := buildPreRender(pluginCfg, acmeSetup.acmeWatcher, fallbackCert)
+	scheduler := factory.NewScheduler()
+	serFactory, err := factory.NewSerializer(logger, pluginCfg, sslSetup, scheduler)
 	if err != nil {
-		logger.Error("pre-render plugin init failed", "error", err)
+		logger.Error("serializer factory failed", "error", err)
 		return err
-	}
-	postRender, err := buildPostRender(pluginCfg.EnableJQ, pluginCfg.EnableYAML, pluginCfg.JQTimeout)
-	if err != nil {
-		logger.Error("post-render plugin init failed", "error", err)
-		return err
-	}
-	pluginCacheInst := &pluginCache{
-		preRender:  preRender,
-		cache:      &cache.Cache{},
-		postRender: postRender,
 	}
 
 	// Standalone compile mode.
@@ -183,7 +164,9 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 			logger.Error("compile failed", "error", err)
 			return err
 		}
-		output, err := pluginCacheInst.Changed(logger, merged)
+		pluginInstance := serFactory.Instance()
+		pluginInstance.Reset()
+		output, err := pluginInstance.Serialize(merged)
 		if err != nil {
 			logger.Error("plugin pipeline failed", "error", err)
 			return err
@@ -200,65 +183,38 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	}
 
 	// APISIX validation and mirror setup.
-	if strings.TrimSpace(apisixCfg.Home) == "" {
-		logger.Error("missing apisix home path")
-		return errors.New("missing apisix home path")
-	}
-	mirrorKeep := apisixCfg.KeepMirror
-	mirrorDir := apisixCfg.MirrorDir
-	if mirrorDir == "" {
-		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
-		if tmpErr != nil {
-			logger.Error("create apisix mirror dir failed", "error", tmpErr)
-			return tmpErr
-		}
-		mirrorKeep = true // no need to recreate it
-		mirrorDir = tmp
-		defer func() {
-			if err := os.RemoveAll(mirrorDir); err != nil {
-				logger.Error("remove apisix mirror failed", "error", err)
-			}
-		}()
-	}
-	val, err := validator.New(apisixCfg.Home, mirrorDir, mirrorKeep, apisixCfg.ValidationTimeout)
+	validator, err := apisixCfg.BuildValidator(logger)
 	if err != nil {
-		logger.Error("prepare apisix mirror failed", "error", err)
+		logger.Error("build apisix validator failed", "error", err)
 		return err
 	}
-	configPath := apisixCfg.ConfigPath(pluginCfg.EnableYAML)
-
-	// Reload target configuration.
-	reloadURL, err := reloadCfg.BuildURL()
-	if err != nil {
-		logger.Error("invalid apisix url", "error", err)
-		return err
+	defer validator.Cleanup()
+	valFactory := factory.ValidatorFactory{
+		Validator: validator,
 	}
 
 	// Wire reloader (or dry-run).
-	var reloadTarget dispatcher.Reloader
-	if reloadCfg.DryRun {
-		reloadTarget = &dryRunReloader{}
-	} else {
-		reloadTarget = &reloader.Reloader{
-			ConfigPath:      configPath,
-			ReloadURL:       reloadURL,
-			ReloadMethod:    reloadCfg.Method,
-			APIKey:          reloadCfg.APIKey,
-			RetryMax:        reloadCfg.RetryMax,
-			RetryInitial:    reloadCfg.RetryInitial,
-			RetryMaxDelay:   reloadCfg.RetryMaxDelay,
-			RetryMultiplier: reloadCfg.RetryMultiplier,
-			RequestTimeout:  reloadCfg.Timeout,
-		}
+	reloadTarget, err := reloadCfg.BuildReloader(logger, apisixCfg, pluginCfg)
+	if err != nil {
+		logger.Error("failed to build reloader", "error", err)
+		return err
 	}
 
 	// Dispatcher wiring.
-	refreshManager := newRefreshManager(reloadTarget)
-	disp, err := dispatcher.New(dispatcher.Config{
-		Compiler:    compilerAdapter{},
-		Cache:       pluginCacheInst,
-		Validator:   val,
-		Reloader:    refreshManager,
+	readyManager := newReadyManager(reloadTarget, scheduler)
+	disp, err := dispatcher.New(logger, dispatcher.Config{
+		Fetcher: factory.CompilerFactory{},
+		MergerFactory: func() dispatcher.Merger {
+			return compFactory.Instance()
+		},
+		SerializerFactory: func() dispatcher.Serializer {
+			return serFactory.Instance()
+		},
+		ValidatorFactory: func() dispatcher.Validator {
+			return valFactory.Instance()
+		},
+		Reloader:    readyManager,
+		Scheduler:   scheduler.Must,
 		Filesystems: fses,
 		OutputYAML:  pluginCfg.EnableYAML,
 		Cooldown:    inputCfg.Cooldown,
@@ -267,10 +223,11 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		logger.Error("dispatcher init failed", "error", err)
 		return err
 	}
-	refreshManager.realDispatcher = disp
+	readyManager.realDispatcher = disp
 
 	// HTTP handlers.
-	handler, err := listener.NewHandler(refreshManager)
+	handler, err := listener.NewHandler(readyManager)
+	srvTimeouts := serverCfg.Timeouts()
 	if err != nil {
 		logger.Error("listener init failed", "error", err)
 		return err
@@ -288,7 +245,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	// ACME challenge server.
 	var acmeServer *http.Server
 	if strings.TrimSpace(certmagicCfg.ChallengeAddr) != "" {
-		acmeServer = buildServer(certmagicCfg.ChallengeAddr, acmeSetup.acmeManager.ChallengeHandler(logger), srvTimeouts)
+		acmeServer = buildServer(certmagicCfg.ChallengeAddr, sslSetup.AcmeManager.ChallengeHandler(), srvTimeouts)
 	}
 
 	// Run loop and shutdown wiring.
@@ -313,7 +270,9 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	if acmeServer != nil {
 		// Start the cert watcher
 		group.Go(func() error {
-			acmeSetup.acmeWatcher.RunWatch(groupCtx, logger, certmagicCfg.WatchInterval)
+			events := make(chan ssl.ACMEKey, 32)
+			defer close(events)
+			ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, events)
 			return nil
 		})
 		// And the acme server
@@ -330,7 +289,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	// Ready the dispatcher
 	group.Go(func() error {
 		for {
-			if err := disp.Run(groupCtx, logger); err != nil {
+			if err := disp.Run(groupCtx); err != nil {
 				if errors.Is(err, context.Canceled) {
 					return nil
 				}
@@ -341,26 +300,17 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	})
 
 	// Ready the notifiers
-	if acmeSetup.acmeWatcher != nil {
+	if sslSetup.Enabled {
+		// Launch the acme tracking cleanup
+		group.Go(func() error {
+			serFactory.CommitLoop(groupCtx, logger, certmagicCfg.CleanupInterval, certmagicCfg.UntrackedGrace)
+			return nil
+		})
 		// Start the monitor that will reconfigure apisix when
 		// certificates are renewed
 		group.Go(func() error {
-			acmeCursor := cursor.New(acmeSetup.acmeWatcher, 16)
-			defer acmeCursor.Close()
-			var err error
-			refreshManager.Watch(groupCtx, logger, func(ctx context.Context) bool {
-				var cancelled bool
-				cancelled, _, err = acmeCursor.Next(ctx)
-				return cancelled
-			})
-			return err
-		})
-	}
-
-	// Launch the acme tracking cleanup
-	if acmeSetup.acmeWatcher != nil && acmeSetup.shouldCleanup(certmagicCfg) {
-		group.Go(func() error {
-			return acmeSetup.cleanupLoop(groupCtx, logger, certmagicCfg)
+			serFactory.ExpireLoop(groupCtx, logger, certmagicCfg.CleanupInterval, certmagicCfg.ExpiredGrace)
+			return nil
 		})
 	}
 

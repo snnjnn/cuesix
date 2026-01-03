@@ -16,6 +16,9 @@ func (f FileHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	if len(targets) == 0 {
 		return
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
 	if len(f.Filesystems) == 0 {
 		logger.Error("ssl plugin requires at least one filesystem")
 	}
@@ -35,8 +38,8 @@ func (f FileHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 }
 
 func (f FileHandler) resolveValue(text string) ([]byte, error) {
-	if strings.HasPrefix(text, filePrefix) {
-		name := strings.TrimPrefix(text, filePrefix)
+	if strings.HasPrefix(text, FilePrefix) {
+		name := strings.TrimPrefix(text, FilePrefix)
 		if name == "" {
 			return nil, errors.New("ssl plugin empty file reference")
 		}

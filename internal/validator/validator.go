@@ -7,32 +7,36 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/warpcomdev/cuesix/internal/runner"
 )
 
-type commandRunner interface {
-	RunCommand(ctx context.Context, workDir string, name string, args ...string) ([]byte, error)
-}
+type MirrorError string
 
-type mirrorError string
-
-func (e mirrorError) Error() string {
+func (e MirrorError) Error() string {
 	return string(e)
 }
 
 const (
-	ErrSourceDirRequired mirrorError = "apisix home path is required"
-	ErrMirrorDirRequired mirrorError = "mirror path is required"
-	ErrMissingDir        mirrorError = "apisix home directory does not exist"
-	ErrSourceIsNotDir    mirrorError = "apisix home path is not a directory"
+	ErrSourceDirRequired MirrorError = "apisix home path is required"
+	ErrMirrorDirRequired MirrorError = "mirror path is required"
+	ErrMissingDir        MirrorError = "apisix home directory does not exist"
+	ErrSourceIsNotDir    MirrorError = "apisix home path is not a directory"
 )
 
-// Validator validates APISIX dynamic configuration payloads.
-type Validator interface {
-	Validate(logger *slog.Logger, candidate []byte, isYAML bool) (bool, error)
+type Validator struct {
+	runner      Runner
+	mirrorDir   string
+	useExisting bool
+	timeout     time.Duration
+	logger      *slog.Logger
+}
+
+type Runner interface {
+	RunCommand(ctx context.Context, workDir string, input []byte, name string, args ...string) (stdout, stderr []byte, err error)
 }
 
 func BuildConfigPath(apisixHome string, isYAML bool) string {
@@ -49,24 +53,30 @@ func BuildConfigPath(apisixHome string, isYAML bool) string {
 }
 
 // New creates a validator using a mirrored APISIX home directory.
-func New(sourceDir string, mirrorDir string, useExisting bool, timeout time.Duration) (Validator, error) {
-	return newWithRunner(sourceDir, mirrorDir, useExisting, timeout, systemCommandRunner{})
-}
-
-func newWithRunner(sourceDir string, mirrorDir string, useExisting bool, timeout time.Duration, runner commandRunner) (Validator, error) {
-	if runner == nil {
-		runner = systemCommandRunner{}
+func New(logger *slog.Logger, sourceDir string, mirrorDir string, useExisting bool, timeout time.Duration, r Runner) (zero Validator, err error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if r == nil {
+		r = runner.New()
 	}
 	if err := prepareMirror(sourceDir, mirrorDir, useExisting); err != nil {
-		return nil, err
+		return zero, err
 	}
-	return &mirrorValidator{mirrorDir: mirrorDir, runner: runner, timeout: timeout}, nil
+	return Validator{
+		mirrorDir:   mirrorDir,
+		useExisting: useExisting,
+		runner:      r,
+		timeout:     timeout,
+		logger:      logger,
+	}, nil
 }
 
-type mirrorValidator struct {
-	runner    commandRunner
-	mirrorDir string
-	timeout   time.Duration
+func (v Validator) Cleanup() error {
+	if v.useExisting {
+		return nil
+	}
+	return os.RemoveAll(v.mirrorDir)
 }
 
 // ValidationError captures stderr and the underlying error from apisix test.
@@ -92,10 +102,15 @@ func (e *ValidationError) Unwrap() error {
 // Validate validates an APISIX configuration file.
 // It returns true if the configuration is valid, false otherwise,
 // and an error with output attached when validation fails.
-func (v *mirrorValidator) Validate(logger *slog.Logger, candidate []byte, isYAML bool) (bool, error) {
+func (v Validator) Validate(candidate []byte, isYAML bool) (bool, error) {
+	if v.runner == nil {
+		return false, errors.New("validator runner is nil")
+	}
 	if len(candidate) == 0 {
 		return false, errors.New("candidate config is required")
 	}
+
+	logger := v.logger
 
 	configPath := BuildConfigPath(v.mirrorDir, isYAML)
 	logger.Info("validating temporal config file", "path", configPath)
@@ -109,12 +124,12 @@ func (v *mirrorValidator) Validate(logger *slog.Logger, candidate []byte, isYAML
 		ctx, cancel = context.WithTimeout(ctx, v.timeout)
 		defer cancel()
 	}
-	outputBytes, err := v.runner.RunCommand(ctx, v.mirrorDir, "apisix", "test", "-c", configPath)
+	_, errBytes, err := v.runner.RunCommand(ctx, v.mirrorDir, nil, "apisix", "test", "-c", configPath)
 
 	if err != nil {
 		// If command returns an error, it means apisix test failed.
 		// We return false with output attached.
-		return false, &ValidationError{Output: outputBytes, Cause: err}
+		return false, &ValidationError{Output: errBytes, Cause: err}
 	}
 
 	// If command returns no error, it means apisix test succeeded.
@@ -131,14 +146,6 @@ func replaceDynamicConfig(target string, candidate []byte) error {
 	}
 
 	return os.WriteFile(target, candidate, mode)
-}
-
-type systemCommandRunner struct{}
-
-func (systemCommandRunner) RunCommand(ctx context.Context, workDir string, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = workDir
-	return cmd.CombinedOutput()
 }
 
 // prepareMirror copies the entire APISIX home directory into a mirror folder.

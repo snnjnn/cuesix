@@ -1,12 +1,18 @@
 package config
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/urfave/cli/v3"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/reloader"
 )
 
 type Reload struct {
@@ -98,7 +104,32 @@ func (c *Reload) Apply(ctx *cli.Command) {
 	c.RetryMultiplier = ctx.Float64("retry-multiplier")
 }
 
-func (c Reload) BuildURL() (string, error) {
+func (reloadCfg Reload) BuildReloader(logger *slog.Logger, apisixCfg APISIX, pluginCfg Plugins) (dispatcher.Reloader, error) {
+	// Wire reloader (or dry-run).
+	configPath := apisixCfg.ConfigPath(pluginCfg.EnableYAML)
+	var reloadTarget dispatcher.Reloader
+	if reloadCfg.DryRun {
+		reloadTarget = &dryRunReloader{}
+	} else {
+		// Reload target configuration.
+		reloadURL, err := reloadCfg.buildURL()
+		if err != nil {
+			return reloadTarget, fmt.Errorf("invalid apisix url: %w", err)
+		}
+		reloadTarget = &reloader.Reloader{
+			ConfigPath:     configPath,
+			ReloadURL:      reloadURL,
+			ReloadMethod:   reloadCfg.Method,
+			APIKey:         reloadCfg.APIKey,
+			Backoff:        reloadCfg.buildBackoff(),
+			RequestTimeout: reloadCfg.Timeout,
+			Logger:         logger,
+		}
+	}
+	return reloadTarget, nil
+}
+
+func (c Reload) buildURL() (string, error) {
 	if strings.TrimSpace(c.URL) == "" {
 		return "", nil
 	}
@@ -111,4 +142,30 @@ func (c Reload) BuildURL() (string, error) {
 	query.Set("reload", "true")
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
+}
+
+// buildBackoff creates a backoff.BackOff from the retry configuration.
+func (c Reload) buildBackoff() backoff.BackOff {
+	bo := backoff.NewExponentialBackOff()
+	if c.RetryInitial > 0 {
+		bo.InitialInterval = c.RetryInitial
+	}
+	if c.RetryMaxDelay > 0 {
+		bo.MaxInterval = c.RetryMaxDelay
+	}
+	if c.RetryMultiplier > 1 {
+		bo.Multiplier = c.RetryMultiplier
+	}
+	if c.RetryMax >= 0 {
+		return backoff.WithMaxRetries(bo, uint64(c.RetryMax))
+	}
+	return bo
+}
+
+// dryRunReloader is a no-op reloader used for dry-run mode.
+type dryRunReloader struct{}
+
+// Apply logs the payload size without making changes.
+func (r *dryRunReloader) Apply(_ context.Context, payload []byte, useApi bool) error {
+	return nil
 }
