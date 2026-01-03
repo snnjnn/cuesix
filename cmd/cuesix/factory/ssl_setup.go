@@ -44,7 +44,7 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 		DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
 		DataDir:           strings.TrimSpace(certmagicCfg.DataDir),
 		CertObtainTimeout: certmagicCfg.Timeout,
-	}, setup.events, setup.FallbackCert)
+	}, setup.events, setup.FallbackCert, nil, nil)
 	if err != nil {
 		close(setup.events)
 		return setup, fmt.Errorf("certmagic init failed: %w", err)

@@ -38,7 +38,7 @@ type Manager struct {
 }
 
 // NewManager builds a certmagic manager and validates configuration.
-func NewManager(logger *slog.Logger, cfg Config, events chan ssl.ACMEKey, fallback ssl.Certificate, adapter CertMagic) (Manager, error) {
+func NewManager(logger *slog.Logger, cfg Config, events chan ssl.ACMEKey, fallback ssl.Certificate, adapter CertMagic, storage Storage) (Manager, error) {
 	if len(cfg.Providers) == 0 {
 		return Manager{}, errors.New("at least one provider is required")
 	}
@@ -48,10 +48,14 @@ func NewManager(logger *slog.Logger, cfg Config, events chan ssl.ACMEKey, fallba
 	if adapter == nil {
 		adapter = certmagicAdapter{}
 	}
+	if storage == nil {
+		storage = storageAdapter{
+			storage: &certmagic.FileStorage{Path: cfg.DataDir},
+		}
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	storage := adapter.Storage(cfg.DataDir)
 	providers := make(map[string]*Provider, len(cfg.Providers))
 	for _, p := range cfg.Providers {
 		if p.Name == "" || p.CA == "" || p.Email == "" {

@@ -14,7 +14,6 @@ type CertMagic interface {
 	ManageAsync(ctx context.Context, config *certmagic.Config, snis []string) error
 	RemoveManaged(cache *certmagic.Cache, issuers []certmagic.SubjectIssuer)
 	AllMatchingCertificates(cache *certmagic.Cache, sni string) []certmagic.Certificate
-	Storage(path string) Storage
 }
 
 // Storage interface encapsulates most of the behaviour of certmagic storage
@@ -41,12 +40,6 @@ func (certmagicAdapter) RemoveManaged(cache *certmagic.Cache, issuers []certmagi
 func (certmagicAdapter) AllMatchingCertificates(cache *certmagic.Cache, sni string) []certmagic.Certificate {
 	return cache.AllMatchingCertificates(sni)
 
-}
-
-func (certmagicAdapter) Storage(path string) Storage {
-	return storageAdapter{
-		storage: &certmagic.FileStorage{Path: path},
-	}
 }
 
 type storageAdapter struct {
