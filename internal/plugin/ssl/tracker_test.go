@@ -143,7 +143,7 @@ func TestProviderForCaches(t *testing.T) {
 	manager := mockACMEManager{providers: map[string]Provider{}}
 	tracker, _ := NewTracker(testutil.Logger(), manager)
 	cache := ProviderCache{}
-	if _, err := tracker.providerFor("missing", &cache); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := tracker.ProviderFor("missing", &cache); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected propagated error, got %v", err)
 	}
 }

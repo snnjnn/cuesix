@@ -136,41 +136,41 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 	// First: Poll certificates, to make sure we have up to date expirations
 	var providerCache ProviderCache
 	providerCerts := w.sort(&providerCache, slices.Collect(maps.Keys(committed))...)
+	updates := 0
 	for providerName, keys := range providerCerts {
-		providerView, err := w.ProviderFor(providerName, &providerCache)
+		provider, err := w.rawProvider(providerName, &providerCache)
 		if err != nil {
 			logger.Error("failed to resolve provider", "provider", providerName)
 			continue
 		}
-		w.poll(ctx, providerView, keys...)
-	}
-	// Then, sort tracked entries into committed and remains
-	updates := 0
-	remains := make([]Tracking, 0, 16)
-	w.WithLock(func() {
-		commitDate := time.Now()
-		deadline := commitDate.Add(-gracePeriod)
-		for key, cert := range w.track {
-			// If key is committed, record the date
-			if notAfter, ok := committed[key]; ok {
-				if !notAfter.Equal(cert.NotAfter) {
-					committed[key] = cert.NotAfter
-					updates += 1
-				}
-				cert.TrackedAt = commitDate
-				w.track[key] = cert
-			} else {
-				// If the cert has not been committed for long,
-				// unload it
-				if cert.TrackedAt.Before(deadline) {
-					delete(w.track, key)
-					remains = append(remains, key)
+		w.poll(ctx, provider, keys...)
+		// Then, sort tracked entries into committed and remains
+		remains := make([]Tracking, 0, 16)
+		w.WithLock(func() {
+			commitDate := time.Now()
+			deadline := commitDate.Add(-gracePeriod)
+			for key, cert := range w.track {
+				// If key is committed, record the date
+				if notAfter, ok := committed[key]; ok {
+					if !notAfter.Equal(cert.NotAfter) {
+						committed[key] = cert.NotAfter
+						updates += 1
+					}
+					cert.TrackedAt = commitDate
+					w.track[key] = cert
+				} else {
+					// If the cert has not been committed for long,
+					// unload it
+					if cert.TrackedAt.Before(deadline) {
+						delete(w.track, key)
+						remains = append(remains, key)
+					}
 				}
 			}
-		}
-	})
-	// Unmanage all remains
-	w.unmanage(ctx, &providerCache, remains...)
+		})
+		// Unmanage all remains
+		w.unmanage(ctx, provider, remains...)
+	}
 	return updates
 }
 
@@ -246,17 +246,13 @@ func (w *Tracker) poll(ctx context.Context, provider ProviderView, committedKeys
 }
 
 // Unmanage certificates that have not been committed for long
-func (w *Tracker) unmanage(ctx context.Context, providerCache *ProviderCache, remains ...Tracking) {
+func (w *Tracker) unmanage(ctx context.Context, provider Provider, remains ...Tracking) {
 	if w == nil {
 		return
 	}
 	logger := w.logger
 	for _, key := range remains {
-		providerView, err := w.providerFor(key.Provider, providerCache)
-		if err != nil {
-			continue
-		}
-		providerView.RemoveManaged(key.Identity)
+		provider.RemoveManaged(key.Identity)
 	}
 	// Rollback: if someone else added the certs back while we where unmanaging them,
 	// we have to make sure we didn't race them to unmanage
@@ -269,18 +265,14 @@ func (w *Tracker) unmanage(ctx context.Context, providerCache *ProviderCache, re
 		}
 	})
 	for rollback := range rollbacks {
-		providerView, err := w.ProviderFor(rollback.Provider, providerCache)
-		if err != nil {
-			continue
-		}
-		if err := providerView.RequestCertificate(ctx, rollback.Identity); err != nil {
+		if err := provider.RequestCertificate(ctx, rollback.Identity); err != nil {
 			logger.Error("failed to rollback certificate", "identity", rollback.Identity, "provider", rollback.Provider, "error", err)
 		}
 	}
 }
 
 // providerFor return the provider for a given name
-func (w *Tracker) providerFor(name string, cache *ProviderCache) (Provider, error) {
+func (w *Tracker) rawProvider(name string, cache *ProviderCache) (Provider, error) {
 	cacheMap := cache.providers
 	if cacheMap == nil {
 		cacheMap = make(map[string]Provider)
@@ -299,5 +291,5 @@ func (w *Tracker) providerFor(name string, cache *ProviderCache) (Provider, erro
 
 // providerFor return the provider for a given name
 func (w *Tracker) ProviderFor(name string, cache *ProviderCache) (ProviderView, error) {
-	return w.providerFor(name, cache)
+	return w.rawProvider(name, cache)
 }
