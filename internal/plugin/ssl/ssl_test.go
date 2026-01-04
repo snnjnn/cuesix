@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"io/fs"
 	"math/big"
 	"os"
@@ -58,16 +59,20 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 		t.Fatalf("write key file: %v", err)
 	}
 	acmeCert := sslCert(time.Now().Add(2 * time.Hour))
-	tracker := &mockACMETracker{
-		RequestCertificateFunc: func(ctx context.Context, provider, sni string) (Tracking, error) {
-			return Tracking{Provider: provider, Identity: sni}, nil
+	acmeProvider := &mockACMEProvider{
+		name: ACMEPrefix + "p-acme",
+		BestMatchForFunc: func(sni string) (Certificate, bool) {
+			return acmeCert, true
 		},
-		WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
-			ch := make(chan Delivery, buffer)
-			ch <- Delivery{Tracking: Tracking{Provider: ACMEPrefix + "p-acme", Identity: "acme.example"}, Certificate: acmeCert}
-			close(ch)
-			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
-		},
+	}
+	router := ProviderRouter{
+		ACMEManager:     mockACMEManager{providers: map[string]Provider{acmeProvider.Name(): acmeProvider}},
+		FileManager:     FileManager{Filesystems: []fs.FS{fileFS}},
+		FallbackManager: FallbackManager{Certificate: fallback},
+	}
+	tracker, err := NewTracker(testutil.Logger(), router)
+	if err != nil {
+		t.Fatalf("NewTracker returned error: %v", err)
 	}
 	value := map[string]any{
 		"ssls": []any{
@@ -99,14 +104,9 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 	}
 	record := make(map[Tracking]time.Time)
 	plugin := &SSLPlugin{
-		Fallback: fallback,
-		FileHandler: FileHandler{
-			Filesystems: []fs.FS{fileFS},
-		},
-		LiveHandler: LiveHandler{
-			Tracker: tracker,
-		},
-		Logger: testutil.Logger(),
+		Fallback:    fallback,
+		LiveHandler: LiveHandler{Tracker: tracker},
+		Logger:      testutil.Logger(),
 	}
 	out, err := plugin.Update(context.Background(), value, record)
 	if err != nil {
@@ -126,8 +126,132 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 	if len(certs) != 2 || listEntry["certs"].([]string)[0] != "inline-cert-1" {
 		t.Fatalf("list pairs not preserved: %v", listEntry)
 	}
-	if len(tracker.requestCertificateCalls) != 1 {
-		t.Fatalf("expected acme tracker request")
+	if len(record) != 2 {
+		t.Fatalf("expected record updated for live targets, got %d entries", len(record))
+	}
+}
+
+func TestSSLPluginLeavesInlineUntouched(t *testing.T) {
+	t.Parallel()
+	fallback := Certificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
+	value := map[string]any{
+		"ssls": []any{
+			map[string]any{
+				"id":   "1",
+				"cert": "inline-cert",
+				"key":  "inline-key",
+				"snis": []any{"a.example"},
+			},
+		},
+	}
+	plugin := &SSLPlugin{
+		Fallback:    fallback,
+		LiveHandler: LiveHandler{},
+		Logger:      testutil.Logger(),
+	}
+	out, err := plugin.Update(context.Background(), value, nil)
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	entry := out["ssls"].([]any)[0].(map[string]any)
+	if entry["cert"] != "inline-cert" || entry["key"] != "inline-key" {
+		t.Fatalf("expected inline values unchanged: %v", entry)
+	}
+}
+
+func TestLiveHandlerFileIdentityAndMismatchFallback(t *testing.T) {
+	t.Parallel()
+	now := time.Now().Add(time.Hour)
+	fallback := Certificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
+	fileCert := Certificate{CertPEM: []byte("file-cert"), KeyPEM: []byte("file-key"), NotAfter: now}
+	provider := &stubProvider{name: FilePrefix, best: fileCert}
+	tracker := &stubLiveTracker{
+		resolve: func(name string, _ *ProviderCache) (Provider, error) {
+			if name == FilePrefix {
+				return provider, nil
+			}
+			if name == FallbackPrefix {
+				return fallbackProvider{cert: fallback}, nil
+			}
+			return nil, errors.New("unknown provider")
+		},
+		watch: func(buffer int, topic string) cursor.Owned[Delivery] {
+			ch := make(chan Delivery, buffer)
+			go func() {
+				ch <- Delivery{
+					Tracking:    Tracking{Provider: FilePrefix, Identity: "c.pem+k.pem"},
+					Certificate: fileCert,
+				}
+				close(ch)
+			}()
+			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
+		},
+	}
+	// Valid file pair
+	var certOut, keyOut string
+	target := certTargets{
+		sslId: "id-file",
+		cert:  "file://c.pem",
+		key:   "file://k.pem",
+		snis:  []string{"example.com"},
+		replace: func(c, k []byte) {
+			certOut = string(c)
+			keyOut = string(k)
+		},
+	}
+	handler := LiveHandler{Tracker: tracker, RequestTimeout: time.Second}
+	handler.replaceTargets(context.Background(), testutil.Logger(), []certTargets{target}, nil, fallback)
+	if certOut != string(fileCert.CertPEM) || keyOut != string(fileCert.KeyPEM) {
+		t.Fatalf("expected file provider replacement, got cert=%q key=%q", certOut, keyOut)
+	}
+	if len(provider.requested) != 1 || provider.requested[0] != "c.pem+k.pem" {
+		t.Fatalf("unexpected file identity requested: %+v", provider.requested)
+	}
+	// Mismatched file/key should fallback
+	certOut, keyOut = "", ""
+	mismatch := certTargets{
+		sslId: "id-mismatch",
+		cert:  "file://only-cert.pem",
+		key:   "inline-key",
+		snis:  []string{"example.com"},
+		replace: func(c, k []byte) {
+			certOut = string(c)
+			keyOut = string(k)
+		},
+	}
+	handler.replaceTargets(context.Background(), testutil.Logger(), []certTargets{mismatch}, nil, fallback)
+	if certOut != string(fallback.CertPEM) || keyOut != string(fallback.KeyPEM) {
+		t.Fatalf("expected fallback for mismatched file target, got cert=%q key=%q", certOut, keyOut)
+	}
+}
+
+func TestLiveHandlerAcmeMultipleSNIFallback(t *testing.T) {
+	t.Parallel()
+	fallback := Certificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
+	tracker := &stubLiveTracker{
+		resolve: func(name string, _ *ProviderCache) (Provider, error) {
+			return fallbackProvider{cert: fallback}, nil
+		},
+		watch: func(buffer int, topic string) cursor.Owned[Delivery] {
+			ch := make(chan Delivery, buffer)
+			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() { close(ch) }}
+		},
+	}
+	var certOut, keyOut string
+	target := certTargets{
+		sslId: "id-acme",
+		cert:  "acme://p",
+		key:   "ignored",
+		snis:  []string{"a.example", "b.example"},
+		replace: func(c, k []byte) {
+			certOut = string(c)
+			keyOut = string(k)
+		},
+	}
+	handler := LiveHandler{Tracker: tracker, RequestTimeout: 5 * time.Millisecond}
+	handler.replaceTargets(context.Background(), testutil.Logger(), []certTargets{target}, nil, fallback)
+	if certOut != string(fallback.CertPEM) || keyOut != string(fallback.KeyPEM) {
+		t.Fatalf("expected fallback for multiple SNI acme target, got cert=%q key=%q", certOut, keyOut)
 	}
 }
 
@@ -288,3 +412,35 @@ func pemCertKey(t *testing.T, notAfter time.Time) ([]byte, []byte) {
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes})
 	return certPEM, keyPEM
 }
+
+type stubLiveTracker struct {
+	resolve func(string, *ProviderCache) (Provider, error)
+	watch   func(int, string) cursor.Owned[Delivery]
+}
+
+func (s *stubLiveTracker) ResolveProvider(name string, cache *ProviderCache) (Provider, error) {
+	return s.resolve(name, cache)
+}
+
+func (s *stubLiveTracker) Watch(buffer int, topic string) cursor.Owned[Delivery] {
+	return s.watch(buffer, topic)
+}
+
+type stubProvider struct {
+	name      string
+	best      Certificate
+	requested []string
+}
+
+func (p *stubProvider) Name() string { return p.name }
+
+func (p *stubProvider) BestMatchFor(_ context.Context, identity string) (Certificate, bool) {
+	return p.best, true
+}
+
+func (p *stubProvider) RequestCertificate(_ context.Context, identity string) error {
+	p.requested = append(p.requested, identity)
+	return nil
+}
+
+func (p *stubProvider) RemoveManaged(_ context.Context, _ ...string) {}

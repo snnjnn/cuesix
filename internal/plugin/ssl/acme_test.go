@@ -82,9 +82,11 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 					},
 					WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
 						ch := make(chan Delivery, buffer)
-						return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() { close(ch) }}
+						close(ch)
+						return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
 					},
 				},
+				RequestTimeout: 5 * time.Millisecond,
 			},
 			targets: []certTargets{{
 				cert: ACMEPrefix + "p1",
@@ -96,7 +98,14 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 		{
 			name: "multiple snis fallback",
 			handler: LiveHandler{
-				Tracker: &mockACMETracker{},
+				Tracker: &mockACMETracker{
+					WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
+						ch := make(chan Delivery, buffer)
+						close(ch)
+						return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
+					},
+				},
+				RequestTimeout: 5 * time.Millisecond,
 			},
 			targets: []certTargets{{
 				cert: ACMEPrefix + "p1",

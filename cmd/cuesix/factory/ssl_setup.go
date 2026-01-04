@@ -14,6 +14,9 @@ import (
 type SSLSetup struct {
 	Enabled      bool
 	FallbackCert ssl.Certificate
+	FileManager  ssl.FileManager
+	FallbackMgr  ssl.FallbackManager
+	Router       ssl.ProviderRouter
 	AcmeManager  certmagicmgr.Manager
 	AcmeTracker  *ssl.Tracker
 	events       chan ssl.Tracking
@@ -28,33 +31,52 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 		}
 		setup.FallbackCert = cert
 	}
-	if !certmagicCfg.Enabled {
-		return setup, nil
+	if pluginCfg.EnableSSL {
+		fses, err := BuildFilesystems(pluginCfg.SSLPaths)
+		if err != nil {
+			return setup, err
+		}
+		setup.FileManager = ssl.FileManager{Filesystems: fses}
 	}
-	if certmagicCfg.ChallengeAddr == "" {
-		return setup, errors.New("certmagic enabled but challenge address is missing")
+	setup.FallbackMgr = ssl.FallbackManager{Certificate: setup.FallbackCert}
+
+	if certmagicCfg.Enabled {
+		if certmagicCfg.ChallengeAddr == "" {
+			return setup, errors.New("certmagic enabled but challenge address is missing")
+		}
+		providers, err := buildCertmagicProviders(certmagicCfg.Providers)
+		if err != nil {
+			return setup, fmt.Errorf("certmagic provider config invalid: %w", err)
+		}
+		setup.events = make(chan ssl.Tracking, 32)
+		setup.AcmeManager, err = certmagicmgr.NewManager(logger, certmagicmgr.Config{
+			Providers:         providers,
+			DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
+			DataDir:           strings.TrimSpace(certmagicCfg.DataDir),
+			CertObtainTimeout: certmagicCfg.Timeout,
+		}, setup.events, setup.FallbackCert, nil, nil)
+		if err != nil {
+			close(setup.events)
+			return setup, fmt.Errorf("certmagic init failed: %w", err)
+		}
+		setup.Enabled = true
 	}
-	providers, err := buildCertmagicProviders(certmagicCfg.Providers)
+
+	setup.Router = ssl.ProviderRouter{
+		FileManager:     setup.FileManager,
+		FallbackManager: setup.FallbackMgr,
+	}
+	if setup.Enabled {
+		setup.Router.ACMEManager = adaptedManager{Manager: setup.AcmeManager}
+	}
+	var err error
+	setup.AcmeTracker, err = ssl.NewTracker(logger, setup.Router)
 	if err != nil {
-		return setup, fmt.Errorf("certmagic provider config invalid: %w", err)
+		if setup.events != nil {
+			close(setup.events)
+		}
+		return setup, fmt.Errorf("live watcher init failed: %w", err)
 	}
-	setup.events = make(chan ssl.Tracking, 32)
-	setup.AcmeManager, err = certmagicmgr.NewManager(logger, certmagicmgr.Config{
-		Providers:         providers,
-		DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
-		DataDir:           strings.TrimSpace(certmagicCfg.DataDir),
-		CertObtainTimeout: certmagicCfg.Timeout,
-	}, setup.events, setup.FallbackCert, nil, nil)
-	if err != nil {
-		close(setup.events)
-		return setup, fmt.Errorf("certmagic init failed: %w", err)
-	}
-	setup.AcmeTracker, err = ssl.NewTracker(logger, adaptedManager{Manager: setup.AcmeManager})
-	if err != nil {
-		close(setup.events)
-		return setup, fmt.Errorf("certmagic watcher init failed: %w", err)
-	}
-	setup.Enabled = true
 	return setup, nil
 }
 

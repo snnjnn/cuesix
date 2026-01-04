@@ -32,31 +32,34 @@ func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, ta
 	}
 	targetsById := make(map[Tracking][]certTargets)
 	if a.Tracker == nil {
-		logger.Error("ssl plugin acme requires acme tracker")
+		logger.Error("ssl plugin requires live tracker")
 	}
-	// First step: collect SNIs
+	// First step: collect providers and identities
 	var cache ProviderCache
 	for _, target := range targets {
 		if a.Tracker == nil {
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
 			continue
 		}
-		if len(target.snis) != 1 {
-			logger.Error("ssl plugin acme requires exactly one sni", "sslid", target.sslId, "snis", target.snis)
-			target.replace(fallback.CertPEM, fallback.KeyPEM)
-			continue
-		}
-		provider, err := a.Tracker.ResolveProvider(target.cert, &cache)
+		tracking, err := target.tracking()
 		if err != nil {
-			logger.Error("ssl plugin acme failed to resolve provider", "sslid", target.sslId, "cert", target.cert, "error", err)
+			logger.Error("ssl plugin failed to build tracking", "sslid", target.sslId, "snis", target.snis, "error", err)
+		}
+		if tracking.Provider == "" {
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
 			continue
 		}
-		key := Tracking{Provider: provider.Name(), Identity: target.snis[0]}
+		provider, err := a.Tracker.ResolveProvider(tracking.Provider, &cache)
+		if err != nil {
+			logger.Error("ssl plugin failed to resolve provider", "sslid", target.sslId, "cert", target.cert, "error", err)
+			target.replace(fallback.CertPEM, fallback.KeyPEM)
+			continue
+		}
+		key := Tracking{Provider: provider.Name(), Identity: tracking.Identity}
 		targetsById[key] = append(targetsById[key], target)
 	}
 	if len(targetsById) == 0 {
-		logger.Error("ssl plugin acme failed to resolve any provider")
+		logger.Error("ssl plugin live failed to resolve any provider")
 		return
 	}
 	// Now we will request all the certs, while waiting for notifications

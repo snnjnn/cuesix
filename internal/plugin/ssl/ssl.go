@@ -45,6 +45,45 @@ type certTargets struct {
 	replace certUpdater
 }
 
+func (t certTargets) tracking() (Tracking, error) {
+	// ACME: provider is the cert text, identity is the single SNI.
+	if strings.HasPrefix(t.cert, ACMEPrefix) {
+		if len(t.snis) != 1 {
+			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, fmt.Errorf("ssl plugin live requires exactly one sni")
+		}
+		return Tracking{Provider: t.cert, Identity: t.snis[0]}, nil
+	}
+	certIsFile := strings.HasPrefix(t.cert, FilePrefix)
+	keyIsFile := strings.HasPrefix(t.key, FilePrefix)
+	switch {
+	case certIsFile && keyIsFile:
+		certPath := strings.TrimPrefix(t.cert, FilePrefix)
+		keyPath := strings.TrimPrefix(t.key, FilePrefix)
+		if certPath == "" || keyPath == "" {
+			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, fmt.Errorf("ssl plugin empty file reference")
+		}
+		return Tracking{
+			Provider: FilePrefix,
+			Identity: certPath + "+" + keyPath,
+		}, nil
+	case certIsFile || keyIsFile:
+		// Mismatched provider usage, fall back immediately.
+		return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, fmt.Errorf("ssl plugin mismatched file target")
+	default:
+		return Tracking{}, fmt.Errorf("ssl plugin live unsupported target")
+	}
+}
+
+func (t certTargets) fallbackIdentity() string {
+	if t.sslId != "" {
+		return t.sslId
+	}
+	if len(t.snis) > 0 {
+		return t.snis[0]
+	}
+	return "fallback"
+}
+
 // This describes types of ssl replacements supported
 type targetType int
 
@@ -55,8 +94,9 @@ const (
 )
 
 const (
-	ACMEPrefix = "acme://"
-	FilePrefix = "file://"
+	ACMEPrefix     = "acme://"
+	FilePrefix     = "file://"
+	FallbackPrefix = "fallback://"
 )
 
 func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map[Tracking]time.Time) (map[string]any, error) {
@@ -93,7 +133,9 @@ func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map
 	}
 	p.TextHandler.replaceTargets(logger, targets[textTarget], p.Fallback)
 	p.FileHandler.replaceTargets(logger, targets[fileTarget], p.Fallback)
-	p.LiveHandler.replaceTargets(ctx, logger, targets[acmeTarget], record, p.Fallback)
+	liveTargets := append([]certTargets(nil), targets[acmeTarget]...)
+	liveTargets = append(liveTargets, targets[fileTarget]...)
+	p.LiveHandler.replaceTargets(ctx, logger, liveTargets, record, p.Fallback)
 	logger.Info("ssl plugin complete", "entries", len(entries))
 	return value, nil
 }

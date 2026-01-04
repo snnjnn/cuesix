@@ -121,16 +121,7 @@ func (p *SerializerFactory) buildPreRender(cfg config.Plugins) error {
 	// SSL Plugin is handled diferently because so far, is the only
 	// plugin with state (records requested certs)
 	if cfg.EnableSSL {
-		// Prepare SSL Plugin. Make sure paths are not empty, and
-		// nil tracker => nil ssl.ACMEManager.
-		sslFSes, err := BuildFilesystems(cfg.SSLPaths)
-		if err != nil {
-			return err
-		}
 		p.sslPlugin = &ssl.SSLPlugin{
-			FileHandler: ssl.FileHandler{
-				Filesystems: sslFSes,
-			},
 			LiveHandler: ssl.LiveHandler{
 				RequestTimeout: cfg.SSLACMETimeout,
 				Tracker:        p.sslSetup.AcmeTracker,
