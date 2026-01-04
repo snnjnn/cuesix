@@ -39,6 +39,10 @@ type Manager interface {
 	ResolveProvider(name string) (Provider, error)
 }
 
+type ProviderCache struct {
+	providers map[string]Provider
+}
+
 type trackedCertificate struct {
 	Certificate
 	TrackedAt time.Time
@@ -74,8 +78,8 @@ func (w *Tracker) WithLock(closure func()) {
 
 // RequestCertificate obtains or loads a certificate for the given Id.
 func (w *Tracker) RequestCertificate(ctx context.Context, providerName string, identity string) (Tracking, error) {
-	providerCache := make(map[string]Provider)
-	providerView, err := w.providerFor(providerName, providerCache)
+	var providerCache ProviderCache
+	providerView, err := w.ProviderFor(providerName, &providerCache)
 	if err != nil {
 		return Tracking{}, err
 	}
@@ -130,10 +134,10 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 		return 0
 	}
 	// First: Poll certificates, to make sure we have up to date expirations
-	providerCache := make(map[string]Provider)
-	providerCerts := w.sort(providerCache, slices.Collect(maps.Keys(committed))...)
+	var providerCache ProviderCache
+	providerCerts := w.sort(&providerCache, slices.Collect(maps.Keys(committed))...)
 	for providerName, keys := range providerCerts {
-		providerView, err := w.providerFor(providerName, providerCache)
+		providerView, err := w.ProviderFor(providerName, &providerCache)
 		if err != nil {
 			logger.Error("failed to resolve provider", "provider", providerName)
 			continue
@@ -166,19 +170,19 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 		}
 	})
 	// Unmanage all remains
-	w.unmanage(ctx, providerCache, remains...)
+	w.unmanage(ctx, &providerCache, remains...)
 	return updates
 }
 
 // UpdateLoop over certificate updates and forward to watchers
 func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cursor.Cursor[Tracking]) {
-	providerCache := make(map[string]Provider)
+	var providerCache ProviderCache
 	for certInfo := range cursor.All(ctx, events) {
 		if certInfo.Provider == "" {
 			logger.Error("missing provider on cert event", "identity", certInfo)
 			continue
 		}
-		provider, err := w.providerFor(certInfo.Provider, providerCache)
+		provider, err := w.ProviderFor(certInfo.Provider, &providerCache)
 		if err != nil {
 			logger.Error("failed to resolve provider", "provider", certInfo.Provider, "identity", certInfo)
 			continue
@@ -205,10 +209,10 @@ func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cur
 }
 
 // Sort keys by provider name
-func (w *Tracker) sort(providerCache map[string]Provider, keys ...Tracking) map[string][]Tracking {
+func (w *Tracker) sort(providerCache *ProviderCache, keys ...Tracking) map[string][]Tracking {
 	byProvider := make(map[string][]Tracking)
 	for _, key := range keys {
-		providerView, err := w.providerFor(key.Provider, providerCache)
+		providerView, err := w.ProviderFor(key.Provider, providerCache)
 		if err != nil {
 			continue
 		}
@@ -242,7 +246,7 @@ func (w *Tracker) poll(ctx context.Context, provider ProviderView, committedKeys
 }
 
 // Unmanage certificates that have not been committed for long
-func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]Provider, remains ...Tracking) {
+func (w *Tracker) unmanage(ctx context.Context, providerCache *ProviderCache, remains ...Tracking) {
 	if w == nil {
 		return
 	}
@@ -265,7 +269,7 @@ func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]Provide
 		}
 	})
 	for rollback := range rollbacks {
-		providerView, err := w.providerFor(rollback.Provider, providerCache)
+		providerView, err := w.ProviderFor(rollback.Provider, providerCache)
 		if err != nil {
 			continue
 		}
@@ -276,14 +280,24 @@ func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]Provide
 }
 
 // providerFor return the provider for a given name
-func (w *Tracker) providerFor(name string, cache map[string]Provider) (Provider, error) {
-	if provider, ok := cache[name]; ok {
+func (w *Tracker) providerFor(name string, cache *ProviderCache) (Provider, error) {
+	cacheMap := cache.providers
+	if cacheMap == nil {
+		cacheMap = make(map[string]Provider)
+		cache.providers = cacheMap
+	}
+	if provider, ok := cacheMap[name]; ok {
 		return provider, nil
 	}
 	provider, err := w.manager.ResolveProvider(name)
 	if err != nil {
 		return nil, err
 	}
-	cache[name] = provider
+	cacheMap[name] = provider
 	return provider, nil
+}
+
+// providerFor return the provider for a given name
+func (w *Tracker) ProviderFor(name string, cache *ProviderCache) (ProviderView, error) {
+	return w.providerFor(name, cache)
 }
