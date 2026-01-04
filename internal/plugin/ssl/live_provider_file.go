@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 	"strings"
 )
 
@@ -69,32 +68,12 @@ func parseFileIdentity(identity string) (string, string, error) {
 	if !found || certPath == "" || keyPath == "" {
 		return "", "", errors.New("invalid file identity")
 	}
-	cleanCert, err := sanitizePath(certPath)
-	if err != nil {
-		return "", "", err
-	}
-	cleanKey, err := sanitizePath(keyPath)
-	if err != nil {
-		return "", "", err
-	}
-	return cleanCert, cleanKey, nil
-}
-
-func sanitizePath(name string) (string, error) {
-	clean := path.Clean(name)
-	if clean == "." || clean == "/" || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "..") {
-		return "", fmt.Errorf("invalid file path: %s", name)
-	}
-	return clean, nil
+	return certPath, keyPath, nil
 }
 
 func readFileFromFS(filesystems []fs.FS, name string) ([]byte, error) {
-	clean, err := sanitizePath(name)
-	if err != nil {
-		return nil, err
-	}
 	for _, filesystem := range filesystems {
-		data, err := fs.ReadFile(filesystem, clean)
+		data, err := fs.ReadFile(filesystem, name)
 		if err == nil {
 			return data, nil
 		}

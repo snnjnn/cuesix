@@ -24,8 +24,6 @@ type Certificate struct {
 // SSLPlugin resolves cert/key markers and ensures entries never remain invalid.
 type SSLPlugin struct {
 	Fallback Certificate
-	TextHandler
-	FileHandler
 	LiveHandler
 	Logger *slog.Logger
 }
@@ -57,8 +55,14 @@ func (t certTargets) tracking() (Tracking, error) {
 	keyIsFile := strings.HasPrefix(t.key, FilePrefix)
 	switch {
 	case certIsFile && keyIsFile:
-		certPath := strings.TrimPrefix(t.cert, FilePrefix)
-		keyPath := strings.TrimPrefix(t.key, FilePrefix)
+		certPath, err := sanitizePath(strings.TrimPrefix(t.cert, FilePrefix))
+		if err != nil {
+			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, err
+		}
+		keyPath, err := sanitizePath(strings.TrimPrefix(t.key, FilePrefix))
+		if err != nil {
+			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, err
+		}
 		if certPath == "" || keyPath == "" {
 			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, fmt.Errorf("ssl plugin empty file reference")
 		}
@@ -131,8 +135,6 @@ func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map
 	if err != nil {
 		return nil, err
 	}
-	p.TextHandler.replaceTargets(logger, targets[textTarget], p.Fallback)
-	p.FileHandler.replaceTargets(logger, targets[fileTarget], p.Fallback)
 	liveTargets := append([]certTargets(nil), targets[acmeTarget]...)
 	liveTargets = append(liveTargets, targets[fileTarget]...)
 	p.LiveHandler.replaceTargets(ctx, logger, liveTargets, record, p.Fallback)
