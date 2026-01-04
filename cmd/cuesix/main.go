@@ -270,7 +270,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	if acmeServer != nil {
 		// Start the cert watcher
 		group.Go(func() error {
-			events := make(chan ssl.ACMEKey, 32)
+			events := make(chan ssl.Tracking, 32)
 			defer close(events)
 			ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, events)
 			return nil

@@ -10,28 +10,33 @@ import (
 	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
-type ACMEKey struct {
+type Tracking struct {
 	Provider string
-	SNI      string
+	Identity string
 }
 
-type ACMECertificate struct {
-	ACMEKey
+type Delivery struct {
+	Tracking
 	Certificate
 }
 
-// ACMEProvider exposes provider operations needed by Watcher.
-type ACMEProvider interface {
+// Provider exposes provider operations needed by Watcher users
+type ProviderView interface {
 	Name() string
-	BestMatchFor(sni string) (Certificate, bool)
-	RequestCertificate(ctx context.Context, sni string) error
-	RemoveManaged(sni string)
+	BestMatchFor(identity string) (Certificate, bool)
+	RequestCertificate(ctx context.Context, identity string) error
 }
 
-// RequestCertificate obtains or loads a certificate for the given SNI.
-type ACMEManager interface {
+// Provider exposes provider operations needed by Watcher itself
+type Provider interface {
+	ProviderView
+	RemoveManaged(identity string)
+}
+
+// RequestCertificate obtains or loads a certificate for the given Id.
+type Manager interface {
 	// Gets the internal provider to remove certificates
-	ResolveProvider(name string) (ACMEProvider, error)
+	ResolveProvider(name string) (Provider, error)
 }
 
 type trackedCertificate struct {
@@ -41,24 +46,24 @@ type trackedCertificate struct {
 
 // Tracker tracks certificate updates from certmagic.
 type Tracker struct {
-	manager ACMEManager
+	manager Manager
 	logger  *slog.Logger
-	track   map[ACMEKey]trackedCertificate
-	cursor.Watcher[ACMECertificate]
+	track   map[Tracking]trackedCertificate
+	cursor.Watcher[Delivery]
 }
 
 // NewWatcher builds a watcher for certificate updates.
-func NewTracker(logger *slog.Logger, manager ACMEManager) (*Tracker, error) {
+func NewTracker(logger *slog.Logger, manager Manager) (*Tracker, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	tracker := &Tracker{
 		manager: manager,
-		track:   make(map[ACMEKey]trackedCertificate),
+		track:   make(map[Tracking]trackedCertificate),
 		logger:  logger,
 	}
-	tracker.Embedded(func(n ACMECertificate) string {
-		return n.SNI
+	tracker.Embedded(func(n Delivery) string {
+		return n.Identity
 	})
 	return tracker, nil
 }
@@ -67,14 +72,14 @@ func (w *Tracker) WithLock(closure func()) {
 	w.Watcher.WithLock(closure)
 }
 
-// RequestCertificate obtains or loads a certificate for the given SNI.
-func (w *Tracker) RequestCertificate(ctx context.Context, providerName string, sni string) (ACMEKey, error) {
-	providerCache := make(map[string]ACMEProvider)
+// RequestCertificate obtains or loads a certificate for the given Id.
+func (w *Tracker) RequestCertificate(ctx context.Context, providerName string, identity string) (Tracking, error) {
+	providerCache := make(map[string]Provider)
 	providerView, err := w.providerFor(providerName, providerCache)
 	if err != nil {
-		return ACMEKey{}, err
+		return Tracking{}, err
 	}
-	key := ACMEKey{Provider: providerView.Name(), SNI: sni}
+	key := Tracking{Provider: providerView.Name(), Identity: identity}
 	// Lets first check if the certificate is tracked
 	var (
 		tracked trackedCertificate
@@ -84,8 +89,8 @@ func (w *Tracker) RequestCertificate(ctx context.Context, providerName string, s
 		if tracked, found = w.track[key]; found {
 			// If the certificate is ready, broadcast it
 			if !tracked.NotAfter.IsZero() {
-				notif := ACMECertificate{
-					ACMEKey:     key,
+				notif := Delivery{
+					Tracking:    key,
 					Certificate: tracked.Certificate,
 				}
 				w.NotifyAllLocked(ctx, notif)
@@ -102,34 +107,42 @@ func (w *Tracker) RequestCertificate(ctx context.Context, providerName string, s
 	// If the certificate was not found, we owned it by adding an empty one.
 	// Ask the manager to create it.
 	if !found {
-		err = providerView.RequestCertificate(ctx, key.SNI)
+		err = providerView.RequestCertificate(ctx, key.Identity)
 		if err != nil {
 			w.WithLock(func() {
 				delete(w.track, key)
 			})
-			return ACMEKey{}, err
+			return Tracking{}, err
 		}
 	}
 	// Owned ot not, if it is not already populated, do a brief
 	// peek at the cache to see if an update has arrived
 	if tracked.NotAfter.IsZero() {
-		w.poll(ctx, providerCache, key)
+		w.poll(ctx, providerView, key)
 	}
 	return key, err
 }
 
 // Commit a list of certificates and collect their expiration dates.
 // Return the number of dates modified in the map.
-func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map[ACMEKey]time.Time, gracePeriod time.Duration) int {
+func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map[Tracking]time.Time, gracePeriod time.Duration) int {
 	if w == nil {
 		return 0
 	}
 	// First: Poll certificates, to make sure we have up to date expirations
-	providerCache := make(map[string]ACMEProvider)
-	w.poll(ctx, providerCache, slices.Collect(maps.Keys(committed))...)
-	// Then, sort trackend entries into committed and remains
+	providerCache := make(map[string]Provider)
+	providerCerts := w.sort(providerCache, slices.Collect(maps.Keys(committed))...)
+	for providerName, keys := range providerCerts {
+		providerView, err := w.providerFor(providerName, providerCache)
+		if err != nil {
+			logger.Error("failed to resolve provider", "provider", providerName)
+			continue
+		}
+		w.poll(ctx, providerView, keys...)
+	}
+	// Then, sort tracked entries into committed and remains
 	updates := 0
-	remains := make([]ACMEKey, 0, 16)
+	remains := make([]Tracking, 0, 16)
 	w.WithLock(func() {
 		commitDate := time.Now()
 		deadline := commitDate.Add(-gracePeriod)
@@ -158,19 +171,19 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 }
 
 // UpdateLoop over certificate updates and forward to watchers
-func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cursor.Cursor[ACMEKey]) {
-	providerCache := make(map[string]ACMEProvider)
+func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cursor.Cursor[Tracking]) {
+	providerCache := make(map[string]Provider)
 	for certInfo := range cursor.All(ctx, events) {
 		if certInfo.Provider == "" {
-			logger.Error("missing provider on cert event", "sni", certInfo)
+			logger.Error("missing provider on cert event", "identity", certInfo)
 			continue
 		}
 		provider, err := w.providerFor(certInfo.Provider, providerCache)
 		if err != nil {
-			logger.Error("failed to resolve provider", "provider", certInfo.Provider, "sni", certInfo)
+			logger.Error("failed to resolve provider", "provider", certInfo.Provider, "identity", certInfo)
 			continue
 		}
-		best, ok := provider.BestMatchFor(certInfo.SNI)
+		best, ok := provider.BestMatchFor(certInfo.Identity)
 		if !ok {
 			continue
 		}
@@ -183,23 +196,33 @@ func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cur
 				return
 			}
 			// Always notify of real renovations, just in case.
-			w.NotifyAllLocked(ctx, ACMECertificate{
-				ACMEKey:     certInfo,
+			w.NotifyAllLocked(ctx, Delivery{
+				Tracking:    certInfo,
 				Certificate: best,
 			})
 		})
 	}
 }
 
-// Poll cache for updates to the given certs
-func (w *Tracker) poll(ctx context.Context, providerCache map[string]ACMEProvider, keys ...ACMEKey) {
-	candidates := make(map[ACMEKey]Certificate)
+// Sort keys by provider name
+func (w *Tracker) sort(providerCache map[string]Provider, keys ...Tracking) map[string][]Tracking {
+	byProvider := make(map[string][]Tracking)
 	for _, key := range keys {
 		providerView, err := w.providerFor(key.Provider, providerCache)
 		if err != nil {
 			continue
 		}
-		best, ok := providerView.BestMatchFor(key.SNI)
+		name := providerView.Name()
+		byProvider[name] = append(byProvider[name], key)
+	}
+	return byProvider
+}
+
+// Poll cache for updates to the given certs
+func (w *Tracker) poll(ctx context.Context, provider ProviderView, committedKeys ...Tracking) {
+	candidates := make(map[Tracking]Certificate)
+	for _, key := range committedKeys {
+		best, ok := provider.BestMatchFor(key.Identity)
 		if ok {
 			candidates[key] = best
 		}
@@ -210,8 +233,8 @@ func (w *Tracker) poll(ctx context.Context, providerCache map[string]ACMEProvide
 				Certificate: best,
 				TrackedAt:   time.Now(),
 			}
-			w.NotifyAllLocked(ctx, ACMECertificate{
-				ACMEKey:     key,
+			w.NotifyAllLocked(ctx, Delivery{
+				Tracking:    key,
 				Certificate: best,
 			})
 		}
@@ -219,7 +242,7 @@ func (w *Tracker) poll(ctx context.Context, providerCache map[string]ACMEProvide
 }
 
 // Unmanage certificates that have not been committed for long
-func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]ACMEProvider, remains ...ACMEKey) {
+func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]Provider, remains ...Tracking) {
 	if w == nil {
 		return
 	}
@@ -229,11 +252,11 @@ func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]ACMEPro
 		if err != nil {
 			continue
 		}
-		providerView.RemoveManaged(key.SNI)
+		providerView.RemoveManaged(key.Identity)
 	}
 	// Rollback: if someone else added the certs back while we where unmanaging them,
 	// we have to make sure we didn't race them to unmanage
-	rollbacks := make(map[ACMEKey]struct{})
+	rollbacks := make(map[Tracking]struct{})
 	w.WithLock(func() {
 		for _, key := range remains {
 			if _, ok := w.track[key]; ok {
@@ -246,14 +269,14 @@ func (w *Tracker) unmanage(ctx context.Context, providerCache map[string]ACMEPro
 		if err != nil {
 			continue
 		}
-		if err := providerView.RequestCertificate(ctx, rollback.SNI); err != nil {
-			logger.Error("failed to rollback certificate", "sni", rollback.SNI, "provider", rollback.Provider, "error", err)
+		if err := providerView.RequestCertificate(ctx, rollback.Identity); err != nil {
+			logger.Error("failed to rollback certificate", "identity", rollback.Identity, "provider", rollback.Provider, "error", err)
 		}
 	}
 }
 
 // providerFor return the provider for a given name
-func (w *Tracker) providerFor(name string, cache map[string]ACMEProvider) (ACMEProvider, error) {
+func (w *Tracker) providerFor(name string, cache map[string]Provider) (Provider, error) {
 	if provider, ok := cache[name]; ok {
 		return provider, nil
 	}

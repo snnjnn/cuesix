@@ -16,7 +16,7 @@ type SSLSetup struct {
 	FallbackCert ssl.Certificate
 	AcmeManager  certmagicmgr.Manager
 	AcmeTracker  *ssl.Tracker
-	events       chan ssl.ACMEKey
+	events       chan ssl.Tracking
 }
 
 func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apisixCfg config.APISIX) (SSLSetup, error) {
@@ -38,7 +38,7 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 	if err != nil {
 		return setup, fmt.Errorf("certmagic provider config invalid: %w", err)
 	}
-	setup.events = make(chan ssl.ACMEKey, 32)
+	setup.events = make(chan ssl.Tracking, 32)
 	setup.AcmeManager, err = certmagicmgr.NewManager(logger, certmagicmgr.Config{
 		Providers:         providers,
 		DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
@@ -62,7 +62,7 @@ type adaptedManager struct {
 	certmagicmgr.Manager
 }
 
-func (a adaptedManager) ResolveProvider(name string) (ssl.ACMEProvider, error) {
+func (a adaptedManager) ResolveProvider(name string) (ssl.Provider, error) {
 	return a.Manager.ResolveProvider(name)
 }
 

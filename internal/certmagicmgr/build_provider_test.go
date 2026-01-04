@@ -13,7 +13,7 @@ import (
 func TestBuildProviderConfiguresStorageAndIssuer(t *testing.T) {
 	t.Parallel()
 	storage := &testutil.MockStorage{}
-	events := make(chan ssl.ACMEKey, 1)
+	events := make(chan ssl.Tracking, 1)
 	cfg := Config{CertObtainTimeout: 5 * time.Second}
 	providerCfg := ProviderConfig{Name: "name", CA: "ca", Email: "mail"}
 
@@ -45,7 +45,7 @@ func TestBuildProviderConfiguresStorageAndIssuer(t *testing.T) {
 	}
 	select {
 	case ev := <-events:
-		if ev.SNI != "sni.example" || ev.Provider != providerCfg.Name {
+		if ev.Identity != "sni.example" || ev.Provider != providerCfg.Name {
 			t.Fatalf("unexpected event payload: %+v", ev)
 		}
 	default:

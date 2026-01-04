@@ -20,14 +20,14 @@ type watchCall struct {
 
 // mockACMETracker implements ACMETracker for tests.
 type mockACMETracker struct {
-	RequestCertificateFunc func(context.Context, string, string) (ACMEKey, error)
-	WatchFunc              func(int, string) cursor.Owned[ACMECertificate]
+	RequestCertificateFunc func(context.Context, string, string) (Tracking, error)
+	WatchFunc              func(int, string) cursor.Owned[Delivery]
 
 	requestCertificateCalls []requestCertificateCall
 	watchCalls              []watchCall
 }
 
-func (m *mockACMETracker) RequestCertificate(ctx context.Context, providerName string, sni string) (ACMEKey, error) {
+func (m *mockACMETracker) RequestCertificate(ctx context.Context, providerName string, sni string) (Tracking, error) {
 	m.requestCertificateCalls = append(m.requestCertificateCalls, requestCertificateCall{
 		Ctx:      ctx,
 		Provider: providerName,
@@ -36,16 +36,16 @@ func (m *mockACMETracker) RequestCertificate(ctx context.Context, providerName s
 	if m.RequestCertificateFunc != nil {
 		return m.RequestCertificateFunc(ctx, providerName, sni)
 	}
-	return ACMEKey{Provider: providerName, SNI: sni}, nil
+	return Tracking{Provider: providerName, Identity: sni}, nil
 }
 
-func (m *mockACMETracker) Watch(buffer int, topic string) cursor.Owned[ACMECertificate] {
+func (m *mockACMETracker) Watch(buffer int, topic string) cursor.Owned[Delivery] {
 	m.watchCalls = append(m.watchCalls, watchCall{Buffer: buffer, Topic: topic})
 	if m.WatchFunc != nil {
 		return m.WatchFunc(buffer, topic)
 	}
-	ch := make(chan ACMECertificate, buffer)
-	return cursor.Owned[ACMECertificate]{
+	ch := make(chan Delivery, buffer)
+	return cursor.Owned[Delivery]{
 		Cursor: cursor.Channel(ch),
 		Close: func() {
 			close(ch)
@@ -107,11 +107,11 @@ func (m *mockACMEProvider) RemoveManaged(sni string) {
 
 // mockACMEManager resolves providers from a map.
 type mockACMEManager struct {
-	providers map[string]ACMEProvider
+	providers map[string]Provider
 	err       error
 }
 
-func (m mockACMEManager) ResolveProvider(name string) (ACMEProvider, error) {
+func (m mockACMEManager) ResolveProvider(name string) (Provider, error) {
 	if p, ok := m.providers[name]; ok {
 		return p, nil
 	}

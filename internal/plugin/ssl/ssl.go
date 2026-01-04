@@ -58,7 +58,7 @@ const (
 	FilePrefix = "file://"
 )
 
-func (p *SSLPlugin) Update(value map[string]any, record map[ACMEKey]time.Time) (map[string]any, error) {
+func (p *SSLPlugin) Update(value map[string]any, record map[Tracking]time.Time) (map[string]any, error) {
 	if p == nil {
 		return nil, errors.New("ssl plugin is nil")
 	}

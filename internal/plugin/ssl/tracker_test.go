@@ -18,7 +18,7 @@ func TestTrackerRequestCertificateNew(t *testing.T) {
 			return sslCert(time.Now().Add(time.Hour)), true
 		},
 	}
-	manager := mockACMEManager{providers: map[string]ACMEProvider{"p1": provider}}
+	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
 	tracker, err := NewTracker(testutil.Logger(), manager)
 	if err != nil {
 		t.Fatalf("NewTracker returned error: %v", err)
@@ -27,7 +27,7 @@ func TestTrackerRequestCertificateNew(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestCertificate returned error: %v", err)
 	}
-	if key.Provider != "p1" || key.SNI != "example.com" {
+	if key.Provider != "p1" || key.Identity != "example.com" {
 		t.Fatalf("unexpected key: %+v", key)
 	}
 	if len(provider.requestCalls) != 1 {
@@ -44,9 +44,9 @@ func TestTrackerRequestCertificateNew(t *testing.T) {
 func TestTrackerRequestCertificateAlreadyTrackedNotifies(t *testing.T) {
 	t.Parallel()
 	provider := &mockACMEProvider{name: "p1"}
-	manager := mockACMEManager{providers: map[string]ACMEProvider{"p1": provider}}
+	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
 	tracker, _ := NewTracker(testutil.Logger(), manager)
-	key := ACMEKey{Provider: "p1", SNI: "example.com"}
+	key := Tracking{Provider: "p1", Identity: "example.com"}
 	tracked := trackedCertificate{Certificate: sslCert(time.Now().Add(time.Hour))}
 	tracker.WithLock(func() {
 		tracker.track[key] = tracked
@@ -59,7 +59,7 @@ func TestTrackerRequestCertificateAlreadyTrackedNotifies(t *testing.T) {
 	}
 	select {
 	case cert := <-events.Cursor:
-		if cert.SNI != key.SNI || cert.Provider != key.Provider {
+		if cert.Identity != key.Identity || cert.Provider != key.Provider {
 			t.Fatalf("unexpected notification %+v", cert)
 		}
 	default:
@@ -78,10 +78,10 @@ func TestTrackerCommitAndUnmanage(t *testing.T) {
 			return sslCert(time.Now().Add(2 * time.Hour)), true
 		},
 	}
-	manager := mockACMEManager{providers: map[string]ACMEProvider{"p1": provider}}
+	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
 	tracker, _ := NewTracker(testutil.Logger(), manager)
-	keyTracked := ACMEKey{Provider: "p1", SNI: "tracked.example"}
-	keyStale := ACMEKey{Provider: "p1", SNI: "stale.example"}
+	keyTracked := Tracking{Provider: "p1", Identity: "tracked.example"}
+	keyStale := Tracking{Provider: "p1", Identity: "stale.example"}
 	now := time.Now()
 	tracker.WithLock(func() {
 		tracker.track[keyTracked] = trackedCertificate{
@@ -93,7 +93,7 @@ func TestTrackerCommitAndUnmanage(t *testing.T) {
 			TrackedAt:   now.Add(-2 * time.Hour),
 		}
 	})
-	committed := map[ACMEKey]time.Time{
+	committed := map[Tracking]time.Time{
 		keyTracked: time.Time{},
 	}
 	updates := tracker.Commit(context.Background(), testutil.Logger(), committed, time.Hour)
@@ -103,7 +103,7 @@ func TestTrackerCommitAndUnmanage(t *testing.T) {
 	if committed[keyTracked].IsZero() {
 		t.Fatalf("expected committed map updated with notAfter")
 	}
-	if len(provider.removeManagedCalls) != 1 || provider.removeManagedCalls[0].SNI != keyStale.SNI {
+	if len(provider.removeManagedCalls) != 1 || provider.removeManagedCalls[0].SNI != keyStale.Identity {
 		t.Fatalf("expected RemoveManaged called for stale cert, calls: %+v", provider.removeManagedCalls)
 	}
 }
@@ -117,10 +117,10 @@ func TestUpdateLoopBroadcasts(t *testing.T) {
 			return cert, true
 		},
 	}
-	manager := mockACMEManager{providers: map[string]ACMEProvider{"p1": provider}}
+	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
 	tracker, _ := NewTracker(testutil.Logger(), manager)
-	events := make(chan ACMEKey, 1)
-	events <- ACMEKey{Provider: "p1", SNI: "example.com"}
+	events := make(chan Tracking, 1)
+	events <- Tracking{Provider: "p1", Identity: "example.com"}
 	close(events)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -130,7 +130,7 @@ func TestUpdateLoopBroadcasts(t *testing.T) {
 	UpdateLoop(ctx, testutil.Logger(), tracker, cursor.Channel(events))
 	select {
 	case update := <-watch.Cursor:
-		if update.Provider != "p1" || update.SNI != "example.com" {
+		if update.Provider != "p1" || update.Identity != "example.com" {
 			t.Fatalf("unexpected update %+v", update)
 		}
 	default:
@@ -140,9 +140,9 @@ func TestUpdateLoopBroadcasts(t *testing.T) {
 
 func TestProviderForCaches(t *testing.T) {
 	t.Parallel()
-	manager := mockACMEManager{providers: map[string]ACMEProvider{}}
+	manager := mockACMEManager{providers: map[string]Provider{}}
 	tracker, _ := NewTracker(testutil.Logger(), manager)
-	cache := make(map[string]ACMEProvider)
+	cache := make(map[string]Provider)
 	if _, err := tracker.providerFor("missing", cache); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected propagated error, got %v", err)
 	}

@@ -18,7 +18,7 @@ type mockTracker struct {
 	}
 }
 
-func (m *mockTracker) Commit(ctx context.Context, _ *slog.Logger, committed map[ssl.ACMEKey]time.Time, grace time.Duration) int {
+func (m *mockTracker) Commit(ctx context.Context, _ *slog.Logger, committed map[ssl.Tracking]time.Time, grace time.Duration) int {
 	m.commitCalls = append(m.commitCalls, struct {
 		ctx   context.Context
 		grace time.Duration
@@ -35,7 +35,7 @@ func TestCommitLoopRunsWhenNoCommittedCerts(t *testing.T) {
 			AcmeTracker: (*ssl.Tracker)(nil),
 		},
 		scheduler:      NewScheduler(),
-		CommittedCerts: make(map[ssl.ACMEKey]time.Time),
+		CommittedCerts: make(map[ssl.Tracking]time.Time),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -67,7 +67,7 @@ func TestCommitLoopRunsWhenCommittedCertsPresent(t *testing.T) {
 			AcmeTracker: (*ssl.Tracker)(nil),
 		},
 		scheduler:      NewScheduler(),
-		CommittedCerts: map[ssl.ACMEKey]time.Time{{Provider: "p", SNI: "a"}: time.Now()},
+		CommittedCerts: map[ssl.Tracking]time.Time{{Provider: "p", Identity: "a"}: time.Now()},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

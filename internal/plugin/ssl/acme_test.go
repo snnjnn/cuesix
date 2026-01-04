@@ -25,22 +25,22 @@ func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 	}
 	ready := make(chan struct{})
 	tracker := &mockACMETracker{
-		RequestCertificateFunc: func(ctx context.Context, provider, sni string) (ACMEKey, error) {
-			return ACMEKey{Provider: provider, SNI: sni}, nil
+		RequestCertificateFunc: func(ctx context.Context, provider, sni string) (Tracking, error) {
+			return Tracking{Provider: provider, Identity: sni}, nil
 		},
-		WatchFunc: func(buffer int, topic string) cursor.Owned[ACMECertificate] {
-			ch := make(chan ACMECertificate, buffer)
+		WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
+			ch := make(chan Delivery, buffer)
 			close(ready)
 			go func() {
 				<-ready
-				ch <- ACMECertificate{ACMEKey: ACMEKey{Provider: "p1", SNI: "example.com"}, Certificate: cert}
+				ch <- Delivery{Tracking: Tracking{Provider: "p1", Identity: "example.com"}, Certificate: cert}
 				close(ch)
 			}()
-			return cursor.Owned[ACMECertificate]{Cursor: cursor.Channel(ch), Close: func() {}}
+			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
 		},
 	}
-	record := make(map[ACMEKey]time.Time)
-	handler := ACMEHandler{Tracker: tracker, RequestTimeout: time.Second, Record: record}
+	record := make(map[Tracking]time.Time)
+	handler := ACMEHandler{Tracker: tracker, RequestTimeout: time.Second}
 	handler.replaceTargets(testutil.Logger(), []certTargets{target}, record, fallback)
 	if string(cert.CertPEM) != "cert" || string(cert.KeyPEM) != "key" {
 		t.Fatalf("expected cert/key to be replaced, got cert=%q key=%q", cert.CertPEM, cert.KeyPEM)
@@ -77,12 +77,12 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 			name: "request fails",
 			handler: ACMEHandler{
 				Tracker: &mockACMETracker{
-					RequestCertificateFunc: func(context.Context, string, string) (ACMEKey, error) {
-						return ACMEKey{}, errors.New("boom")
+					RequestCertificateFunc: func(context.Context, string, string) (Tracking, error) {
+						return Tracking{}, errors.New("boom")
 					},
-					WatchFunc: func(buffer int, topic string) cursor.Owned[ACMECertificate] {
-						ch := make(chan ACMECertificate, buffer)
-						return cursor.Owned[ACMECertificate]{Cursor: cursor.Channel(ch), Close: func() { close(ch) }}
+					WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
+						ch := make(chan Delivery, buffer)
+						return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() { close(ch) }}
 					},
 				},
 			},

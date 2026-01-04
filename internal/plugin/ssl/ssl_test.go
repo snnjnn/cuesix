@@ -59,14 +59,14 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 	}
 	acmeCert := sslCert(time.Now().Add(2 * time.Hour))
 	tracker := &mockACMETracker{
-		RequestCertificateFunc: func(ctx context.Context, provider, sni string) (ACMEKey, error) {
-			return ACMEKey{Provider: provider, SNI: sni}, nil
+		RequestCertificateFunc: func(ctx context.Context, provider, sni string) (Tracking, error) {
+			return Tracking{Provider: provider, Identity: sni}, nil
 		},
-		WatchFunc: func(buffer int, topic string) cursor.Owned[ACMECertificate] {
-			ch := make(chan ACMECertificate, buffer)
-			ch <- ACMECertificate{ACMEKey: ACMEKey{Provider: "p-acme", SNI: "acme.example"}, Certificate: acmeCert}
+		WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
+			ch := make(chan Delivery, buffer)
+			ch <- Delivery{Tracking: Tracking{Provider: "p-acme", Identity: "acme.example"}, Certificate: acmeCert}
 			close(ch)
-			return cursor.Owned[ACMECertificate]{Cursor: cursor.Channel(ch), Close: func() {}}
+			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
 		},
 	}
 	value := map[string]any{
@@ -97,7 +97,7 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 			},
 		},
 	}
-	record := make(map[ACMEKey]time.Time)
+	record := make(map[Tracking]time.Time)
 	plugin := &SSLPlugin{
 		Fallback: fallback,
 		FileHandler: FileHandler{

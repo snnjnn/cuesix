@@ -29,7 +29,7 @@ type SerializerFactory struct {
 	commitHash uint64
 	hasCommit  bool
 	// Global records of last committed certs
-	CommittedCerts map[ssl.ACMEKey]time.Time
+	CommittedCerts map[ssl.Tracking]time.Time
 }
 
 func NewSerializer(logger *slog.Logger, cfg config.Plugins, sslSetup SSLSetup, scheduler *Scheduler) (SerializerFactory, error) {
@@ -56,13 +56,13 @@ func (p *SerializerFactory) Instance() *SerializerInstance {
 
 type SerializerInstance struct {
 	*SerializerFactory
-	record map[ssl.ACMEKey]time.Time
+	record map[ssl.Tracking]time.Time
 	hash   uint64
 }
 
 func (p *SerializerInstance) Reset() {
 	// Start a new recording track
-	p.record = make(map[ssl.ACMEKey]time.Time)
+	p.record = make(map[ssl.Tracking]time.Time)
 	p.hash = 0
 }
 

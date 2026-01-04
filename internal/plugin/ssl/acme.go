@@ -13,8 +13,8 @@ import (
 const DefaultACMERequestTimeout = 10 * time.Second
 
 type ACMETracker interface {
-	RequestCertificate(ctx context.Context, providerName string, sni string) (ACMEKey, error)
-	Watch(buffer int, topic string) cursor.Owned[ACMECertificate]
+	RequestCertificate(ctx context.Context, providerName string, sni string) (Tracking, error)
+	Watch(buffer int, topic string) cursor.Owned[Delivery]
 }
 
 type ACMEHandler struct {
@@ -22,11 +22,9 @@ type ACMEHandler struct {
 	Tracker ACMETracker
 	// RequestTimeout bounds the time spent waiting for ACME certificates.
 	RequestTimeout time.Duration
-	// Record of certificates requested to the tracker by this handler
-	Record map[ACMEKey]time.Time
 }
 
-func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, record map[ACMEKey]time.Time, fallback Certificate) {
+func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback Certificate) {
 	if len(targets) == 0 {
 		return
 	}
@@ -65,7 +63,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 		lock sync.Mutex
 		wg   sync.WaitGroup
 	)
-	certsBySNI := make(map[string]ACMECertificate)
+	certsBySNI := make(map[string]Delivery)
 	pendingTargets := make(map[string]struct{})
 	for sni := range targetsBySNI {
 		pendingTargets[sni] = struct{}{}
@@ -91,8 +89,8 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 		defer events.Close()
 		close(ready) // signal the main thread
 		for cert := range cursor.All(cancelCtx, events.Cursor) {
-			if !cert.NotAfter.IsZero() && clearPending(cert.SNI) {
-				certsBySNI[cert.SNI] = cert
+			if !cert.NotAfter.IsZero() && clearPending(cert.Identity) {
+				certsBySNI[cert.Identity] = cert
 			}
 		}
 	})
@@ -123,7 +121,7 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	for sni, targets := range targetsBySNI {
 		if cert, ok := certsBySNI[sni]; ok {
 			if record != nil {
-				record[cert.ACMEKey] = cert.NotAfter
+				record[cert.Tracking] = cert.NotAfter
 			}
 			for _, target := range targets {
 				target.replace(cert.CertPEM, cert.KeyPEM)

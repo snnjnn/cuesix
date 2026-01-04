@@ -32,15 +32,15 @@ func (p *Provider) RequestCertificate(ctx context.Context, sni string) error {
 	if p.magic == nil {
 		return errors.New("provider magic is nil")
 	}
-	var key ssl.ACMEKey
+	var key ssl.Tracking
 	if strings.TrimSpace(sni) == "" {
 		return errors.New("sni is required")
 	}
 	key.Provider = p.Name()
-	key.SNI = sni
+	key.Identity = sni
 	var err error
 	p.WithLock(func() {
-		err = p.adapter.ManageAsync(ctx, p.magic, []string{key.SNI})
+		err = p.adapter.ManageAsync(ctx, p.magic, []string{key.Identity})
 	})
 	return err
 }
@@ -86,7 +86,7 @@ func (p *Provider) RemoveManaged(sni string) {
 	})
 }
 
-func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, adapter CertMagic, storage Storage, events chan ssl.ACMEKey) *Provider {
+func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, adapter CertMagic, storage Storage, events chan ssl.Tracking) *Provider {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -105,7 +105,7 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 					select {
 					case <-ctx.Done():
 						return nil
-					case events <- ssl.ACMEKey{SNI: sni, Provider: p.Name()}:
+					case events <- ssl.Tracking{Identity: sni, Provider: p.Name()}:
 					default:
 					}
 				}
