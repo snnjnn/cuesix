@@ -108,9 +108,6 @@ func (e *ValidationError) Unwrap() error {
 // It returns true if the configuration is valid, false otherwise,
 // and an error with output attached when validation fails.
 func (v Validator) Validate(candidate []byte, isYAML bool) (bool, error) {
-	if v.runner == nil {
-		return false, errors.New("validator runner is nil")
-	}
 	if len(candidate) == 0 {
 		return false, errors.New("candidate config is required")
 	}

@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"strings"
 )
 
 type FileManager struct {
 	Filesystems []fs.FS
+	Logger      *slog.Logger
 }
 
 func (m FileManager) ResolveProvider(name string) (Provider, error) {
@@ -18,11 +20,13 @@ func (m FileManager) ResolveProvider(name string) (Provider, error) {
 	}
 	return &fileProvider{
 		filesystems: m.Filesystems,
+		logger:      m.Logger,
 	}, nil
 }
 
 type fileProvider struct {
 	filesystems []fs.FS
+	logger      *slog.Logger
 }
 
 func (p fileProvider) Name() string {
@@ -30,20 +34,28 @@ func (p fileProvider) Name() string {
 }
 
 func (p fileProvider) BestMatchFor(_ context.Context, identity string) (Certificate, bool) {
+	logger := p.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	certPath, keyPath, err := parseFileIdentity(identity)
 	if err != nil {
+		logger.Debug("ssl file provider failed to parse identity", "identity", identity, "error", err)
 		return Certificate{}, false
 	}
 	certPEM, err := readFileFromFS(p.filesystems, certPath)
 	if err != nil {
+		logger.Debug("ssl file provider failed to read cert", "path", certPath, "error", err)
 		return Certificate{}, false
 	}
 	keyPEM, err := readFileFromFS(p.filesystems, keyPath)
 	if err != nil {
+		logger.Debug("ssl file provider failed to read key", "path", keyPath, "error", err)
 		return Certificate{}, false
 	}
 	notAfter, err := parseCertNotAfter(certPEM)
 	if err != nil {
+		logger.Debug("ssl file provider failed to parse cert expiry", "path", certPath, "error", err)
 		return Certificate{}, false
 	}
 	return Certificate{

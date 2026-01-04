@@ -25,7 +25,10 @@ func TestYAMLPluginUpdate(t *testing.T) {
 		t.Fatalf("expected decode error")
 	}
 
-	jsonPayload, _ := json.Marshal(map[string]any{"a": 1})
+	jsonPayload, err := json.Marshal(map[string]any{"a": 1})
+	if err != nil {
+		t.Fatalf("failed to marshal test data: %v", err)
+	}
 	out, err = p.Update(testutil.Logger(), jsonPayload)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

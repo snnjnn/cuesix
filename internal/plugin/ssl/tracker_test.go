@@ -50,7 +50,10 @@ func TestTrackerRequestCertificateAlreadyTrackedNotifies(t *testing.T) {
 	t.Parallel()
 	provider := &mockACMEProvider{name: "p1"}
 	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
-	tracker, _ := NewTracker(testutil.Logger(), manager)
+	tracker, err := NewTracker(testutil.Logger(), manager)
+	if err != nil {
+		t.Fatalf("NewTracker returned error: %v", err)
+	}
 	key := Tracking{Provider: "p1", Identity: "example.com"}
 	tracked := trackedCertificate{Certificate: sslCert(time.Now().Add(time.Hour))}
 	tracker.WithLock(func() {
@@ -91,7 +94,10 @@ func TestTrackerCommitAndUnmanage(t *testing.T) {
 		},
 	}
 	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
-	tracker, _ := NewTracker(testutil.Logger(), manager)
+	tracker, err := NewTracker(testutil.Logger(), manager)
+	if err != nil {
+		t.Fatalf("NewTracker returned error: %v", err)
+	}
 	keyTracked := Tracking{Provider: "p1", Identity: "tracked.example"}
 	keyStale := Tracking{Provider: "p1", Identity: "stale.example"}
 	now := time.Now()

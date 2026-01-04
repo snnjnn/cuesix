@@ -27,9 +27,6 @@ import (
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
-	//logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-	//	Level: slog.LevelInfo,
-	//}))
 	w := os.Stderr
 	logger := slog.New(
 		tint.NewHandler(w, &tint.Options{
@@ -63,23 +60,23 @@ func main() {
 				Flags: func() []cli.Flag {
 					inputCfg := &config.Input{}
 					apisixCfg := &config.APISIX{}
-					pluginCfg := &config.Plugins{}
-					return commonFlags(inputCfg, apisixCfg, pluginCfg)
+					pluginsConfig := &config.Plugins{}
+					return commonFlags(inputCfg, apisixCfg, pluginsConfig)
 				}(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					inputCfg := config.Input{}
 					apisixCfg := config.APISIX{}
-					pluginCfg := config.Plugins{}
+					pluginsConfig := config.Plugins{}
 
 					inputCfg.Apply(cmd)
 					apisixCfg.Apply(cmd)
-					pluginCfg.Apply(cmd)
+					pluginsConfig.Apply(cmd)
 
 					if err := inputCfg.Validate(); err != nil {
 						return err
 					}
 
-					return run(logger, inputCfg, config.Server{}, apisixCfg, config.Reload{}, pluginCfg, config.Certmagic{}, false)
+					return run(logger, inputCfg, config.Server{}, apisixCfg, config.Reload{}, pluginsConfig, config.Certmagic{}, false)
 				},
 			},
 			{
@@ -88,37 +85,37 @@ func main() {
 				Flags: func() []cli.Flag {
 					inputCfg := &config.Input{}
 					apisixCfg := &config.APISIX{}
-					pluginCfg := &config.Plugins{}
-					certmagicCfg := &config.Certmagic{}
-					serverCfg := &config.Server{}
-					reloadCfg := &config.Reload{}
-					flags := commonFlags(inputCfg, apisixCfg, pluginCfg)
-					flags = append(flags, serveFlags(serverCfg, reloadCfg, certmagicCfg)...)
+					pluginsConfig := &config.Plugins{}
+					certmagicConfig := &config.Certmagic{}
+					serverConfig := &config.Server{}
+					reloadConfig := &config.Reload{}
+					flags := commonFlags(inputCfg, apisixCfg, pluginsConfig)
+					flags = append(flags, serveFlags(serverConfig, reloadConfig, certmagicConfig)...)
 					return flags
 				}(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					inputCfg := config.Input{}
 					apisixCfg := config.APISIX{}
-					pluginCfg := config.Plugins{}
-					certmagicCfg := config.Certmagic{}
-					serverCfg := config.Server{}
-					reloadCfg := config.Reload{}
+					pluginsConfig := config.Plugins{}
+					certmagicConfig := config.Certmagic{}
+					serverConfig := config.Server{}
+					reloadConfig := config.Reload{}
 
 					inputCfg.Apply(cmd)
 					apisixCfg.Apply(cmd)
-					pluginCfg.Apply(cmd)
-					certmagicCfg.Apply(cmd)
-					serverCfg.Apply(cmd)
-					reloadCfg.Apply(cmd)
+					pluginsConfig.Apply(cmd)
+					certmagicConfig.Apply(cmd)
+					serverConfig.Apply(cmd)
+					reloadConfig.Apply(cmd)
 
 					if err := inputCfg.Validate(); err != nil {
 						return err
 					}
-					if err := certmagicCfg.Validate(); err != nil {
+					if err := certmagicConfig.Validate(); err != nil {
 						return err
 					}
 
-					return run(logger, inputCfg, serverCfg, apisixCfg, reloadCfg, pluginCfg, certmagicCfg, true)
+					return run(logger, inputCfg, serverConfig, apisixCfg, reloadConfig, pluginsConfig, certmagicConfig, true)
 				},
 			},
 		},
@@ -188,7 +185,11 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		logger.Error("build apisix validator failed", "error", err)
 		return err
 	}
-	defer validator.Cleanup()
+	defer func() {
+		if err := validator.Cleanup(); err != nil {
+			logger.Error("validator cleanup failed", "error", err, "mirrorDir", validator.MirrorDir())
+		}
+	}()
 	valFactory := factory.ValidatorFactory{
 		Validator: validator,
 	}

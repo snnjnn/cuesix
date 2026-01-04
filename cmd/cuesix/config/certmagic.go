@@ -68,9 +68,9 @@ func (c *Certmagic) Flags() []cli.Flag {
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
-			Name:     "certmagic-cleanup-interval",
+			Name:     "certmagic-expired-interval",
 			Usage:    "interval for removing expired certmagic entries",
-			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_CLEANUP_INTERVAL"),
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_EXPIRED_INTERVAL"),
 			Value:    24 * time.Hour,
 			Category: "Certmagic",
 		},
@@ -98,7 +98,7 @@ func (c *Certmagic) Apply(ctx *cli.Command) {
 	c.Timeout = ctx.Duration("certmagic-timeout")
 	c.WatchInterval = ctx.Duration("certmagic-watch-interval")
 	c.UntrackedGrace = ctx.Duration("certmagic-untracked-grace")
-	c.CleanupInterval = ctx.Duration("certmagic-cleanup-interval")
+	c.CleanupInterval = ctx.Duration("certmagic-expired-interval")
 	c.ExpiredGrace = ctx.Duration("certmagic-expired-grace")
 	c.Providers = ctx.StringSlice("certmagic-provider")
 }
@@ -106,6 +106,9 @@ func (c *Certmagic) Apply(ctx *cli.Command) {
 func (c *Certmagic) Validate() error {
 	if c.Enabled && c.WatchInterval <= 0 {
 		return errors.New("certmagic watch interval must be positive")
+	}
+	if c.Enabled && c.DataDir == "" {
+		return errors.New("certmagic data directory must be set")
 	}
 	return nil
 }

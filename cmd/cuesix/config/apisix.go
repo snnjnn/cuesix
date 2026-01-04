@@ -61,17 +61,17 @@ func (c APISIX) ConfigPath(outputYAML bool) string {
 	return validator.BuildConfigPath(c.Home, outputYAML)
 }
 
-func (apisixCfg APISIX) BuildValidator(logger *slog.Logger) (zero validator.Validator, err error) {
+func (c APISIX) BuildValidator(logger *slog.Logger) (zero validator.Validator, err error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	// APISIX validation and mirror setup.
-	if strings.TrimSpace(apisixCfg.Home) == "" {
+	if strings.TrimSpace(c.Home) == "" {
 		logger.Error("missing apisix home path")
 		return zero, errors.New("missing apisix home path")
 	}
-	mirrorKeep := apisixCfg.KeepMirror
-	mirrorDir := apisixCfg.MirrorDir
+	mirrorKeep := c.KeepMirror
+	mirrorDir := c.MirrorDir
 	if mirrorDir == "" {
 		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
 		if tmpErr != nil {
@@ -80,5 +80,5 @@ func (apisixCfg APISIX) BuildValidator(logger *slog.Logger) (zero validator.Vali
 		mirrorKeep = false // no need to recreate it
 		mirrorDir = tmp
 	}
-	return validator.New(logger, apisixCfg.Home, mirrorDir, mirrorKeep, apisixCfg.ValidationTimeout, nil)
+	return validator.New(logger, c.Home, mirrorDir, mirrorKeep, c.ValidationTimeout, nil)
 }

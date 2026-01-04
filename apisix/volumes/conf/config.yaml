@@ -33,7 +33,6 @@ apisix:
   control:
     ip: "0.0.0.0"
     port: 9090
-  enable_admin: false
   enable_ipv6: false
   events:
     # get rid of logs/worker_events.sock

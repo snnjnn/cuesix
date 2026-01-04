@@ -1,0 +1,11 @@
+name: plugin metadata distinct
+left:
+  plugin_metadata:
+    - plugin_name: p1
+right:
+  plugin_metadata:
+    - plugin_name: p2
+expected:
+  plugin_metadata:
+    - plugin_name: p1
+    - plugin_name: p2

@@ -1,0 +1,21 @@
+name: consumer groups basic merge
+left:
+  consumer_groups:
+    - id: cg1
+      labels:
+        env: dev
+right:
+  consumer_groups:
+    - id: cg2
+      plugins:
+        p:
+          x: 1
+expected:
+  consumer_groups:
+    - id: cg1
+      labels:
+        env: dev
+    - id: cg2
+      plugins:
+        p:
+          x: 1

@@ -115,9 +115,7 @@ func (c *Watcher[T]) NotifyAll(ctx context.Context, v T) {
 // Unless you run a loop on the watcher, it won't trigger subscriptions.
 func Loop[T any](ctx context.Context, w *Watcher[T], events Cursor[T]) {
 	for v := range All(ctx, events) {
-		w.WithLock(func() {
-			w.NotifyAll(ctx, v)
-		})
+		w.NotifyAll(ctx, v)
 	}
 }
 
@@ -125,29 +123,4 @@ func (l *Lock) WithLock(closure func()) {
 	l.Lock()
 	defer l.Unlock()
 	closure()
-}
-
-// Turn a channel-based suscription into an iterable.
-// I do not use iter.Seq because I intend to return three
-// values: the iteration element, an optional error, and
-// a flag to indicate that iteration was cancelled.
-type watcherCursor[T any] struct {
-	watcher *Watcher[T]
-	fanout  chan T
-}
-
-// Unsubscribes from the watcher
-func (c watcherCursor[T]) Close() {
-	c.watcher.WithLock(func() {
-		delete(c.watcher.subs, c.fanout)
-	})
-	close(c.fanout)
-}
-
-// Iterates over the next element.
-// "cancelled" might be returned when context is cancelled,
-// or something else prevents the iteration (e.g. the channel
-// has been closed)
-func (c watcherCursor[T]) Next(ctx context.Context) (zero T, ok bool) {
-	return Channel(c.fanout).Next(ctx)
 }

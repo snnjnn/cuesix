@@ -6,7 +6,7 @@ import (
 )
 
 type Scheduler struct {
-	token sync.Mutex
+	sync.Mutex
 }
 
 func NewScheduler() *Scheduler {
@@ -14,16 +14,16 @@ func NewScheduler() *Scheduler {
 }
 
 func (s *Scheduler) Must(ctx context.Context, task func()) {
-	s.token.Lock()
-	defer s.token.Unlock()
+	s.Lock()
+	defer s.Unlock()
 	task()
 }
 
 func (s *Scheduler) Might(ctx context.Context, task func()) (executed bool) {
-	if !s.token.TryLock() {
+	if !s.TryLock() {
 		return false
 	}
-	defer s.token.Unlock()
+	defer s.Unlock()
 	task()
 	return true
 }

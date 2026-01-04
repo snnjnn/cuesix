@@ -160,14 +160,16 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 	}
 	logger := d.logger
 	start := time.Now()
-	defer dispatcherDuration.WithLabelValues("total").Observe(time.Since(start).Seconds())
+	defer func() {
+		dispatcherDuration.WithLabelValues("total").Observe(time.Since(start).Seconds())
+	}()
 
-	// Reseteo el flag de commitSuccess
+	// Reset the commitSuccess flag
 	wasSucessful := d.commitSuccess
 	d.commitSuccess = false
 
 	stageStart := time.Now()
-	// TODO: ¿Agregar snippets por label, y validar en conjunto?
+	// TODO: Add snippets by label, and validate together?
 	logger.Info("fetch stage start")
 	snippets := make([]compiler.Snippet, 0, 10)
 	for snippet, err := range d.config.Fetcher.Fetch(d.config.Filesystems...) {

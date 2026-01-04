@@ -74,6 +74,11 @@ func (r *readyManager) Ready() bool {
 }
 
 // newReadyManager builds a refresh manager around the reloader.
+// The dispatcher cannot be provided yet because the readyManager
+// is actually a parameter in the Dispatcher's constructor
+// (it becomes the Reloader that the dispatcher uses).
+// So we need to add the dispatcher afterwards.
+// amazonq-ignore-next-line
 func newReadyManager(reloader Reloader, scheduler Scheduler) *readyManager {
 	r := &readyManager{
 		realScheduler: scheduler,

@@ -1,0 +1,15 @@
+name: ssls different ids
+left:
+  ssls:
+    - id: s1
+      snis: [a.example]
+right:
+  ssls:
+    - id: s2
+      snis: [b.example]
+expected:
+  ssls:
+    - id: s1
+      snis: [a.example]
+    - id: s2
+      snis: [b.example]

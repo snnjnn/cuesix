@@ -80,7 +80,7 @@ func NewManager(logger *slog.Logger, cfg Config, events chan ssl.Tracking, fallb
 func (m Manager) ChallengeHandler() http.Handler {
 	logger := m.logger
 	return m.adapter.HTTPChallengeHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.Info("challenge request", "host", r.Host, "url", r.URL.String())
+		logger.Info("challenge request", "host", slog.String("host", r.Host), "url", slog.String("url", r.URL.String()))
 	}))
 }
 

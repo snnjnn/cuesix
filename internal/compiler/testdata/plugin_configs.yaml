@@ -1,0 +1,11 @@
+name: plugin configs distinct ids
+left:
+  plugin_configs:
+    - id: pc1
+right:
+  plugin_configs:
+    - id: pc2
+expected:
+  plugin_configs:
+    - id: pc1
+    - id: pc2

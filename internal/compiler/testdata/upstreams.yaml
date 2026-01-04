@@ -1,0 +1,11 @@
+name: upstreams different ids
+left:
+  upstreams:
+    - id: u1
+right:
+  upstreams:
+    - id: u2
+expected:
+  upstreams:
+    - id: u1
+    - id: u2

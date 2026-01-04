@@ -56,7 +56,7 @@ func TestAPISIXBuildValidatorMissingHome(t *testing.T) {
 
 func TestCertmagicValidate(t *testing.T) {
 	t.Parallel()
-	c := config.Certmagic{Enabled: true, WatchInterval: 0}
+	c := config.Certmagic{Enabled: true, WatchInterval: 0, DataDir: t.TempDir()}
 	if err := c.Validate(); err == nil {
 		t.Fatalf("expected validation error for non-positive watch interval")
 	}

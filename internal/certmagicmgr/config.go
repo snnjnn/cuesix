@@ -11,6 +11,7 @@ const ProviderFieldSeparator = "|"
 
 // ParseACMEProviderSpec parses a pipe-separated provider definition.
 // Format: "name|email|ca"
+// Returns a ProviderConfig with the ACME prefix added to the name, or an error if the format is invalid.
 func ParseACMEProviderSpec(spec string) (ProviderConfig, error) {
 	var cfg ProviderConfig
 	parts := strings.Split(spec, ProviderFieldSeparator)

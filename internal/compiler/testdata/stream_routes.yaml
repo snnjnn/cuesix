@@ -1,0 +1,21 @@
+name: stream routes basic
+left:
+  stream_routes:
+    - id: st1
+      labels:
+        env: dev
+right:
+  stream_routes:
+    - id: st2
+      plugins:
+        p:
+          x: 1
+expected:
+  stream_routes:
+    - id: st1
+      labels:
+        env: dev
+    - id: st2
+      plugins:
+        p:
+          x: 1

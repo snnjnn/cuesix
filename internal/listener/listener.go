@@ -17,17 +17,17 @@ func NewHandler(notifier Notifier) (http.Handler, error) {
 		return nil, errors.New("notifier is required")
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	mux.Handle("/ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if notifier.Ready() {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 		w.WriteHeader(http.StatusTooEarly)
 	}))
-	mux.Handle("/compile", compileHandler(notifier))
+	mux.Handle("POST /compile", compileHandler(notifier))
 	return mux, nil
 }
 

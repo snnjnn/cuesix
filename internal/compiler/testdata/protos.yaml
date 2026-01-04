@@ -1,0 +1,15 @@
+name: protos labels preserved
+left:
+  protos:
+    - id: p1
+      labels:
+        a: b
+right:
+  protos:
+    - id: p2
+expected:
+  protos:
+    - id: p1
+      labels:
+        a: b
+    - id: p2

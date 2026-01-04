@@ -32,15 +32,12 @@ func (p *Provider) RequestCertificate(ctx context.Context, sni string) error {
 	if p.magic == nil {
 		return errors.New("provider magic is nil")
 	}
-	var key ssl.Tracking
 	if strings.TrimSpace(sni) == "" {
 		return errors.New("sni is required")
 	}
-	key.Provider = p.Name()
-	key.Identity = sni
 	var err error
 	p.WithLock(func() {
-		err = p.adapter.ManageAsync(ctx, p.magic, []string{key.Identity})
+		err = p.adapter.ManageAsync(ctx, p.magic, []string{sni})
 	})
 	return err
 }
@@ -65,7 +62,7 @@ func (p *Provider) BestMatchFor(_ context.Context, sni string) (ssl.Certificate,
 	}
 	var matches []certmagic.Certificate
 	p.WithLock(func() {
-		matches = append([]certmagic.Certificate(nil), p.adapter.AllMatchingCertificates(p.cache, sni)...)
+		matches = p.adapter.AllMatchingCertificates(p.cache, sni)
 	})
 	return bestMatchForCandidates(matches, p.logger)
 }

@@ -40,7 +40,6 @@ func TestCommitLoopRunsWhenNoCommittedCerts(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// Inject mock tracker for the test
-	factory.sslSetup.AcmeTracker = (*ssl.Tracker)(nil)
 	factory.sslSetup.AcmeTracker = nil
 	// Swap tracker by shadowing CommitLoop invocation
 	go func() {

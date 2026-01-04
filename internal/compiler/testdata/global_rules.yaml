@@ -1,0 +1,8 @@
+name: global rules require id
+left:
+  global_rules:
+    - id: g1
+right:
+  global_rules:
+    - desc: no id
+error: missing id

@@ -23,7 +23,7 @@ func TestProviderRequestAndBestMatchPublic(t *testing.T) {
 		},
 	}
 	cfg := certmagicmgr.Config{
-		DataDir: "/tmp",
+		DataDir: t.TempDir(),
 		Providers: []certmagicmgr.ProviderConfig{
 			{Name: "p1", Email: "e", CA: "ca"},
 		},
@@ -47,7 +47,7 @@ func TestProviderRequestAndBestMatchPublic(t *testing.T) {
 func TestManagerPublicAPI(t *testing.T) {
 	t.Parallel()
 	cfg := certmagicmgr.Config{
-		DataDir: "/tmp",
+		DataDir: t.TempDir(),
 		Providers: []certmagicmgr.ProviderConfig{
 			{Name: "p1", Email: "e", CA: "ca"},
 		},

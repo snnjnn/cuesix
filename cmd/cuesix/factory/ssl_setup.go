@@ -36,7 +36,7 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 		if err != nil {
 			return setup, err
 		}
-		setup.FileManager = ssl.FileManager{Filesystems: fses}
+		setup.FileManager = ssl.FileManager{Filesystems: fses, Logger: logger}
 	}
 	setup.FallbackMgr = ssl.FallbackManager{Certificate: setup.FallbackCert}
 

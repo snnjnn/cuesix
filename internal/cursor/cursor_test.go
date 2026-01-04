@@ -2,6 +2,7 @@ package cursor_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,7 +78,36 @@ func TestNotifyAllUsesLock(t *testing.T) {
 		if v != "ping" {
 			t.Fatalf("expected ping, got %s", v)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Fatalf("expected notification via NotifyAll")
+	}
+}
+
+func TestLoopDispatchesAndStops(t *testing.T) {
+	t.Parallel()
+	w := cursor.New(func(s string) string { return s })
+	sub := w.Watch(2, "")
+
+	events := make(chan string, 2)
+	var doneWG sync.WaitGroup
+	doneWG.Add(1)
+	go func() {
+		defer doneWG.Done()
+		cursor.Loop(context.Background(), w, cursor.Channel(events))
+	}()
+
+	events <- "first"
+	events <- "second"
+	close(events)
+
+	doneWG.Wait()
+	sub.Close()
+
+	got := []string{}
+	for v := range sub.Cursor {
+		got = append(got, v)
+	}
+	if got[0] != "first" || got[1] != "second" {
+		t.Fatalf("unexpected values %v", got)
 	}
 }

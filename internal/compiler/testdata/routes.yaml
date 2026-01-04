@@ -1,0 +1,29 @@
+name: routes merge same id
+left:
+  routes:
+    - id: r1
+      hosts: [a]
+      plugins:
+        p1: {c: 1}
+      labels:
+        env: dev
+right:
+  routes:
+    - id: r1
+      hosts: [b]
+      plugins:
+        p2: {c: 2}
+      labels:
+        team: api
+    - uris: ["/new"]
+expected:
+  routes:
+    - id: r1
+      hosts: [a, b]
+      plugins:
+        p1: {c: 1}
+        p2: {c: 2}
+      labels:
+        env: dev
+        team: api
+    - uris: ["/new"]

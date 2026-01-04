@@ -110,14 +110,6 @@ func (m *mockReloader) Apply(ctx context.Context, payload []byte, useApi bool) e
 	return nil
 }
 
-type dispatcherSuite struct {
-	fetcher    mockFetcher
-	merger     *mockMerger
-	serializer *mockSerializer
-	validator  *mockValidator
-	reloader   *mockReloader
-}
-
 func newDispatcherSuite(fetcher mockFetcher, merger *mockMerger, serializer *mockSerializer, validator *mockValidator, reloader *mockReloader, runs int) (*dispatcher.Dispatcher, chan struct{}) {
 	done := make(chan struct{}, runs)
 	cfg := dispatcher.Config{

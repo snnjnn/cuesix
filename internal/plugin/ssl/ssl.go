@@ -137,7 +137,7 @@ func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map
 	}
 	liveTargets := append([]certTargets(nil), targets[acmeTarget]...)
 	liveTargets = append(liveTargets, targets[fileTarget]...)
-	p.LiveHandler.replaceTargets(ctx, logger, liveTargets, record, p.Fallback)
+	p.replaceTargets(ctx, logger, liveTargets, record, p.Fallback)
 	logger.Info("ssl plugin complete", "entries", len(entries))
 	return value, nil
 }

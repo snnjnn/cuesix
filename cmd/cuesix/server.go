@@ -25,10 +25,15 @@ func buildServer(listenAddr string, handler http.Handler, timeouts config.Timeou
 // drainBody ensures request bodies are fully read and closed.
 func drainBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil {
-			_, _ = io.Copy(io.Discard, r.Body)
-			_ = r.Body.Close()
-		}
+		// Defer this function! do not call it before next(),
+		// otherwise it will drain the body before the handler
+		// can read it.
+		defer func() {
+			if r.Body != nil {
+				io.Copy(io.Discard, r.Body)
+				r.Body.Close()
+			}
+		}()
 		next.ServeHTTP(w, r)
 	})
 }
@@ -39,9 +44,6 @@ func serverShutdown(ctx context.Context, logger *slog.Logger, name string, serve
 		<-ctx.Done()
 		cancelCtx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 		defer cancelFunc()
-		if err := server.Shutdown(cancelCtx); err != nil {
-			logger.Error("server shutdown error", "server", name, "error", err)
-		}
-		return nil
+		return server.Shutdown(cancelCtx)
 	}
 }

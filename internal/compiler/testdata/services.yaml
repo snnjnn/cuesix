@@ -1,0 +1,10 @@
+name: services reject duplicate id
+left:
+  services:
+    - id: svc
+      name: a
+right:
+  services:
+    - id: svc
+      name: b
+error: duplicate id svc

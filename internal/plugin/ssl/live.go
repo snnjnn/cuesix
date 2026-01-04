@@ -105,7 +105,8 @@ func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, ta
 	for key := range targetsById {
 		provider, err := a.Tracker.ResolveProvider(key.Provider, &cache)
 		if err == nil {
-			if err = provider.RequestCertificate(ctx, key.Identity); err == nil {
+			err = provider.RequestCertificate(ctx, key.Identity)
+			if err == nil {
 				if record != nil {
 					// Track the request.
 					// We do not provide a time because we don't have any at this point.

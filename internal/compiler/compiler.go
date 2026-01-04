@@ -120,7 +120,7 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       false,
 				AllowMergeSameID: false,
-				Children:         basicRules("services", nil),
+				Children:         basicRules("consumer_groups", nil),
 			},
 			"plugin_configs": {
 				Path:             "/plugin_configs",
@@ -135,7 +135,7 @@ func DefaultMergingRules() MergingRule {
 				IDAttr:           "id",
 				IDOptional:       true,
 				AllowMergeSameID: false,
-				Children:         basicRules("services", nil),
+				Children:         basicRules("stream_routes", nil),
 			},
 			"protos": {
 				Path:             "/protos",
@@ -232,9 +232,6 @@ func Fetch(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Snippet, error] {
 
 // Compile reads YAML fragments from the provided filesystems and merges them.
 func Merge(logger *slog.Logger, snippets iter.Seq[Snippet]) (map[string]any, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
 	rootRule := DefaultMergingRules()
 	var merged map[string]any
 	for value := range snippets {
@@ -273,12 +270,12 @@ func Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
 			}
 		}
 	}
-	if fetchErr != nil {
-		return nil, fetchErr
-	}
 	merged, err := Merge(logger, untilError(Fetch(logger, fses...)))
 	if err != nil {
 		return nil, err
+	}
+	if fetchErr != nil {
+		return nil, fetchErr
 	}
 	return merged, nil
 }

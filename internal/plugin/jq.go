@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -79,14 +80,18 @@ func (e *JQExecError) Unwrap() error {
 
 type JQConfigError struct {
 	Field string
-	Err   string
+	Err   error
 }
 
 func (e *JQConfigError) Error() string {
 	if e.Field == "" {
-		return e.Err
+		return e.Err.Error()
 	}
-	return fmt.Sprintf("%s: %s", e.Field, e.Err)
+	return fmt.Sprintf("%s: %s", e.Field, e.Err.Error())
+}
+
+func (e *JQConfigError) Unwrap() error {
+	return e.Err
 }
 
 func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
@@ -145,7 +150,7 @@ func (p *JQPlugin) Update(logger *slog.Logger, value []byte) ([]byte, error) {
 	}
 	stdout, stderr, err := r.RunCommand(ctx, "", payload, "jq", expression)
 	if err != nil || len(stderr) > 0 {
-		logger.Error("jq plugin execution failed", "error", err, "stderr", strings.TrimSpace(string(stderr)))
+		logger.Error("jq plugin execution failed", "error", err, "stderr", slog.String("stderr", strings.TrimSpace(string(stderr))))
 		return nil, &JQExecError{
 			Expr:   expression,
 			Stderr: strings.TrimSpace(string(stderr)),
@@ -172,17 +177,17 @@ func parseJQTransforms(root map[string]any) ([]JQTransform, bool, error) {
 	}
 	payload, err := json.Marshal(raw)
 	if err != nil {
-		return nil, true, &JQConfigError{Field: "jq", Err: "invalid content"}
+		return nil, true, &JQConfigError{Field: "jq", Err: err}
 	}
 	var transforms []JQTransform
 	decoder := json.NewDecoder(bytes.NewBuffer(payload))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&transforms); err != nil {
-		return nil, true, &JQConfigError{Field: "jq", Err: "invalid content"}
+		return nil, true, &JQConfigError{Field: "jq", Err: err}
 	}
 	for idx, transform := range transforms {
 		if strings.TrimSpace(transform.Expr) == "" {
-			return nil, true, &JQConfigError{Field: fmt.Sprintf("jq[%d].expr", idx), Err: "is required"}
+			return nil, true, &JQConfigError{Field: fmt.Sprintf("jq[%d].expr", idx), Err: errors.New("expression is required")}
 		}
 	}
 	delete(root, "jq")

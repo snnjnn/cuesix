@@ -1,0 +1,24 @@
+name: consumers merge credentials and labels
+left:
+  consumers:
+    - username: u1
+      credentials:
+        - credential_id: c1
+      labels:
+        env: dev
+right:
+  consumers:
+    - username: u1
+      credentials:
+        - credential_id: c2
+      labels:
+        team: api
+expected:
+  consumers:
+    - username: u1
+      credentials:
+        - credential_id: c1
+        - credential_id: c2
+      labels:
+        env: dev
+        team: api

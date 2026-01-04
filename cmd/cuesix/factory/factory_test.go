@@ -36,7 +36,7 @@ func TestSchedulerMustAndMight(t *testing.T) {
 func TestBuildFilesystems(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0o600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
 	fses, err := factory.BuildFilesystems([]string{dir})

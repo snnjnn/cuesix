@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/caddyserver/certmagic v0.25.0
 	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/google/go-cmp v0.7.0
 	github.com/lmittmann/tint v1.1.2
 	github.com/mattn/go-isatty v0.0.20
 	github.com/prometheus/client_golang v1.23.2

@@ -1,6 +1,7 @@
 package reloader
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -108,11 +109,18 @@ func (r *Reloader) doReloadRequest(ctx context.Context) error {
 		return err
 	}
 	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}()
+	var reader bytes.Buffer
+	var body string
+	if _, err := io.CopyN(&reader, resp.Body, 1024); err != nil && err != io.EOF {
+		body = fmt.Sprintf("read response body: %v", err)
+	} else {
+		body = reader.String()
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("reload failed: status %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("reload failed: status %d: %s", resp.StatusCode, body)
 	}
 	return nil
 }
@@ -140,11 +148,17 @@ func replaceWithPayload(payload []byte, destPath string) error {
 	}
 	if info, err := os.Stat(destPath); err == nil {
 		if err := os.Chmod(tmpPath, info.Mode()); err != nil {
-			_ = os.Remove(tmpPath)
+			closeErr := os.Remove(tmpPath)
+			if closeErr != nil {
+				return fmt.Errorf("chmod temp file: %w (cleanup failed: %v)", err, closeErr)
+			}
 			return fmt.Errorf("chmod temp file: %w", err)
 		}
 	} else if !os.IsNotExist(err) {
-		_ = os.Remove(tmpPath)
+		closeErr := os.Remove(tmpPath)
+		if closeErr != nil {
+			return fmt.Errorf("stat config file: %w (cleanup failed: %v)", err, closeErr)
+		}
 		return fmt.Errorf("stat config file: %w", err)
 	}
 	if err := os.Rename(tmpPath, destPath); err != nil {

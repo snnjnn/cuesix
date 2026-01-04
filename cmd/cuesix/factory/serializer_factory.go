@@ -98,7 +98,7 @@ func (p *SerializerInstance) Serialize(value map[string]any) ([]byte, error) {
 	// Update the hash
 	p.hash = hashBytes(result)
 	if p.hasCommit && p.hash == p.commitHash {
-		logger.Info("serailziationm cache hit")
+		logger.Info("serialization cache hit")
 		return nil, nil
 	}
 	logger.Info("post-cache plugins start")
@@ -118,7 +118,7 @@ func hashBytes(payload []byte) uint64 {
 
 // buildPreRender constructs the pre-render plugin chain.
 func (p *SerializerFactory) buildPreRender(cfg config.Plugins) error {
-	// SSL Plugin is handled diferently because so far, is the only
+	// SSL Plugin is handled differently because so far, is the only
 	// plugin with state (records requested certs)
 	if cfg.EnableSSL {
 		p.sslPlugin = &ssl.SSLPlugin{
