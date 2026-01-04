@@ -93,19 +93,15 @@ func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, ta
 		}
 		return before > after
 	}
-	ready := make(chan struct{}, 1)
+	events := a.Tracker.Watch(2*len(targetsById), "")
 	wg.Go(func() {
-		events := a.Tracker.Watch(2*len(targetsById), "")
 		defer events.Close()
-		close(ready) // signal the main thread
 		for cert := range cursor.All(cancelCtx, events.Cursor) {
 			if !cert.NotAfter.IsZero() && clearPending(cert.Tracking) {
 				certsById[cert.Tracking] = cert
 			}
 		}
 	})
-	// Wait until the watcher is ready, and begin requesting targets
-	<-ready
 	for key := range targetsById {
 		provider, err := a.Tracker.ResolveProvider(key.Provider, &cache)
 		if err == nil {
