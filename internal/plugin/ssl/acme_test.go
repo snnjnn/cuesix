@@ -33,7 +33,7 @@ func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 			close(ready)
 			go func() {
 				<-ready
-				ch <- Delivery{Tracking: Tracking{Provider: "p1", Identity: "example.com"}, Certificate: cert}
+				ch <- Delivery{Tracking: Tracking{Provider: ACMEPrefix + "p1", Identity: "example.com"}, Certificate: cert}
 				close(ch)
 			}()
 			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
@@ -41,7 +41,7 @@ func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 	}
 	record := make(map[Tracking]time.Time)
 	handler := ACMEHandler{Tracker: tracker, RequestTimeout: time.Second}
-	handler.replaceTargets(testutil.Logger(), []certTargets{target}, record, fallback)
+	handler.replaceTargets(context.Background(), testutil.Logger(), []certTargets{target}, record, fallback)
 	if string(cert.CertPEM) != "cert" || string(cert.KeyPEM) != "key" {
 		t.Fatalf("expected cert/key to be replaced, got cert=%q key=%q", cert.CertPEM, cert.KeyPEM)
 	}
@@ -115,7 +115,7 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 				certOut = string(certPEM)
 				keyOut = string(keyPEM)
 			}
-			tt.handler.replaceTargets(testutil.Logger(), tt.targets, nil, fallback)
+			tt.handler.replaceTargets(context.Background(), testutil.Logger(), tt.targets, nil, fallback)
 			if certOut != tt.wantCert || keyOut != tt.wantKey {
 				t.Fatalf("unexpected output cert=%q key=%q want cert=%q key=%q", certOut, keyOut, tt.wantCert, tt.wantKey)
 			}

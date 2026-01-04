@@ -23,16 +23,21 @@ func TestTrackerRequestCertificateNew(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTracker returned error: %v", err)
 	}
-	key, err := tracker.RequestCertificate(context.Background(), "p1", "example.com")
+	var cache ProviderCache
+	providerView, err := tracker.ResolveProvider("p1", &cache)
 	if err != nil {
-		t.Fatalf("RequestCertificate returned error: %v", err)
+		t.Fatalf("ResolveProvider returned error: %v", err)
 	}
-	if key.Provider != "p1" || key.Identity != "example.com" {
-		t.Fatalf("unexpected key: %+v", key)
+	if providerView.Name() != "p1" {
+		t.Fatalf("unexpected key: %+v", providerView.Name())
+	}
+	if err := providerView.RequestCertificate(context.Background(), "example.com"); err != nil {
+		t.Fatalf("RequestCertificate returned error: %v", err)
 	}
 	if len(provider.requestCalls) != 1 {
 		t.Fatalf("expected provider request once, got %d", len(provider.requestCalls))
 	}
+	key := Tracking{Provider: providerView.Name(), Identity: "example.com"}
 	tracker.WithLock(func() {
 		tc, ok := tracker.track[key]
 		if !ok || tc.NotAfter.IsZero() {
@@ -53,8 +58,15 @@ func TestTrackerRequestCertificateAlreadyTrackedNotifies(t *testing.T) {
 	})
 	events := tracker.Watch(1, "")
 	defer events.Close()
-	_, err := tracker.RequestCertificate(context.Background(), "p1", "example.com")
+	var cache ProviderCache
+	providerView, err := tracker.ResolveProvider("p1", &cache)
 	if err != nil {
+		t.Fatalf("ResolveProvider returned error: %v", err)
+	}
+	if providerView.Name() != "p1" {
+		t.Fatalf("unexpected key: %+v", providerView.Name())
+	}
+	if err := providerView.RequestCertificate(context.Background(), "example.com"); err != nil {
 		t.Fatalf("RequestCertificate returned error: %v", err)
 	}
 	select {
@@ -103,12 +115,12 @@ func TestTrackerCommitAndUnmanage(t *testing.T) {
 	if committed[keyTracked].IsZero() {
 		t.Fatalf("expected committed map updated with notAfter")
 	}
-	if len(provider.removeManagedCalls) != 1 || provider.removeManagedCalls[0].SNI != keyStale.Identity {
+	if len(provider.removeManagedCalls) != 1 || provider.removeManagedCalls[0].SNI[0] != keyStale.Identity {
 		t.Fatalf("expected RemoveManaged called for stale cert, calls: %+v", provider.removeManagedCalls)
 	}
 }
 
-func TestUpdateLoopBroadcasts(t *testing.T) {
+func TestUpdateLoopMutesUntracked(t *testing.T) {
 	t.Parallel()
 	cert := sslCert(time.Now().Add(time.Hour))
 	provider := &mockACMEProvider{
@@ -130,11 +142,46 @@ func TestUpdateLoopBroadcasts(t *testing.T) {
 	UpdateLoop(ctx, testutil.Logger(), tracker, cursor.Channel(events))
 	select {
 	case update := <-watch.Cursor:
+		//if update.Provider != "p1" || update.Identity != "example.com" {
+		//	t.Fatalf("unexpected update %+v", update)
+		//}
+		t.Fatalf("unexpected update %+v", update)
+	default:
+	}
+}
+
+func TestUpdateLoopBroadcastsTracked(t *testing.T) {
+	t.Parallel()
+	cert := sslCert(time.Now().Add(time.Hour))
+	provider := &mockACMEProvider{
+		name: "p1",
+		BestMatchForFunc: func(sni string) (Certificate, bool) {
+			return cert, true
+		},
+	}
+	manager := mockACMEManager{providers: map[string]Provider{"p1": provider}}
+	tracker, _ := NewTracker(testutil.Logger(), manager)
+	events := make(chan Tracking, 1)
+	events <- Tracking{Provider: "p1", Identity: "example.com"}
+	close(events)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	watch := tracker.Watch(1, "")
+	defer watch.Close()
+
+	tracker.WithLock(func() {
+		tracker.track[Tracking{Provider: "p1", Identity: "example.com"}] = trackedCertificate{Certificate: cert}
+	})
+
+	UpdateLoop(ctx, testutil.Logger(), tracker, cursor.Channel(events))
+	select {
+	case update := <-watch.Cursor:
 		if update.Provider != "p1" || update.Identity != "example.com" {
 			t.Fatalf("unexpected update %+v", update)
 		}
 	default:
-		t.Fatalf("expected notification for cert event")
+		t.Fatalf("expected update")
 	}
 }
 
@@ -143,7 +190,7 @@ func TestProviderForCaches(t *testing.T) {
 	manager := mockACMEManager{providers: map[string]Provider{}}
 	tracker, _ := NewTracker(testutil.Logger(), manager)
 	cache := ProviderCache{}
-	if _, err := tracker.ProviderFor("missing", &cache); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := tracker.ResolveProvider("missing", &cache); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected propagated error, got %v", err)
 	}
 }

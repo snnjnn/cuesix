@@ -22,25 +22,25 @@ import (
 func TestSSLPluginUpdateValidation(t *testing.T) {
 	t.Parallel()
 	plugin := &SSLPlugin{}
-	if _, err := plugin.Update(nil, nil); err == nil {
+	if _, err := plugin.Update(context.Background(), nil, nil); err == nil {
 		t.Fatalf("expected error for nil fallback")
 	}
 	plugin.Fallback = Certificate{CertPEM: []byte("c")}
-	if _, err := plugin.Update(nil, nil); err == nil {
+	if _, err := plugin.Update(context.Background(), nil, nil); err == nil {
 		t.Fatalf("expected error for missing key")
 	}
 	plugin.Fallback.KeyPEM = []byte("k")
-	if _, err := plugin.Update(nil, nil); err == nil {
+	if _, err := plugin.Update(context.Background(), nil, nil); err == nil {
 		t.Fatalf("expected error for nil value map")
 	}
 	value := map[string]any{}
-	if _, err := plugin.Update(value, nil); err != nil {
+	if _, err := plugin.Update(context.Background(), value, nil); err != nil {
 		t.Fatalf("unexpected error for missing ssls: %v", err)
 	}
-	if _, err := plugin.Update(map[string]any{"ssls": "not list"}, nil); err == nil {
+	if _, err := plugin.Update(context.Background(), map[string]any{"ssls": "not list"}, nil); err == nil {
 		t.Fatalf("expected error for invalid ssls type")
 	}
-	if _, err := plugin.Update(map[string]any{"ssls": []any{}}, nil); err != nil {
+	if _, err := plugin.Update(context.Background(), map[string]any{"ssls": []any{}}, nil); err != nil {
 		t.Fatalf("unexpected error for empty ssls: %v", err)
 	}
 }
@@ -64,7 +64,7 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 		},
 		WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
 			ch := make(chan Delivery, buffer)
-			ch <- Delivery{Tracking: Tracking{Provider: "p-acme", Identity: "acme.example"}, Certificate: acmeCert}
+			ch <- Delivery{Tracking: Tracking{Provider: ACMEPrefix + "p-acme", Identity: "acme.example"}, Certificate: acmeCert}
 			close(ch)
 			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
 		},
@@ -108,7 +108,7 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 		},
 		Logger: testutil.Logger(),
 	}
-	out, err := plugin.Update(value, record)
+	out, err := plugin.Update(context.Background(), value, record)
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}

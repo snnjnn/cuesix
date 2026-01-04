@@ -3,7 +3,6 @@ package ssl
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 const DefaultACMERequestTimeout = 10 * time.Second
 
 type ACMETracker interface {
-	RequestCertificate(ctx context.Context, providerName string, sni string) (Tracking, error)
+	ResolveProvider(providerName string, cache *ProviderCache) (Provider, error)
 	Watch(buffer int, topic string) cursor.Owned[Delivery]
 }
 
@@ -24,18 +23,19 @@ type ACMEHandler struct {
 	RequestTimeout time.Duration
 }
 
-func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback Certificate) {
+func (a ACMEHandler) replaceTargets(ctx context.Context, logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback Certificate) {
 	if len(targets) == 0 {
 		return
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	targetsBySNI := make(map[string][]certTargets)
+	targetsById := make(map[Tracking][]certTargets)
 	if a.Tracker == nil {
 		logger.Error("ssl plugin acme requires acme tracker")
 	}
 	// First step: collect SNIs
+	var cache ProviderCache
 	for _, target := range targets {
 		if a.Tracker == nil {
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
@@ -46,10 +46,17 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 			target.replace(fallback.CertPEM, fallback.KeyPEM)
 			continue
 		}
-		sni := target.snis[0]
-		targetsBySNI[sni] = append(targetsBySNI[sni], target)
+		provider, err := a.Tracker.ResolveProvider(target.cert, &cache)
+		if err != nil {
+			logger.Error("ssl plugin acme failed to resolve provider", "sslid", target.sslId, "cert", target.cert, "error", err)
+			target.replace(fallback.CertPEM, fallback.KeyPEM)
+			continue
+		}
+		key := Tracking{Provider: provider.Name(), Identity: target.snis[0]}
+		targetsById[key] = append(targetsById[key], target)
 	}
-	if len(targetsBySNI) == 0 {
+	if len(targetsById) == 0 {
+		logger.Error("ssl plugin acme failed to resolve any provider")
 		return
 	}
 	// Now we will request all the certs, while waiting for notifications
@@ -57,25 +64,25 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	if timeout <= 0 {
 		timeout = DefaultACMERequestTimeout
 	}
-	cancelCtx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+	cancelCtx, cancelFunc := context.WithTimeout(ctx, timeout)
 	defer cancelFunc()
 	var (
 		lock sync.Mutex
 		wg   sync.WaitGroup
 	)
-	certsBySNI := make(map[string]Delivery)
-	pendingTargets := make(map[string]struct{})
-	for sni := range targetsBySNI {
-		pendingTargets[sni] = struct{}{}
+	certsById := make(map[Tracking]Delivery)
+	pendingTargets := make(map[Tracking]struct{})
+	for key := range targetsById {
+		pendingTargets[key] = struct{}{}
 	}
 	// Keep track of how many pending certificates are there
 	// Pending certificates can be cleared if:
 	// - A certificate is received
 	// - The async certificate request fails
-	clearPending := func(sni string) bool {
+	clearPending := func(key Tracking) bool {
 		lock.Lock()
 		before := len(pendingTargets)
-		delete(pendingTargets, sni)
+		delete(pendingTargets, key)
 		after := len(pendingTargets)
 		lock.Unlock()
 		if after == 0 {
@@ -85,41 +92,36 @@ func (a ACMEHandler) replaceTargets(logger *slog.Logger, targets []certTargets, 
 	}
 	ready := make(chan struct{}, 1)
 	wg.Go(func() {
-		events := a.Tracker.Watch(2*len(targetsBySNI), "")
+		events := a.Tracker.Watch(2*len(targetsById), "")
 		defer events.Close()
 		close(ready) // signal the main thread
 		for cert := range cursor.All(cancelCtx, events.Cursor) {
-			if !cert.NotAfter.IsZero() && clearPending(cert.Identity) {
-				certsBySNI[cert.Identity] = cert
+			if !cert.NotAfter.IsZero() && clearPending(cert.Tracking) {
+				certsById[cert.Tracking] = cert
 			}
 		}
 	})
 	// Wait until the watcher is ready, and begin requesting targets
 	<-ready
-	for sni, targets := range targetsBySNI {
-		sniSuccess := false
-		for _, target := range targets {
-			provider := strings.TrimPrefix(target.cert, ACMEPrefix)
-			key, err := a.Tracker.RequestCertificate(cancelCtx, provider, sni)
-			if err == nil {
+	for key := range targetsById {
+		provider, err := a.Tracker.ResolveProvider(key.Provider, &cache)
+		if err == nil {
+			if err = provider.RequestCertificate(ctx, key.Identity); err == nil {
 				if record != nil {
 					// Track the request.
 					// We do not provide a time because we don't have any at this point.
 					record[key] = time.Time{}
 				}
-				sniSuccess = true
-				break
+				continue
 			}
-			logger.Error("ssl plugin acme request failed", "sslid", target.sslId, "provider", provider, "sni", sni, "err", err)
 		}
-		if !sniSuccess {
-			clearPending(sni)
-		}
+		logger.Error("ssl plugin acme request failed", "provider", provider, "key", key, "err", err)
+		clearPending(key)
 	}
 	wg.Wait()
 	// Finally, perform the replacement
-	for sni, targets := range targetsBySNI {
-		if cert, ok := certsBySNI[sni]; ok {
+	for key, targets := range targetsById {
+		if cert, ok := certsById[key]; ok {
 			if record != nil {
 				record[cert.Tracking] = cert.NotAfter
 			}

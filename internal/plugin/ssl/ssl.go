@@ -1,6 +1,7 @@
 package ssl
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -58,7 +59,7 @@ const (
 	FilePrefix = "file://"
 )
 
-func (p *SSLPlugin) Update(value map[string]any, record map[Tracking]time.Time) (map[string]any, error) {
+func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map[Tracking]time.Time) (map[string]any, error) {
 	if p == nil {
 		return nil, errors.New("ssl plugin is nil")
 	}
@@ -92,7 +93,7 @@ func (p *SSLPlugin) Update(value map[string]any, record map[Tracking]time.Time) 
 	}
 	p.TextHandler.replaceTargets(logger, targets[textTarget], p.Fallback)
 	p.FileHandler.replaceTargets(logger, targets[fileTarget], p.Fallback)
-	p.ACMEHandler.replaceTargets(logger, targets[acmeTarget], record, p.Fallback)
+	p.ACMEHandler.replaceTargets(ctx, logger, targets[acmeTarget], record, p.Fallback)
 	logger.Info("ssl plugin complete", "entries", len(entries))
 	return value, nil
 }

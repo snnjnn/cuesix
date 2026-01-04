@@ -27,16 +27,40 @@ type mockACMETracker struct {
 	watchCalls              []watchCall
 }
 
-func (m *mockACMETracker) RequestCertificate(ctx context.Context, providerName string, sni string) (Tracking, error) {
+type mockTrackedProvider struct {
+	name string
+	*mockACMETracker
+}
+
+func (m *mockACMETracker) ResolveProvider(provider string, _ *ProviderCache) (Provider, error) {
+	return &mockTrackedProvider{
+		mockACMETracker: m,
+		name:            provider,
+	}, nil
+}
+
+func (m *mockTrackedProvider) RequestCertificate(ctx context.Context, sni string) error {
 	m.requestCertificateCalls = append(m.requestCertificateCalls, requestCertificateCall{
 		Ctx:      ctx,
-		Provider: providerName,
+		Provider: m.name,
 		SNI:      sni,
 	})
 	if m.RequestCertificateFunc != nil {
-		return m.RequestCertificateFunc(ctx, providerName, sni)
+		_, err := m.RequestCertificateFunc(ctx, m.name, sni)
+		return err
 	}
-	return Tracking{Provider: providerName, Identity: sni}, nil
+	return nil
+}
+
+func (m *mockTrackedProvider) Name() string {
+	return m.name
+}
+
+func (m *mockTrackedProvider) BestMatchFor(_ context.Context, _ string) (Certificate, bool) {
+	return Certificate{}, false
+}
+
+func (m *mockTrackedProvider) RemoveManaged(_ context.Context, _ ...string) {
 }
 
 func (m *mockACMETracker) Watch(buffer int, topic string) cursor.Owned[Delivery] {
@@ -63,7 +87,7 @@ type requestCall struct {
 }
 
 type removeManagedCall struct {
-	SNI string
+	SNI []string
 }
 
 // mockACMEProvider implements ACMEProvider for tests.
@@ -71,7 +95,7 @@ type mockACMEProvider struct {
 	name                   string
 	BestMatchForFunc       func(string) (Certificate, bool)
 	RequestCertificateFunc func(context.Context, string) error
-	RemoveManagedFunc      func(string)
+	RemoveManagedFunc      func([]string)
 
 	bestMatchCalls     []bestMatchCall
 	requestCalls       []requestCall
@@ -82,7 +106,7 @@ func (m *mockACMEProvider) Name() string {
 	return m.name
 }
 
-func (m *mockACMEProvider) BestMatchFor(sni string) (Certificate, bool) {
+func (m *mockACMEProvider) BestMatchFor(_ context.Context, sni string) (Certificate, bool) {
 	m.bestMatchCalls = append(m.bestMatchCalls, bestMatchCall{SNI: sni})
 	if m.BestMatchForFunc != nil {
 		return m.BestMatchForFunc(sni)
@@ -98,7 +122,7 @@ func (m *mockACMEProvider) RequestCertificate(ctx context.Context, sni string) e
 	return nil
 }
 
-func (m *mockACMEProvider) RemoveManaged(sni string) {
+func (m *mockACMEProvider) RemoveManaged(ctx context.Context, sni ...string) {
 	m.removeManagedCalls = append(m.removeManagedCalls, removeManagedCall{SNI: sni})
 	if m.RemoveManagedFunc != nil {
 		m.RemoveManagedFunc(sni)

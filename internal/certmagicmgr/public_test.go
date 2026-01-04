@@ -39,7 +39,7 @@ func TestProviderRequestAndBestMatchPublic(t *testing.T) {
 	if err := p.RequestCertificate(context.Background(), "example.com"); err != nil {
 		t.Fatalf("RequestCertificate returned error: %v", err)
 	}
-	if _, ok := p.BestMatchFor("example.com"); !ok {
+	if _, ok := p.BestMatchFor(context.Background(), "example.com"); !ok {
 		t.Fatalf("expected best match")
 	}
 }

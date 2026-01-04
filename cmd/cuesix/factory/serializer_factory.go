@@ -80,7 +80,7 @@ func (p *SerializerInstance) Serialize(value map[string]any) ([]byte, error) {
 	logger := p.logger
 	if p.sslPlugin != nil {
 		logger.Info("SSL Plugins start")
-		value, err = p.sslPlugin.Update(value, p.record)
+		value, err = p.sslPlugin.Update(context.Background(), value, p.record)
 	}
 	if err != nil {
 		return nil, err

@@ -94,7 +94,7 @@ func TestProviderBestMatchFor(t *testing.T) {
 		cache:   &certmagic.Cache{},
 		logger:  testutil.Logger(),
 	}
-	cert, ok := p.BestMatchFor("  example.com ")
+	cert, ok := p.BestMatchFor(context.Background(), "  example.com ")
 	if !ok {
 		t.Fatalf("expected a match")
 	}
@@ -115,14 +115,14 @@ func TestProviderBestMatchForEdgeCases(t *testing.T) {
 		cache:   &certmagic.Cache{},
 		logger:  testutil.Logger(),
 	}
-	if cert, ok := p.BestMatchFor(""); ok || !cert.NotAfter.IsZero() {
+	if cert, ok := p.BestMatchFor(context.Background(), ""); ok || !cert.NotAfter.IsZero() {
 		t.Fatalf("expected empty result when sni empty")
 	}
-	if cert, ok := p.BestMatchFor("example.com"); ok || !cert.NotAfter.IsZero() {
+	if cert, ok := p.BestMatchFor(context.Background(), "example.com"); ok || !cert.NotAfter.IsZero() {
 		t.Fatalf("expected no match for empty candidates")
 	}
 	var nilProvider *Provider
-	if _, ok := nilProvider.BestMatchFor("example.com"); ok {
+	if _, ok := nilProvider.BestMatchFor(context.Background(), "example.com"); ok {
 		t.Fatalf("nil provider should return false")
 	}
 }
@@ -142,9 +142,9 @@ func TestProviderName(t *testing.T) {
 func TestProviderRemoveManagedNoop(t *testing.T) {
 	t.Parallel()
 	var nilProvider *Provider
-	nilProvider.RemoveManaged("example.com")
+	nilProvider.RemoveManaged(context.Background(), "example.com")
 	p := &Provider{}
-	p.RemoveManaged("example.com")
+	p.RemoveManaged(context.Background(), "example.com")
 }
 
 func TestProviderRemoveManaged(t *testing.T) {
@@ -157,7 +157,7 @@ func TestProviderRemoveManaged(t *testing.T) {
 			Issuers: []certmagic.Issuer{stubIssuer{key: "k1"}, stubIssuer{key: "k2"}},
 		},
 	}
-	p.RemoveManaged("example.com")
+	p.RemoveManaged(context.Background(), "example.com")
 	if got := len(adapter.RemoveManagedCalls); got != 2 {
 		t.Fatalf("expected one call per issuer, got %d", got)
 	}

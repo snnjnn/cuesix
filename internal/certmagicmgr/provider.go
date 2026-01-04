@@ -52,7 +52,7 @@ func (p *Provider) Name() string {
 	return p.cfg.Name
 }
 
-func (p *Provider) BestMatchFor(sni string) (ssl.Certificate, bool) {
+func (p *Provider) BestMatchFor(_ context.Context, sni string) (ssl.Certificate, bool) {
 	if p == nil {
 		return ssl.Certificate{}, false
 	}
@@ -71,17 +71,19 @@ func (p *Provider) BestMatchFor(sni string) (ssl.Certificate, bool) {
 }
 
 // RemoveManaged stops tracking the SNI for future listings.
-func (p *Provider) RemoveManaged(sni string) {
+func (p *Provider) RemoveManaged(_ context.Context, identities ...string) {
 	if p == nil || p.magic == nil || p.cache == nil {
 		return
 	}
 	p.WithLock(func() {
-		for _, issuer := range p.magic.Issuers {
-			c := certmagic.SubjectIssuer{
-				Subject:   sni,
-				IssuerKey: issuer.IssuerKey(),
+		for _, identity := range identities {
+			for _, issuer := range p.magic.Issuers {
+				c := certmagic.SubjectIssuer{
+					Subject:   identity,
+					IssuerKey: issuer.IssuerKey(),
+				}
+				p.adapter.RemoveManaged(p.cache, []certmagic.SubjectIssuer{c})
 			}
-			p.adapter.RemoveManaged(p.cache, []certmagic.SubjectIssuer{c})
 		}
 	})
 }
