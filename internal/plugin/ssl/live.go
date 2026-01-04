@@ -11,19 +11,19 @@ import (
 
 const DefaultACMERequestTimeout = 10 * time.Second
 
-type ACMETracker interface {
+type LiveTracker interface {
 	ResolveProvider(providerName string, cache *ProviderCache) (Provider, error)
 	Watch(buffer int, topic string) cursor.Owned[Delivery]
 }
 
-type ACMEHandler struct {
+type LiveHandler struct {
 	// Shared tracker to avoid hitting upstream manager with repeated manage / unmanage requests
-	Tracker ACMETracker
+	Tracker LiveTracker
 	// RequestTimeout bounds the time spent waiting for ACME certificates.
 	RequestTimeout time.Duration
 }
 
-func (a ACMEHandler) replaceTargets(ctx context.Context, logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback Certificate) {
+func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback Certificate) {
 	if len(targets) == 0 {
 		return
 	}

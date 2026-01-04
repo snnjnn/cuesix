@@ -103,7 +103,7 @@ func TestSSLPluginUpdateReplacesTargets(t *testing.T) {
 		FileHandler: FileHandler{
 			Filesystems: []fs.FS{fileFS},
 		},
-		ACMEHandler: ACMEHandler{
+		LiveHandler: LiveHandler{
 			Tracker: tracker,
 		},
 		Logger: testutil.Logger(),

@@ -40,7 +40,7 @@ func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 		},
 	}
 	record := make(map[Tracking]time.Time)
-	handler := ACMEHandler{Tracker: tracker, RequestTimeout: time.Second}
+	handler := LiveHandler{Tracker: tracker, RequestTimeout: time.Second}
 	handler.replaceTargets(context.Background(), testutil.Logger(), []certTargets{target}, record, fallback)
 	if string(cert.CertPEM) != "cert" || string(cert.KeyPEM) != "key" {
 		t.Fatalf("expected cert/key to be replaced, got cert=%q key=%q", cert.CertPEM, cert.KeyPEM)
@@ -58,14 +58,14 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 	fallback := Certificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
 	tests := []struct {
 		name     string
-		handler  ACMEHandler
+		handler  LiveHandler
 		targets  []certTargets
 		wantCert string
 		wantKey  string
 	}{
 		{
 			name:    "tracker missing",
-			handler: ACMEHandler{},
+			handler: LiveHandler{},
 			targets: []certTargets{{
 				cert: ACMEPrefix + "p1",
 				snis: []string{"example.com"},
@@ -75,7 +75,7 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 		},
 		{
 			name: "request fails",
-			handler: ACMEHandler{
+			handler: LiveHandler{
 				Tracker: &mockACMETracker{
 					RequestCertificateFunc: func(context.Context, string, string) (Tracking, error) {
 						return Tracking{}, errors.New("boom")
@@ -95,7 +95,7 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 		},
 		{
 			name: "multiple snis fallback",
-			handler: ACMEHandler{
+			handler: LiveHandler{
 				Tracker: &mockACMETracker{},
 			},
 			targets: []certTargets{{

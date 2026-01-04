@@ -26,7 +26,7 @@ type SSLPlugin struct {
 	Fallback Certificate
 	TextHandler
 	FileHandler
-	ACMEHandler
+	LiveHandler
 	Logger *slog.Logger
 }
 
@@ -93,7 +93,7 @@ func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map
 	}
 	p.TextHandler.replaceTargets(logger, targets[textTarget], p.Fallback)
 	p.FileHandler.replaceTargets(logger, targets[fileTarget], p.Fallback)
-	p.ACMEHandler.replaceTargets(ctx, logger, targets[acmeTarget], record, p.Fallback)
+	p.LiveHandler.replaceTargets(ctx, logger, targets[acmeTarget], record, p.Fallback)
 	logger.Info("ssl plugin complete", "entries", len(entries))
 	return value, nil
 }

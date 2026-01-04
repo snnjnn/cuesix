@@ -131,7 +131,7 @@ func (p *SerializerFactory) buildPreRender(cfg config.Plugins) error {
 			FileHandler: ssl.FileHandler{
 				Filesystems: sslFSes,
 			},
-			ACMEHandler: ssl.ACMEHandler{
+			LiveHandler: ssl.LiveHandler{
 				RequestTimeout: cfg.SSLACMETimeout,
 				Tracker:        p.sslSetup.AcmeTracker,
 			},
