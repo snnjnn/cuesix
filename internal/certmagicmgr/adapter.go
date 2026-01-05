@@ -2,7 +2,6 @@ package certmagicmgr
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/caddyserver/certmagic"
 )
