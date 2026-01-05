@@ -10,10 +10,16 @@ import (
 // Certmagic interface encapsulates most of the behaviour of certmagic
 // used by this module, to make it easier to mock and test the module.
 type CertMagic interface {
-	HTTPChallengeHandler(handler http.Handler) http.Handler
+	HTTPChallengeHandler(issuer ACMEIssuer, handler http.Handler) http.Handler
 	ManageAsync(ctx context.Context, config *certmagic.Config, snis []string) error
 	RemoveManaged(cache *certmagic.Cache, issuers []certmagic.SubjectIssuer)
 	AllMatchingCertificates(cache *certmagic.Cache, sni string) []certmagic.Certificate
+}
+
+// ACMEIssuer interface encapsulates the behaviour of ACMEIssuer used by
+// the CertMagic interface.
+type ACMEIssuer interface {
+	HTTPChallengeHandler(handler http.Handler) http.Handler
 }
 
 // Storage interface encapsulates most of the behaviour of certmagic storage
@@ -25,8 +31,8 @@ type Storage interface {
 
 type certmagicAdapter struct{}
 
-func (certmagicAdapter) HTTPChallengeHandler(handler http.Handler) http.Handler {
-	return certmagic.DefaultACME.HTTPChallengeHandler(handler)
+func (certmagicAdapter) HTTPChallengeHandler(issuer ACMEIssuer, handler http.Handler) http.Handler {
+	return issuer.HTTPChallengeHandler(handler)
 }
 
 func (certmagicAdapter) ManageAsync(ctx context.Context, config *certmagic.Config, snis []string) error {

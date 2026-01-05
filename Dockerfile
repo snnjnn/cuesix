@@ -1,7 +1,7 @@
 ARG APISIX_VERSION=3.14.1-debian
 ARG GOLANG_VERSION=1.25
 
-FROM golang:${GOLANG_VERSION} AS builder
+FROM docker.io/golang:${GOLANG_VERSION} AS builder
 
 WORKDIR /src
 COPY . .
@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOEXPERIMENT=jsonv2 \
     go build -trimpath -ldflags="-s -w" -o /out/cuesix ./cmd/cuesix
 
-FROM apache/apisix:${APISIX_VERSION}
+FROM docker.io/apache/apisix:${APISIX_VERSION}
 
 USER root
 
@@ -20,7 +20,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
 COPY --from=builder /out/cuesix /usr/local/bin/cuesix
 
 # Avoid problems copying the /usr/local/apisix folder
-RUN chmod a+rX /usr/local/apisix/deps
+RUN chmod -R a+rX /usr/local/apisix/deps
 
 USER apisix
 ENTRYPOINT ["cuesix"]

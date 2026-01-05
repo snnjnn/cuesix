@@ -79,9 +79,14 @@ func NewManager(logger *slog.Logger, cfg Config, events chan ssl.Tracking, fallb
 // RunChallengeServer exposes the HTTP-01 challenge handler.
 func (m Manager) ChallengeHandler() http.Handler {
 	logger := m.logger
-	return m.adapter.HTTPChallengeHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Info("challenge request", "host", slog.String("host", r.Host), "url", slog.String("url", r.URL.String()))
-	}))
+	})
+	for _, p := range m.providers {
+		logger.Info("chaining channel handler for provider", "provider", p.cfg.Name)
+		handler = m.adapter.HTTPChallengeHandler(p.issuer, handler)
+	}
+	return handler
 }
 
 // Return the manager for a particular provider

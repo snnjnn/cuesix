@@ -21,6 +21,7 @@ type Provider struct {
 	cfg     ProviderConfig
 	cache   *certmagic.Cache
 	magic   *certmagic.Config
+	issuer  *certmagic.ACMEIssuer
 	logger  *slog.Logger
 }
 
@@ -122,12 +123,15 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 		CA:     providerCfg.CA,
 		Email:  providerCfg.Email,
 		Agreed: true,
+		// we assume it is apisix who will terminate SSL, not us.
+		// SO we need to disable the ALPN challenge.
+		DisableTLSALPNChallenge: true,
 	}
 	if cfg.CertObtainTimeout > 0 {
 		issuerCfg.CertObtainTimeout = cfg.CertObtainTimeout
 	}
-	issuer := certmagic.NewACMEIssuer(p.magic, issuerCfg)
-	p.magic.Issuers = []certmagic.Issuer{issuer}
+	p.issuer = certmagic.NewACMEIssuer(p.magic, issuerCfg)
+	p.magic.Issuers = []certmagic.Issuer{p.issuer}
 	return p
 }
 
