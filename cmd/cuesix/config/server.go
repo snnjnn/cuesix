@@ -14,6 +14,7 @@ type Server struct {
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
+	AutoTrigger       bool
 }
 
 type Timeouts struct {
@@ -74,6 +75,13 @@ func (c *Server) Flags() []cli.Flag {
 			Value:    10 * time.Second,
 			Category: "Server",
 		},
+		&cli.BoolFlag{
+			Name:     "auto-trigger",
+			Usage:    "trigger the compile loop automatically, once",
+			Sources:  cli.EnvVars("CUESIX_SERVER_AUTO_TRIGGER"),
+			Value:    false,
+			Category: "Server",
+		},
 	}
 }
 
@@ -85,6 +93,7 @@ func (c *Server) Apply(ctx *cli.Command) {
 	c.WriteTimeout = ctx.Duration("server-write-timeout")
 	c.IdleTimeout = ctx.Duration("server-idle-timeout")
 	c.ShutdownTimeout = ctx.Duration("server-shutdown-timeout")
+	c.AutoTrigger = ctx.Bool("auto-trigger")
 }
 
 func (c Server) Timeouts() Timeouts {

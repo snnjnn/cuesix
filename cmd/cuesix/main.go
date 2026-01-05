@@ -260,7 +260,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 			}
 			return nil
 		})
-		group.Go(serverShutdown(groupCtx, logger, "metrics server", metricsServer, serverCfg.ShutdownTimeout))
+		group.Go(serverShutdown(groupCtx, metricsServer, serverCfg.ShutdownTimeout))
 	}
 
 	if sslSetup.AcmeTracker != nil {
@@ -309,7 +309,10 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		}
 		return nil
 	})
-	group.Go(serverShutdown(groupCtx, logger, "server", server, serverCfg.ShutdownTimeout))
+	group.Go(serverShutdown(groupCtx, server, serverCfg.ShutdownTimeout))
 
+	if serverCfg.AutoTrigger {
+		disp.Notify()
+	}
 	return group.Wait()
 }

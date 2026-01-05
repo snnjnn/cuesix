@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -39,7 +38,7 @@ func drainBody(next http.Handler) http.Handler {
 }
 
 // serverShutdown returns a shutdown handler bound to a context.
-func serverShutdown(ctx context.Context, logger *slog.Logger, name string, server *http.Server, timeout time.Duration) func() error {
+func serverShutdown(ctx context.Context, server *http.Server, timeout time.Duration) func() error {
 	return func() error {
 		<-ctx.Done()
 		cancelCtx, cancelFunc := context.WithTimeout(context.Background(), timeout)

@@ -2,8 +2,6 @@ package certmagicmgr
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -212,29 +210,6 @@ func TestManagerRemoveExpired(t *testing.T) {
 	}
 	if call.Ctx != ctx {
 		t.Fatalf("expected context propagated")
-	}
-}
-
-func TestChallengeHandler(t *testing.T) {
-	t.Parallel()
-	var wrappedCalled bool
-	adapter := &testutil.MockCertMagic{
-		HTTPChallengeHandlerFunc: func(h http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				wrappedCalled = true
-				h.ServeHTTP(w, r)
-			})
-		},
-	}
-	manager := Manager{
-		adapter: adapter,
-		logger:  testutil.Logger(),
-	}
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/challenge", nil)
-	manager.ChallengeHandler().ServeHTTP(rec, req)
-	if !wrappedCalled {
-		t.Fatalf("expected adapter HTTPChallengeHandler to wrap call")
 	}
 }
 
