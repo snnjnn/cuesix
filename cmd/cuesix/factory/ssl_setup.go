@@ -19,7 +19,7 @@ type SSLSetup struct {
 	Router       ssl.ProviderRouter
 	AcmeManager  certmagicmgr.Manager
 	AcmeTracker  *ssl.Tracker
-	events       chan ssl.Tracking
+	Events       chan ssl.Tracking
 }
 
 func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apisixCfg config.APISIX) (SSLSetup, error) {
@@ -48,16 +48,16 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 		if err != nil {
 			return setup, fmt.Errorf("certmagic provider config invalid: %w", err)
 		}
-		setup.events = make(chan ssl.Tracking, 32)
+		setup.Events = make(chan ssl.Tracking, 32)
 		setup.AcmeManager, err = certmagicmgr.NewManager(logger, certmagicmgr.Config{
 			Providers:         providers,
 			DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
 			DataDir:           strings.TrimSpace(certmagicCfg.DataDir),
 			CertObtainTimeout: certmagicCfg.Timeout,
 			ChallengePort:     certmagicCfg.ChallengePort,
-		}, setup.events, setup.FallbackCert, nil, nil)
+		}, setup.Events, setup.FallbackCert, nil, nil)
 		if err != nil {
-			close(setup.events)
+			close(setup.Events)
 			return setup, fmt.Errorf("certmagic init failed: %w", err)
 		}
 		setup.Enabled = true
@@ -73,8 +73,8 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 	var err error
 	setup.AcmeTracker, err = ssl.NewTracker(logger, setup.Router)
 	if err != nil {
-		if setup.events != nil {
-			close(setup.events)
+		if setup.Events != nil {
+			close(setup.Events)
 		}
 		return setup, fmt.Errorf("live watcher init failed: %w", err)
 	}

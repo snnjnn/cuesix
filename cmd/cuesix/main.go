@@ -19,6 +19,7 @@ import (
 	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
 	"github.com/warpcomdev/cuesix/cmd/cuesix/factory"
 	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
@@ -265,9 +266,9 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	if sslSetup.AcmeTracker != nil {
 		// Start the cert watcher
 		group.Go(func() error {
-			events := make(chan ssl.Tracking, 32)
-			defer close(events)
-			ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, events)
+			if sslSetup.Events != nil {
+				ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, cursor.Channel(sslSetup.Events))
+			}
 			return nil
 		})
 	}

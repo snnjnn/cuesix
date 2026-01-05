@@ -97,15 +97,23 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 	if events != nil {
 		configTemplate.OnEvent = func(ctx context.Context, event string, data map[string]any) error {
 			logger.Info("certmagic event", "event", event, "data", data)
-			if event == "cert_obtained" {
-				if sni, ok := data["identifier"].(string); ok {
-					select {
-					case <-ctx.Done():
-						return nil
-					case events <- ssl.Tracking{Identity: sni, Provider: p.Name()}:
-					default:
-					}
-				}
+			if event != "cert_obtained" {
+				logger.Info("certmagic event ignored", "event", event, "provider", p.Name())
+				return nil
+			}
+			sni, ok := data["identifier"].(string)
+			if !ok {
+				logger.Warn("certmagic event missing identifier", "event", event, "provider", p.Name())
+				return nil
+			}
+			notify := ssl.Tracking{Identity: sni, Provider: p.Name()}
+			select {
+			case <-ctx.Done():
+				return nil
+			case events <- notify:
+				logger.Info("certmagic event queued", "event", event, "provider", p.Name(), "sni", sni)
+			default:
+				logger.Warn("certmagic event dropped", "event", event, "provider", p.Name(), "sni", sni)
 			}
 			return nil
 		}

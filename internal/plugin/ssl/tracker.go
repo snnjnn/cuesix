@@ -251,8 +251,13 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 
 // UpdateLoop over certificate updates and forward to watchers
 func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cursor.Cursor[Tracking]) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Info("ssl tracker update loop started")
 	var providerCache ProviderCache
 	for certInfo := range cursor.All(ctx, events) {
+		logger.Info("ssl tracker event received", "provider", certInfo.Provider, "identity", certInfo.Identity)
 		if certInfo.Provider == "" {
 			logger.Error("missing provider on cert event", "identity", certInfo)
 			continue
@@ -265,6 +270,8 @@ func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cur
 		// Update the certificate, and always notify
 		if best, ok := provider.BestMatchFor(ctx, certInfo.Identity); ok {
 			w.updateTrack(ctx, certInfo, best, true, true)
+		} else {
+			logger.Info("ssl tracker event missing certificate", "provider", certInfo.Provider, "identity", certInfo.Identity)
 		}
 	}
 }
