@@ -1,0 +1,31 @@
+global_rules:
+  - id: global-rate-limit
+    plugins:
+      ua-restriction:
+        denylist:
+          - curl
+          - wget
+          - python
+          - sqlmap
+          - nikto
+      response-rewrite:
+        headers:
+          set:
+            X-Frame-Options: DENY
+            X-Content-Type-Options: nosniff
+            Referrer-Policy: no-referrer
+            Permissions-Policy: interest-cohort=()
+          remove:
+            - Server
+            - X-Powered-By
+            - X-APISIX-Upstream-Status
+      limit-req:
+        rate: 5
+        burst: 20
+        key: remote_addr
+      limit-conn:
+        conn: 20
+        burst: 10
+        key: remote_addr
+        default_conn_delay: 200
+

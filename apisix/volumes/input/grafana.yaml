@@ -1,0 +1,63 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+upstreams:
+  - id: grafana
+    nodes:
+      "192.168.231.2:3000": 1
+    type: roundrobin
+
+ssls:
+  - id: grafana
+    cert: acme://prod
+    key:  acme://prod
+    snis:
+      - grafana.fivecorporation.com
+
+routes:
+  - id: grafana-acme
+    priority: 1000
+    uri: /.well-known/acme-challenge/*
+    hosts:
+      - grafana.fivecorporation.com
+    upstream_id: acme-well-known
+    plugins:
+      limit-req:
+        rate: 100
+        burst: 200
+        key: remote_addr
+  - id: grafana-login
+    uri: /login
+    hosts:
+      - grafana.fivecorporation.com
+    upstream_id: grafana
+    plugins:
+      redirect:
+        http_to_https: true
+      limit-req:
+        rate: 2
+        burst: 5
+        key: remote_addr
+  - id: grafana
+    uri: /*
+    hosts:
+      - grafana.fivecorporation.com
+    upstream_id: grafana
+    plugins:
+      redirect:
+        http_to_https: true
+#END
