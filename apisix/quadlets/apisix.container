@@ -8,7 +8,7 @@ After=apisix-network.service
 Image=docker.io/apache/apisix:3.14.1-debian
 ReadOnly=true
 AutoUpdate=registry
-ContainerName=apisix
+ContainerName=apisix-gw
 Environment=APISIX_STAND_ALONE=true
 # Apisix needs to write things here.
 # The main files needed in this volume are:
