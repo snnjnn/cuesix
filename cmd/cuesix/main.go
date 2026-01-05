@@ -243,12 +243,6 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		metricsServer = buildServer(serverCfg.MetricsAddr, metricsMux, srvTimeouts)
 	}
 
-	// ACME challenge server.
-	var acmeServer *http.Server
-	if strings.TrimSpace(certmagicCfg.ChallengeAddr) != "" {
-		acmeServer = buildServer(certmagicCfg.ChallengeAddr, sslSetup.AcmeManager.ChallengeHandler(), srvTimeouts)
-	}
-
 	// Run loop and shutdown wiring.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -268,7 +262,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		group.Go(serverShutdown(groupCtx, logger, "metrics server", metricsServer, serverCfg.ShutdownTimeout))
 	}
 
-	if acmeServer != nil {
+	if sslSetup.AcmeTracker != nil {
 		// Start the cert watcher
 		group.Go(func() error {
 			events := make(chan ssl.Tracking, 32)
@@ -276,15 +270,6 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 			ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, events)
 			return nil
 		})
-		// And the acme server
-		group.Go(func() error {
-			logger.Info("starting acme server", "addr", certmagicCfg.ChallengeAddr)
-			if err := acmeServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				return err
-			}
-			return nil
-		})
-		group.Go(serverShutdown(groupCtx, logger, "acme server", acmeServer, serverCfg.ShutdownTimeout))
 	}
 
 	// Ready the dispatcher

@@ -41,8 +41,8 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 	setup.FallbackMgr = ssl.FallbackManager{Certificate: setup.FallbackCert}
 
 	if certmagicCfg.Enabled {
-		if certmagicCfg.ChallengeAddr == "" {
-			return setup, errors.New("certmagic enabled but challenge address is missing")
+		if certmagicCfg.ChallengePort <= 0 {
+			return setup, errors.New("certmagic enabled but challenge port is invalid")
 		}
 		providers, err := buildCertmagicProviders(certmagicCfg.Providers)
 		if err != nil {
@@ -54,6 +54,7 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 			DefaultProvider:   strings.TrimSpace(certmagicCfg.DefaultProvider),
 			DataDir:           strings.TrimSpace(certmagicCfg.DataDir),
 			CertObtainTimeout: certmagicCfg.Timeout,
+			ChallengePort:     certmagicCfg.ChallengePort,
 		}, setup.events, setup.FallbackCert, nil, nil)
 		if err != nil {
 			close(setup.events)

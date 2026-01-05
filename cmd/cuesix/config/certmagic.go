@@ -11,7 +11,7 @@ type Certmagic struct {
 	Enabled         bool
 	DefaultProvider string
 	DataDir         string
-	ChallengeAddr   string
+	ChallengePort   int
 	Timeout         time.Duration
 	WatchInterval   time.Duration
 	UntrackedGrace  time.Duration
@@ -40,10 +40,11 @@ func (c *Certmagic) Flags() []cli.Flag {
 			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_DATA_DIR"),
 			Category: "Certmagic",
 		},
-		&cli.StringFlag{
-			Name:     "certmagic-challenge-addr",
-			Usage:    "certmagic HTTP-01 challenge address",
-			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_CHALLENGE_ADDR"),
+		&cli.IntFlag{
+			Name:     "certmagic-challenge-port",
+			Usage:    "certmagic HTTP-01 challenge port",
+			Sources:  cli.EnvVars("CUESIX_CERTMAGIC_CHALLENGE_PORT"),
+			Value:    8080,
 			Category: "Certmagic",
 		},
 		&cli.DurationFlag{
@@ -94,7 +95,7 @@ func (c *Certmagic) Apply(ctx *cli.Command) {
 	c.Enabled = ctx.Bool("certmagic")
 	c.DefaultProvider = ctx.String("certmagic-default-provider")
 	c.DataDir = ctx.String("certmagic-data-dir")
-	c.ChallengeAddr = ctx.String("certmagic-challenge-addr")
+	c.ChallengePort = ctx.Int("certmagic-challenge-port")
 	c.Timeout = ctx.Duration("certmagic-timeout")
 	c.WatchInterval = ctx.Duration("certmagic-watch-interval")
 	c.UntrackedGrace = ctx.Duration("certmagic-untracked-grace")

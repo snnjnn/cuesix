@@ -145,7 +145,7 @@ To enable API reload of APISIX, you need to provide the URL of the apisix contro
 
 Standalone (default): compiles and prints the merged config to stdout. No validation or reload.
 
-Server mode (`cuesix serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and reloads APISIX on success. `/ready` returns 200 only after a successful reload has been delivered at least once. Certmagic is only available in this mode.
+Server mode (`cuesix serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and reloads APISIX on success. `/ready` returns 200 only after a successful reload has been delivered at least once. Certmagic automatically manages its own HTTP server for ACME challenges on the configured port.
 
 ## Flags and environment variables
 
@@ -194,7 +194,7 @@ Certmagic (serve only):
 - `--certmagic-provider` (repeatable) / `CUESIX_CERTMAGIC_PROVIDERS` (comma-separated): provider specs (`name|email|ca`).
 - `--certmagic-default-provider` / `CUESIX_CERTMAGIC_DEFAULT_PROVIDER`: default provider name.
 - `--certmagic-data-dir` / `CUESIX_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
-- `--certmagic-challenge-addr` / `CUESIX_CERTMAGIC_CHALLENGE_ADDR`: HTTP-01 challenge listen address.
+- `--certmagic-challenge-port` / `CUESIX_CERTMAGIC_CHALLENGE_PORT`: HTTP-01 challenge port (default `8080`).
 - `--certmagic-timeout` / `CUESIX_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
 - `--certmagic-watch-interval` / `CUESIX_CERTMAGIC_WATCH_INTERVAL`: refresh interval for certmagic certificate updates (default `1h`).
 - `--certmagic-untracked-interval` / `CUESIX_CERTMAGIC_UNTRACKED_INTERVAL`: interval for removing untracked certmagic entries (default `24h`).

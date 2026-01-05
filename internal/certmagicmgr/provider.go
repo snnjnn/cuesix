@@ -51,10 +51,7 @@ func (p *Provider) Name() string {
 }
 
 func (p *Provider) BestMatchFor(_ context.Context, sni string) (ssl.Certificate, bool) {
-	if p == nil {
-		return ssl.Certificate{}, false
-	}
-	if p.cache == nil {
+	if p == nil || p.cache == nil || p.adapter == nil {
 		return ssl.Certificate{}, false
 	}
 	sni = strings.TrimSpace(sni)
@@ -70,7 +67,7 @@ func (p *Provider) BestMatchFor(_ context.Context, sni string) (ssl.Certificate,
 
 // RemoveManaged stops tracking the SNI for future listings.
 func (p *Provider) RemoveManaged(_ context.Context, identities ...string) {
-	if p == nil || p.magic == nil || p.cache == nil {
+	if p == nil || p.magic == nil || p.cache == nil || p.adapter == nil {
 		return
 	}
 	p.WithLock(func() {
@@ -123,9 +120,10 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 		CA:     providerCfg.CA,
 		Email:  providerCfg.Email,
 		Agreed: true,
-		// we assume it is apisix who will terminate SSL, not us.
-		// SO we need to disable the ALPN challenge.
+		// Disable TLS-ALPN challenge, keep HTTP challenge enabled
 		DisableTLSALPNChallenge: true,
+		// Use alternate HTTP port for challenges
+		AltHTTPPort: cfg.ChallengePort,
 	}
 	if cfg.CertObtainTimeout > 0 {
 		issuerCfg.CertObtainTimeout = cfg.CertObtainTimeout
