@@ -13,7 +13,7 @@ import (
 
 type SSLSetup struct {
 	Enabled      bool
-	FallbackCert ssl.Certificate
+	FallbackCert ssl.PEMCertificate
 	FileManager  ssl.FileManager
 	FallbackMgr  ssl.FallbackManager
 	Router       ssl.ProviderRouter

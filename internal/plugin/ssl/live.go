@@ -9,8 +9,6 @@ import (
 	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
-const DefaultACMERequestTimeout = 10 * time.Second
-
 type LiveTracker interface {
 	ResolveProvider(providerName string, cache *ProviderCache) (Provider, error)
 	Watch(buffer int, topic string) cursor.Owned[Delivery]
@@ -23,7 +21,7 @@ type LiveHandler struct {
 	RequestTimeout time.Duration
 }
 
-func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback Certificate) {
+func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, targets []certTargets, record map[Tracking]time.Time, fallback PEMCertificate) {
 	if len(targets) == 0 {
 		return
 	}
@@ -64,16 +62,12 @@ func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, ta
 	}
 	// Now we will request all the certs, while waiting for notifications
 	timeout := a.RequestTimeout
-	if timeout <= 0 {
-		timeout = DefaultACMERequestTimeout
-	}
 	cancelCtx, cancelFunc := context.WithTimeout(ctx, timeout)
 	defer cancelFunc()
 	var (
 		lock sync.Mutex
 		wg   sync.WaitGroup
 	)
-	certsById := make(map[Tracking]Delivery)
 	pendingTargets := make(map[Tracking]struct{})
 	for key := range targetsById {
 		pendingTargets[key] = struct{}{}
@@ -93,12 +87,13 @@ func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, ta
 		}
 		return before > after
 	}
+	certsByKey := make(map[Tracking]PEMCertificate)
 	events := a.Tracker.Watch(2*len(targetsById), "")
 	wg.Go(func() {
 		defer events.Close()
 		for cert := range cursor.All(cancelCtx, events.Cursor) {
 			if !cert.NotAfter.IsZero() && clearPending(cert.Tracking) {
-				certsById[cert.Tracking] = cert
+				certsByKey[cert.Tracking] = cert.PEMCertificate
 			}
 		}
 	})
@@ -121,17 +116,15 @@ func (a LiveHandler) replaceTargets(ctx context.Context, logger *slog.Logger, ta
 	wg.Wait()
 	// Finally, perform the replacement
 	for key, targets := range targetsById {
-		if cert, ok := certsById[key]; ok {
-			if record != nil {
-				record[cert.Tracking] = cert.NotAfter
-			}
+		if cert, ok := certsByKey[key]; ok {
 			for _, target := range targets {
 				target.replace(cert.CertPEM, cert.KeyPEM)
 			}
-		} else {
-			for _, target := range targets {
-				target.replace(fallback.CertPEM, fallback.KeyPEM)
-			}
+			continue
+		}
+		// If we did not find a best match, use the fallback cert
+		for _, target := range targets {
+			target.replace(fallback.CertPEM, fallback.KeyPEM)
 		}
 	}
 }

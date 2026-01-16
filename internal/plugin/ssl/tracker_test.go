@@ -55,7 +55,7 @@ func TestTrackerRequestCertificateAlreadyTrackedNotifies(t *testing.T) {
 		t.Fatalf("NewTracker returned error: %v", err)
 	}
 	key := Tracking{Provider: "p1", Identity: "example.com"}
-	tracked := trackedCertificate{Certificate: sslCert(time.Now().Add(time.Hour))}
+	tracked := trackedCertificate{PEMCertificate: sslCert(time.Now().Add(time.Hour))}
 	tracker.WithLock(func() {
 		tracker.track[key] = tracked
 	})
@@ -103,12 +103,12 @@ func TestTrackerCommitAndUnmanage(t *testing.T) {
 	now := time.Now()
 	tracker.WithLock(func() {
 		tracker.track[keyTracked] = trackedCertificate{
-			Certificate: Certificate{NotAfter: now.Add(time.Hour)},
-			TrackedAt:   now.Add(-time.Hour),
+			PEMCertificate: PEMCertificate{NotAfter: now.Add(time.Hour)},
+			TrackedAt:      now.Add(-time.Hour),
 		}
 		tracker.track[keyStale] = trackedCertificate{
-			Certificate: Certificate{NotAfter: now.Add(30 * time.Minute)},
-			TrackedAt:   now.Add(-2 * time.Hour),
+			PEMCertificate: PEMCertificate{NotAfter: now.Add(30 * time.Minute)},
+			TrackedAt:      now.Add(-2 * time.Hour),
 		}
 	})
 	committed := map[Tracking]time.Time{
@@ -177,7 +177,7 @@ func TestUpdateLoopBroadcastsTracked(t *testing.T) {
 	defer watch.Close()
 
 	tracker.WithLock(func() {
-		tracker.track[Tracking{Provider: "p1", Identity: "example.com"}] = trackedCertificate{Certificate: cert}
+		tracker.track[Tracking{Provider: "p1", Identity: "example.com"}] = trackedCertificate{PEMCertificate: cert}
 	})
 
 	UpdateLoop(ctx, testutil.Logger(), tracker, cursor.Channel(events))

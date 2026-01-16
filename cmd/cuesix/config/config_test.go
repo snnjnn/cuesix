@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"math/big"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,20 +115,14 @@ func TestReloadBuildReloader(t *testing.T) {
 	t.Parallel()
 	apisixCfg := config.APISIX{Home: "/apisix"}
 	pluginCfg := config.Plugins{EnableYAML: true}
-	reloadCfg := config.Reload{
-		URL:      "http://localhost:9180",
-		APIKey:   "k",
-		Method:   http.MethodPut,
-		Timeout:  time.Second,
-		RetryMax: 3,
-	}
+	reloadCfg := config.Reload{}
 	rel, err := reloadCfg.BuildReloader(logger(), apisixCfg, pluginCfg)
 	if err != nil {
 		t.Fatalf("BuildReloader error: %v", err)
 	}
 	if real, ok := rel.(*reloader.Reloader); ok {
-		if !strings.Contains(real.ReloadURL, "/apisix/admin/configs") {
-			t.Fatalf("unexpected reload url %s", real.ReloadURL)
+		if !strings.HasSuffix(real.ConfigPath, "apisix.yaml") {
+			t.Fatalf("unexpected config path %s", real.ConfigPath)
 		}
 	}
 

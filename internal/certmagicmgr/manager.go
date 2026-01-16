@@ -33,12 +33,12 @@ type Manager struct {
 	adapter   CertMagic
 	storage   Storage
 	providers map[string]*Provider
-	fallback  ssl.Certificate
+	fallback  ssl.PEMCertificate
 	logger    *slog.Logger
 }
 
 // NewManager builds a certmagic manager and validates configuration.
-func NewManager(logger *slog.Logger, cfg Config, events chan ssl.Tracking, fallback ssl.Certificate, adapter CertMagic, storage Storage) (Manager, error) {
+func NewManager(logger *slog.Logger, cfg Config, events chan ssl.Tracking, fallback ssl.PEMCertificate, adapter CertMagic, storage Storage) (Manager, error) {
 	if len(cfg.Providers) == 0 {
 		return Manager{}, errors.New("at least one provider is required")
 	}

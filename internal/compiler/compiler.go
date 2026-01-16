@@ -188,43 +188,74 @@ func DefaultMergingRules() MergingRule {
 	}
 }
 
+type Source struct {
+	FS   fs.FS
+	Path string
+	Data []byte
+}
+
 type Snippet struct {
 	Path string
 	Data map[string]any
 }
 
-func Fetch(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Snippet, error] {
+func Enumerate(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Source, error] {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return func(yield func(Source, error) bool) {
+		for _, filesystem := range fses {
+			paths, err := listYAMLFiles(filesystem)
+			if err != nil {
+				if !yield(Source{}, err) {
+					return
+				}
+				continue
+			}
+			for _, path := range paths {
+				logger.Info("enumerator located file", "path", path)
+				content, err := fs.ReadFile(filesystem, path)
+				if err != nil {
+					if !yield(Source{}, fmt.Errorf("enumerator read %s: %w", path, err)) {
+						return
+					}
+					continue
+				}
+				if !yield(Source{FS: filesystem, Path: path, Data: content}, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func Fetch(logger *slog.Logger, enumeration iter.Seq2[Source, error]) iter.Seq2[Snippet, error] {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return func(yield func(Snippet, error) bool) {
-		for _, filesystem := range fses {
-			paths, err := listYAMLFiles(filesystem)
+		for source, err := range enumeration {
 			if err != nil {
 				if !yield(Snippet{}, err) {
 					return
 				}
 				continue
 			}
-			for _, path := range paths {
-				logger.Info("compiler reading file", "path", path)
-				content, err := fs.ReadFile(filesystem, path)
-				if err != nil {
-					if !yield(Snippet{}, fmt.Errorf("read %s: %w", path, err)) {
-						return
-					}
-					continue
-				}
-				value, err := decodeYAML(content)
-				if err != nil {
-					if !yield(Snippet{}, fmt.Errorf("parse %s: %w", path, err)) {
-						return
-					}
-					continue
-				}
-				if !yield(Snippet{Path: path, Data: value}, nil) {
+			if len(source.Data) == 0 {
+				if !yield(Snippet{}, fmt.Errorf("empty file")) {
 					return
 				}
+				continue
+			}
+			value, err := decodeYAML(source.Data)
+			if err != nil {
+				if !yield(Snippet{}, fmt.Errorf("decode %s: %w", source.Path, err)) {
+					return
+				}
+				continue
+			}
+			if !yield(Snippet{Path: source.Path, Data: value}, nil) {
+				return
 			}
 		}
 	}
@@ -248,34 +279,6 @@ func Merge(logger *slog.Logger, snippets iter.Seq[Snippet]) (map[string]any, err
 		if !ok {
 			return nil, fmt.Errorf("wrong format (not map) after merging %s", value.Path)
 		}
-	}
-	return merged, nil
-}
-
-func Compile(logger *slog.Logger, fses ...fs.FS) (map[string]any, error) {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	var fetchErr error
-	untilError := func(items iter.Seq2[Snippet, error]) iter.Seq[Snippet] {
-		return func(yield func(Snippet) bool) {
-			for snippet, err := range items {
-				if err != nil {
-					fetchErr = err
-					return
-				}
-				if !yield(snippet) {
-					return
-				}
-			}
-		}
-	}
-	merged, err := Merge(logger, untilError(Fetch(logger, fses...)))
-	if err != nil {
-		return nil, err
-	}
-	if fetchErr != nil {
-		return nil, fetchErr
 	}
 	return merged, nil
 }

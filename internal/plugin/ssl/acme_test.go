@@ -13,10 +13,10 @@ import (
 func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 	t.Parallel()
 	cert := sslCert(time.Now().Add(time.Hour))
-	fallback := Certificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
+	fallback := PEMCertificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
 	target := certTargets{
 		sslId: "id",
-		cert:  ACMEPrefix + "p1",
+		cert:  SecretPrefix + ACMEPrefix + "p1",
 		snis:  []string{"example.com"},
 		replace: func(certPEM, keyPEM []byte) {
 			cert.CertPEM = certPEM
@@ -28,12 +28,18 @@ func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 		RequestCertificateFunc: func(ctx context.Context, provider, sni string) (Tracking, error) {
 			return Tracking{Provider: provider, Identity: sni}, nil
 		},
+		BestMatchForFunc: func(_ context.Context, provider, sni string) (Certificate, bool) {
+			if provider == ACMEPrefix+"p1" && sni == "example.com" {
+				return cert, true
+			}
+			return PEMCertificate{}, false
+		},
 		WatchFunc: func(buffer int, topic string) cursor.Owned[Delivery] {
 			ch := make(chan Delivery, buffer)
 			close(ready)
 			go func() {
 				<-ready
-				ch <- Delivery{Tracking: Tracking{Provider: ACMEPrefix + "p1", Identity: "example.com"}, Certificate: cert}
+				ch <- Delivery{Tracking: Tracking{Provider: ACMEPrefix + "p1", Identity: "example.com"}, PEMCertificate: cert}
 				close(ch)
 			}()
 			return cursor.Owned[Delivery]{Cursor: cursor.Channel(ch), Close: func() {}}
@@ -55,7 +61,7 @@ func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
 
 func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 	t.Parallel()
-	fallback := Certificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
+	fallback := PEMCertificate{CertPEM: []byte("fb-cert"), KeyPEM: []byte("fb-key")}
 	tests := []struct {
 		name     string
 		handler  LiveHandler
@@ -67,7 +73,7 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 			name:    "tracker missing",
 			handler: LiveHandler{},
 			targets: []certTargets{{
-				cert: ACMEPrefix + "p1",
+				cert: SecretPrefix + ACMEPrefix + "p1",
 				snis: []string{"example.com"},
 			}},
 			wantCert: "fb-cert",
@@ -89,7 +95,7 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 				RequestTimeout: 5 * time.Millisecond,
 			},
 			targets: []certTargets{{
-				cert: ACMEPrefix + "p1",
+				cert: SecretPrefix + ACMEPrefix + "p1",
 				snis: []string{"example.com"},
 			}},
 			wantCert: "fb-cert",
@@ -108,7 +114,7 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 				RequestTimeout: 5 * time.Millisecond,
 			},
 			targets: []certTargets{{
-				cert: ACMEPrefix + "p1",
+				cert: SecretPrefix + ACMEPrefix + "p1",
 				snis: []string{"a", "b"},
 			}},
 			wantCert: "fb-cert",

@@ -94,12 +94,12 @@ func TestProviderBestMatchFor(t *testing.T) {
 		cache:   &certmagic.Cache{},
 		logger:  testutil.Logger(),
 	}
-	cert, ok := p.BestMatchFor(context.Background(), "  example.com ")
+	wrap, ok := p.BestMatchFor(context.Background(), "  example.com ")
 	if !ok {
 		t.Fatalf("expected a match")
 	}
-	if !cert.NotAfter.Equal(newer.Leaf.NotAfter) {
-		t.Fatalf("expected newer certificate, got %s", cert.NotAfter)
+	if !wrap.NotAfterTime().Equal(newer.Leaf.NotAfter) {
+		t.Fatalf("expected newer certificate, got %s", wrap.NotAfterTime())
 	}
 }
 
@@ -115,10 +115,10 @@ func TestProviderBestMatchForEdgeCases(t *testing.T) {
 		cache:   &certmagic.Cache{},
 		logger:  testutil.Logger(),
 	}
-	if cert, ok := p.BestMatchFor(context.Background(), ""); ok || !cert.NotAfter.IsZero() {
+	if wrap, ok := p.BestMatchFor(context.Background(), ""); ok || wrap != nil {
 		t.Fatalf("expected empty result when sni empty")
 	}
-	if cert, ok := p.BestMatchFor(context.Background(), "example.com"); ok || !cert.NotAfter.IsZero() {
+	if wrap, ok := p.BestMatchFor(context.Background(), "example.com"); ok || wrap != nil {
 		t.Fatalf("expected no match for empty candidates")
 	}
 	var nilProvider *Provider
@@ -297,12 +297,12 @@ func TestBestMatchForCandidates(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			cert, ok := bestMatchForCandidates(tt.input, testutil.Logger())
+			wrap, ok := bestMatchForCandidates(tt.input, testutil.Logger())
 			if ok != tt.expected {
 				t.Fatalf("expected ok=%v, got %v", tt.expected, ok)
 			}
-			if tt.expected && !cert.NotAfter.Equal(tt.want) {
-				t.Fatalf("unexpected certificate NotAfter: %s want %s", cert.NotAfter, tt.want)
+			if tt.expected && !wrap.NotAfterTime().Equal(tt.want) {
+				t.Fatalf("unexpected certificate NotAfter: %s want %s", wrap.NotAfterTime(), tt.want)
 			}
 		})
 	}

@@ -1,3 +1,4 @@
+## Gateway-wide settings snippet (no ingress or service)
 global_rules:
   - id: global-rate-limit
     plugins:
@@ -28,4 +29,3 @@ global_rules:
         burst: 10
         key: remote_addr
         default_conn_delay: 200
-

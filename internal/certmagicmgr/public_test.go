@@ -28,7 +28,7 @@ func TestProviderRequestAndBestMatchPublic(t *testing.T) {
 			{Name: "p1", Email: "e", CA: "ca"},
 		},
 	}
-	mgr, err := certmagicmgr.NewManager(testutil.Logger(), cfg, nil, ssl.Certificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, nil)
+	mgr, err := certmagicmgr.NewManager(testutil.Logger(), cfg, nil, ssl.PEMCertificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, nil)
 	if err != nil {
 		t.Fatalf("NewManager error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestManagerPublicAPI(t *testing.T) {
 		},
 	}
 	adapter := &testutil.MockCertMagic{}
-	mgr, err := certmagicmgr.NewManager(testutil.Logger(), cfg, nil, ssl.Certificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, &testutil.MockStorage{})
+	mgr, err := certmagicmgr.NewManager(testutil.Logger(), cfg, nil, ssl.PEMCertificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, &testutil.MockStorage{})
 	if err != nil {
 		t.Fatalf("NewManager error: %v", err)
 	}

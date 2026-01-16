@@ -17,7 +17,7 @@
 
 ssls:
   - id: 1
-    cert: file://ssl-cert-snakeoil.pem
-    key: file://ssl-cert-snakeoil.key
+    cert: $secret://file/ssl-cert-snakeoil.pem
+    key: $secret://file/ssl-cert-snakeoil.key
     snis:
       - apisix

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"path/filepath"
 	"time"
 
@@ -17,6 +18,7 @@ type Plugins struct {
 	SSLACMETimeout time.Duration
 	FallbackCert   string
 	FallbackKey    string
+	EnvFilename    string
 }
 
 func (c *Plugins) Flags() []cli.Flag {
@@ -44,7 +46,7 @@ func (c *Plugins) Flags() []cli.Flag {
 			Name:     "plugin-ssl-acme-timeout",
 			Usage:    "timeout for ssl plugin acme requests",
 			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL_ACME_TIMEOUT"),
-			Value:    ssl.DefaultACMERequestTimeout,
+			Value:    10 * time.Second,
 			Category: "Plugins",
 		},
 		&cli.DurationFlag{
@@ -72,6 +74,12 @@ func (c *Plugins) Flags() []cli.Flag {
 			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL_PATHS"),
 			Category: "Plugins",
 		},
+		&cli.StringFlag{
+			Name:     "plugin-env",
+			Usage:    "env filename to load from each input directory",
+			Sources:  cli.EnvVars("CUESIX_PLUGIN_ENV"),
+			Category: "Plugins",
+		},
 	}
 }
 
@@ -84,11 +92,12 @@ func (c *Plugins) Apply(ctx *cli.Command) {
 	c.SSLPaths = ctx.StringSlice("plugin-ssl-path")
 	c.FallbackCert = ctx.String("plugin-ssl-fallback-cert")
 	c.FallbackKey = ctx.String("plugin-ssl-fallback-key")
+	c.EnvFilename = ctx.String("plugin-env")
 }
 
-func (c *Plugins) LoadFallbackCertificate(apisixHome string, certmagicEnabled bool) (ssl.Certificate, bool, error) {
+func (c *Plugins) LoadFallbackCertificate(apisixHome string, certmagicEnabled bool) (ssl.PEMCertificate, bool, error) {
 	if len(c.SSLPaths) == 0 && !certmagicEnabled {
-		return ssl.Certificate{}, false, nil
+		return ssl.PEMCertificate{}, false, nil
 	}
 	certPath := c.FallbackCert
 	if certPath == "" {
@@ -100,9 +109,16 @@ func (c *Plugins) LoadFallbackCertificate(apisixHome string, certmagicEnabled bo
 	}
 	cert, err := ssl.LoadFallbackCertificate(certPath, keyPath)
 	if err != nil {
-		return ssl.Certificate{}, true, err
+		return ssl.PEMCertificate{}, true, err
 	}
 	c.FallbackCert = certPath
 	c.FallbackKey = keyPath
 	return cert, true, nil
+}
+
+func (c *Plugins) Validate() error {
+	if c.EnableSSL && c.SSLACMETimeout <= 0 {
+		return errors.New("plugin ssl acme timeout must be positive")
+	}
+	return nil
 }

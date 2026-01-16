@@ -9,24 +9,29 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v3"
 	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
+	"github.com/warpcomdev/cuesix/cmd/cuesix/control"
 	"github.com/warpcomdev/cuesix/cmd/cuesix/factory"
 	"github.com/warpcomdev/cuesix/internal/compiler"
 	"github.com/warpcomdev/cuesix/internal/cursor"
 	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"github.com/warpcomdev/cuesix/internal/listener"
 	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/schema"
 	"golang.org/x/sync/errgroup"
 )
 
 func main() {
+
 	log.SetFlags(log.LstdFlags | log.LUTC)
 	w := os.Stderr
 	logger := slog.New(
@@ -36,20 +41,15 @@ func main() {
 	)
 	slog.SetDefault(logger)
 
-	commonFlags := func(inputCfg *config.Input, apisixCfg *config.APISIX, pluginCfg *config.Plugins) []cli.Flag {
-		flags := make([]cli.Flag, 0, 16)
-		flags = append(flags, inputCfg.Flags()...)
-		flags = append(flags, apisixCfg.Flags()...)
-		flags = append(flags, pluginCfg.Flags()...)
-		return flags
-	}
-	serveFlags := func(serverCfg *config.Server, reloadCfg *config.Reload, certmagicCfg *config.Certmagic) []cli.Flag {
-		flags := make([]cli.Flag, 0, 16)
-		flags = append(flags, serverCfg.Flags()...)
-		flags = append(flags, reloadCfg.Flags()...)
-		flags = append(flags, certmagicCfg.Flags()...)
-		return flags
-	}
+	var (
+		inputCfg        = config.Input{}
+		apisixCfg       = config.APISIX{}
+		pluginsConfig   = config.Plugins{}
+		certmagicConfig = config.Certmagic{}
+		serverConfig    = config.Server{}
+		reloadConfig    = config.Reload{}
+		apiControlCfg   = config.APIControl{}
+	)
 
 	app := &cli.Command{
 		Name:  "cuesix",
@@ -59,64 +59,22 @@ func main() {
 				Name:  "compile",
 				Usage: "compile config and write to stdout",
 				Flags: func() []cli.Flag {
-					inputCfg := &config.Input{}
-					apisixCfg := &config.APISIX{}
-					pluginsConfig := &config.Plugins{}
-					return commonFlags(inputCfg, apisixCfg, pluginsConfig)
+					return joinFlags(&inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &apiControlCfg)
 				}(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					inputCfg := config.Input{}
-					apisixCfg := config.APISIX{}
-					pluginsConfig := config.Plugins{}
-
-					inputCfg.Apply(cmd)
-					apisixCfg.Apply(cmd)
-					pluginsConfig.Apply(cmd)
-
-					if err := inputCfg.Validate(); err != nil {
-						return err
-					}
-
-					return run(logger, inputCfg, config.Server{}, apisixCfg, config.Reload{}, pluginsConfig, config.Certmagic{}, false)
+					applyFlags(cmd, &inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &apiControlCfg)
+					return run(logger, inputCfg, serverConfig, apisixCfg, reloadConfig, pluginsConfig, certmagicConfig, apiControlCfg, false)
 				},
 			},
 			{
 				Name:  "serve",
 				Usage: "run HTTP server and reload APISIX on changes",
 				Flags: func() []cli.Flag {
-					inputCfg := &config.Input{}
-					apisixCfg := &config.APISIX{}
-					pluginsConfig := &config.Plugins{}
-					certmagicConfig := &config.Certmagic{}
-					serverConfig := &config.Server{}
-					reloadConfig := &config.Reload{}
-					flags := commonFlags(inputCfg, apisixCfg, pluginsConfig)
-					flags = append(flags, serveFlags(serverConfig, reloadConfig, certmagicConfig)...)
-					return flags
+					return joinFlags(&inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &serverConfig, &apiControlCfg)
 				}(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					inputCfg := config.Input{}
-					apisixCfg := config.APISIX{}
-					pluginsConfig := config.Plugins{}
-					certmagicConfig := config.Certmagic{}
-					serverConfig := config.Server{}
-					reloadConfig := config.Reload{}
-
-					inputCfg.Apply(cmd)
-					apisixCfg.Apply(cmd)
-					pluginsConfig.Apply(cmd)
-					certmagicConfig.Apply(cmd)
-					serverConfig.Apply(cmd)
-					reloadConfig.Apply(cmd)
-
-					if err := inputCfg.Validate(); err != nil {
-						return err
-					}
-					if err := certmagicConfig.Validate(); err != nil {
-						return err
-					}
-
-					return run(logger, inputCfg, serverConfig, apisixCfg, reloadConfig, pluginsConfig, certmagicConfig, true)
+					applyFlags(cmd, &inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &serverConfig, &apiControlCfg)
+					return run(logger, inputCfg, serverConfig, apisixCfg, reloadConfig, pluginsConfig, certmagicConfig, apiControlCfg, true)
 				},
 			},
 		},
@@ -127,7 +85,18 @@ func main() {
 	}
 }
 
-func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, apisixCfg config.APISIX, reloadCfg config.Reload, pluginCfg config.Plugins, certmagicCfg config.Certmagic, serve bool) error {
+func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, apisixCfg config.APISIX, reloadCfg config.Reload, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apiControlCfg config.APIControl, serve bool) error {
+
+	// Validate common configs
+	if err := inputCfg.Validate(); err != nil {
+		return err
+	}
+	if err := certmagicCfg.Validate(); err != nil {
+		return err
+	}
+	if err := pluginCfg.Validate(); err != nil {
+		return err
+	}
 
 	// Build input filesystem views.
 	fses, err := factory.BuildFilesystems(inputCfg.InputDirs)
@@ -142,9 +111,26 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		return err
 	}
 
-	// Build Compiler factory
+	// Build enumerator, fetcher, and compiler factory
+	sourceEnumerator := schema.NewSourcesEnumerator(logger, nil)
+	var enumerator compiler.Enumerator = sourceEnumerator
+	if pluginCfg.EnvFilename != "" {
+		enumerator = factory.NewEnvEnumerator(logger, enumerator, pluginCfg.EnvFilename)
+	}
+	var (
+		fetcherInstance dispatcher.Fetcher = factory.BuiltinFetcher{Logger: logger, Enumerator: enumerator}
+		schemaFetcher   *factory.SchemaFetcher
+	)
 	compFactory := factory.CompilerFactory{
 		Logger: logger,
+	}
+	if apisixCfg.UseSchema {
+		schemaFetcher, err = factory.NewSchemaFetcher(fetcherInstance, logger)
+		if err != nil {
+			logger.Error("schema fetcher init failed", "error", err)
+			return err
+		}
+		fetcherInstance = schemaFetcher
 	}
 
 	// Build plugin pipelines.
@@ -155,9 +141,54 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		return err
 	}
 
+	// Start the work group and the ssl event tracker, in case we enabled certmagic.
+	// This allows us to get certs either in serve or compile mode, as long
+	// as we receive challenges.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Allow external cancellation of the whole errgroup
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
+
+	group, groupCtx := errgroup.WithContext(cancelCtx)
+	if sslSetup.AcmeTracker != nil {
+		group.Go(func() error {
+			if sslSetup.Events != nil {
+				ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, cursor.Channel(sslSetup.Events))
+			}
+			return nil
+		})
+	}
+
 	// Standalone compile mode.
 	if !serve {
-		merged, err := compiler.Compile(logger, fses...)
+		defer func() {
+			cancelFunc()
+			group.Wait()
+		}()
+		// Build the fetcher. This might block early, but since we
+		// are running in comnpile mode, we don't mind
+		if schemaFetcher != nil {
+			if err := schemaFetcher.LoadSchema(groupCtx, logger, apiControlCfg); err != nil {
+				logger.Error("schema fetcher failed", "error", err)
+				return err
+			}
+		}
+		// Fetch the inputs
+		snippets := make([]compiler.Snippet, 0, 16)
+		for snippet, err := range fetcherInstance.Fetch(fses...) {
+			if err != nil {
+				logger.Error("fetcher failed", "error", err, "path", snippet.Path)
+				return err
+			}
+			snippets = append(snippets, snippet)
+		}
+		// Simulate a dispatcher run: create the instances,
+		// merge, and serialize.
+		compilerInstance := compFactory.Instance()
+		compilerInstance.Reset()
+		merged, err := compilerInstance.Merge(slices.Values(snippets))
 		if err != nil {
 			logger.Error("compile failed", "error", err)
 			return err
@@ -173,6 +204,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 			logger.Error("unexpected nil output from plugin pipeline")
 			return errors.New("unexpected nil output from plugin pipeline")
 		}
+		// Dump the pipeline result
 		if _, err := os.Stdout.Write(output); err != nil {
 			logger.Error("write output failed", "error", err)
 			return err
@@ -195,17 +227,20 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		Validator: validator,
 	}
 
-	// Wire reloader (or dry-run).
+	// Reload action
 	reloadTarget, err := reloadCfg.BuildReloader(logger, apisixCfg, pluginCfg)
 	if err != nil {
 		logger.Error("failed to build reloader", "error", err)
 		return err
 	}
 
-	// Dispatcher wiring.
+	// Ready manager: intercepts dispatch calls to
+	// register successful executions
 	readyManager := newReadyManager(reloadTarget, scheduler)
+
+	// Dispatcher wiring.
 	disp, err := dispatcher.New(logger, dispatcher.Config{
-		Fetcher: factory.CompilerFactory{},
+		Fetcher: fetcherInstance,
 		MergerFactory: func() dispatcher.Merger {
 			return compFactory.Instance()
 		},
@@ -227,7 +262,9 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	}
 	readyManager.realDispatcher = disp
 
-	// HTTP handlers.
+	// Buffer notifications. They will be queued until the dispatcher
+	// actually starts, but we allow any sidecar to succeed early.
+	// It also starts /live and /ready endpoints
 	handler, err := listener.NewHandler(readyManager)
 	srvTimeouts := serverCfg.Timeouts()
 	if err != nil {
@@ -235,24 +272,24 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		return err
 	}
 	server := buildServer(serverCfg.ListenAddr, handler, srvTimeouts)
+	group.Go(func() error {
+		logger.Info("starting compile server", "addr", serverCfg.ListenAddr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
+	group.Go(serverShutdown(groupCtx, server, serverCfg.ShutdownTimeout))
 
-	// Metrics server.
+	// Start other local endpoints
 	var metricsServer *http.Server
 	if strings.TrimSpace(serverCfg.MetricsAddr) != "" {
+		schemaClient := &http.Client{Timeout: apiControlCfg.Timeout}
+		validationHandler := schema.NewValidationHandler(logger, apiControlCfg.URL, apiControlCfg.APIKey, schemaClient, apiControlCfg.Timeout, false, sourceEnumerator, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
 		metricsMux := http.NewServeMux()
-		metricsMux.Handle("/metrics", promhttp.Handler())
+		control.RegisterAPI(metricsMux, validationHandler)
+		metricsMux.Handle("GET /metrics", promhttp.Handler())
 		metricsServer = buildServer(serverCfg.MetricsAddr, metricsMux, srvTimeouts)
-	}
-
-	// Run loop and shutdown wiring.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	group, groupCtx := errgroup.WithContext(ctx)
-
-	// Ready metrics and acme server first, because as soon as
-	// I start the other services, I could get an acme request
-	if metricsServer != nil {
 		group.Go(func() error {
 			logger.Info("starting metrics server", "addr", serverCfg.MetricsAddr)
 			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -263,17 +300,16 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		group.Go(serverShutdown(groupCtx, metricsServer, serverCfg.ShutdownTimeout))
 	}
 
-	if sslSetup.AcmeTracker != nil {
-		// Start the cert watcher
-		group.Go(func() error {
-			if sslSetup.Events != nil {
-				ssl.UpdateLoop(groupCtx, logger, sslSetup.AcmeTracker, cursor.Channel(sslSetup.Events))
-			}
-			return nil
-		})
+	// With local endpoints running, but dispatcher still pending,
+	// we check if we are using schema, and block further process
+	// until we get the schema.
+	if schemaFetcher != nil {
+		if err := schemaFetcher.LoadSchema(groupCtx, logger, apiControlCfg); err != nil {
+			logger.Warn("failed to parse schema!", "error", err)
+		}
 	}
 
-	// Ready the dispatcher
+	// Finally, ready the dispatcher
 	group.Go(func() error {
 		for {
 			if err := disp.Run(groupCtx); err != nil {
@@ -286,33 +322,40 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		}
 	})
 
-	// Ready the notifiers
+	// Ready the cleanup loops
 	if sslSetup.Enabled {
-		// Launch the acme tracking cleanup
 		group.Go(func() error {
 			serFactory.CommitLoop(groupCtx, logger, certmagicCfg.CleanupInterval, certmagicCfg.UntrackedGrace)
 			return nil
 		})
-		// Start the monitor that will reconfigure apisix when
-		// certificates are renewed
 		group.Go(func() error {
 			serFactory.ExpireLoop(groupCtx, logger, certmagicCfg.CleanupInterval, certmagicCfg.ExpiredGrace)
 			return nil
 		})
 	}
 
-	// launch the main service
-	group.Go(func() error {
-		logger.Info("starting server", "addr", serverCfg.ListenAddr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	})
-	group.Go(serverShutdown(groupCtx, server, serverCfg.ShutdownTimeout))
-
+	// If configured to auto-trigger, go ahead
 	if serverCfg.AutoTrigger {
 		disp.Notify()
 	}
 	return group.Wait()
+}
+
+type flagConfig interface {
+	Flags() []cli.Flag
+	Apply(ctx *cli.Command)
+}
+
+func joinFlags(cfgs ...flagConfig) []cli.Flag {
+	flags := make([]cli.Flag, 0, 16)
+	for _, cfg := range cfgs {
+		flags = append(flags, cfg.Flags()...)
+	}
+	return flags
+}
+
+func applyFlags(cmd *cli.Command, cfgs ...flagConfig) {
+	for _, cfg := range cfgs {
+		cfg.Apply(cmd)
+	}
 }

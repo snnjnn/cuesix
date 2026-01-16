@@ -18,7 +18,7 @@ func (r ProviderRouter) ResolveProvider(name string) (Provider, error) {
 			return nil, fmt.Errorf("acme manager missing")
 		}
 		return r.ACMEManager.ResolveProvider(name)
-	case name == FilePrefix:
+	case name == FileProviderName:
 		if r.FileManager == nil {
 			return nil, fmt.Errorf("file manager missing")
 		}

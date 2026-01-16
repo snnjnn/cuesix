@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schema Studio</title>
+  <link rel="stylesheet" href="index.css">
+  <style>
+    [x-cloak] {
+      display: none !important
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="schema-app" x-data="schemaApp" x-cloak :data-mode="mode">
+
+    <nav class="navbar" role="navigation" aria-label="Primary" x-data="{ navbarOpen: false }">
+      <div class="navbar-brand">
+        <div class="navbar-item has-text-weight-semibold">Schema Studio</div>
+        <a role="button" class="navbar-burger" aria-label="menu" :aria-expanded="navbarOpen.toString()"
+          :class="{ 'is-active': navbarOpen }" @click="navbarOpen = !navbarOpen">
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </a>
+      </div>
+
+      <div class="navbar-menu" :class="{ 'is-active': navbarOpen }">
+        <div class="navbar-start">
+          <a href="#" class="navbar-item" :class="{ 'is-active': mode === 'browse' }"
+            @click.prevent="setMode('browse'); navbarOpen = false">Browse</a>
+          <a href="#" class="navbar-item" :class="{ 'is-active': mode === 'playground' }"
+            @click.prevent="setMode('playground'); navbarOpen = false">Playground</a>
+        </div>
+
+        <div class="navbar-end">
+          <a id="schema-json-link" href="../json" target="_blank" rel="noopener" class="navbar-item">Schema</a>
+          <a id="openapi-link" href="../openapi" target="_blank" rel="noopener" class="navbar-item">OpenAPI</a>
+        </div>
+      </div>
+    </nav>
+
+    <section class="section">
+      <div class="container is-widescreen">
+        <div class="columns">
+          <div class="column is-two-thirds">
+            <div class="block">
+              <div x-show="mode === 'browse'">
+                <div class="field has-addons mb-1">
+                  <div class="control">
+                    <div class="select is-small">
+                      <select x-model="selectedSource">
+                        <option value="">Select a source file...</option>
+                        <template x-for="sourcePath in sources" :key="sourcePath">
+                          <option :value="sourcePath"
+                            x-text="sourcePath === '__sample__' ? 'Sample: inline.yml' : sourcePath"></option>
+                        </template>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="control">
+                    <button type="button" class="button is-link is-small" :disabled="!selectedSource"
+                      @click="loadSelectedSource()">Load</button>
+                  </div>
+                </div>
+              </div>
+              <div class="tabs" role="tablist" aria-label="Editor tabs">
+                <ul>
+                  <li :class="{ 'is-active': activeTab === 'yaml' }"><a href="#"
+                      @click.prevent="setTab('yaml')">YAML</a>
+                  </li>
+                  <li :class="{ 'is-active': activeTab === 'env' }"><a href="#" @click.prevent="setTab('env')">Env
+                      Vars</a></li>
+                </ul>
+              </div>
+              <div x-show="activeTab === 'yaml'">
+                <div x-ref="yamlEditor"></div>
+                <p class="help">Ctrl + Enter in the editor to validate</p>
+              </div>
+              <div x-show="activeTab === 'env'">
+                <textarea class="textarea is-family-monospace" rows="18" spellcheck="false" placeholder="KEY=value"
+                  x-model="envText" @keydown.ctrl.enter.prevent="revalidate()"></textarea>
+                <p class="help">Ctrl + Enter to validate</p>
+              </div>
+            </div>
+          </div>
+          <div class="column">
+            <div class="box">
+              <nav class="level is-mobile">
+                <div class="level-left">
+                  <div class="level-item">Validation Output</div>
+                </div>
+                <div class="level-right">
+                  <div class="level-item">
+                    <div class="field has-addons">
+                      <div class="control"><button type="button" class="button is-link is-small"
+                          @click="revalidate()">Validate</button></div>
+                      <div class="control" x-show="mode === 'playground'"><button type="button"
+                          class="button is-light is-small" @click="resetSample()">Reset Sample</button></div>
+                      <div class="control" x-show="mode === 'browse'"><button type="button"
+                          class="button is-light is-small" @click="refreshSources()">Reload Sources</button></div>
+                    </div>
+                  </div>
+                </div>
+              </nav>
+              <div class="block">
+                <span class="tag" :class="statusTagClass">
+                  <span x-text="statusText">Loading…</span>
+                </span>
+              </div>
+              <div>
+                <template x-for="(error, idx) in errors" :key="idx">
+                  <div class="notification is-size-7">
+                    <template x-if="error.location === '(root)'">
+                      <p x-text="error.message"></p>
+                    </template>
+                    <template x-if="error.location !== '(root)'">
+                      <div>
+                        <p><code x-text="error.location + ':'"></code></p>
+                        <p x-text="error.message"></p>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="index.js"></script>
+</body>
+
+</html>

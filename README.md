@@ -70,15 +70,15 @@ Besides merging files, cuesix implements some quality-of-life features that expa
 
 ### Certificate inlining
 
-The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `file://...` or `acme://...` values in both `cert`/`key` and `certs`/`keys`.
+The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `$secret://file/...` or `$secret://acme/...` values in both `cert`/`key` and `certs`/`keys`.
 
-- If a certificate or key URL is `file://...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml. Missing files are replaced with the fallback certificate/key configured via `--plugin-ssl-fallback-cert`/`--plugin-ssl-fallback-key`.
+- If a certificate or key URL is `$secret://file/...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml. Missing files are replaced with the fallback certificate/key configured via `--plugin-ssl-fallback-cert`/`--plugin-ssl-fallback-key`.
 
 For example, a config snippet like:
 
 ```yaml
 ssls:
-  - cert: "file://tls-domain-name.pem"
+  - cert: "$secret://file/tls-domain-name.pem"
 ```
 
 Will get replaced by:
@@ -91,7 +91,7 @@ ssls:
       -----END CERTIFICATE-----
 ```
 
-- If the certificate URL is `acme://...`, it will try to generate a new ACME certificate.
+- If the certificate URL is `$secret://acme/...`, it will try to generate a new ACME certificate.
   - Acme certificates and SANs is a complicated story, so this mode only works when the `ssls` entry has a single `sni`.
   - The `key` entry is ignored, it is overriden with the acme key.
   - If ACME is unavailable or fails, the fallback certificate/key is used.
@@ -137,15 +137,44 @@ When running in server mode, cuesix validates the files produced, before replaci
 
 Validation uses the `apisix test` command and is automatic. It works for json and yaml files, and it does not require any additional flag.
 
-When validation fails, an error message is logged. If it doesn't fail, the config file is replaced, and optionally, apisix is notified of the change via API.
+When validation fails, an error message is logged. If it doesn't fail, the config file is replaced.
 
-To enable API reload of APISIX, you need to provide the URL of the apisix control endpoint with the flag `--apisix-url http://127.0.0.1:9180`.
+To enable schema validation from APISIX, you need to provide the URL of the apisix control endpoint with the flag `--apisix-control-url http://127.0.0.1:9090`.
+
+### Schema endpoint
+
+In server mode, the metrics server also exposes `GET /schema`. It returns a
+complete JSON Schema for APISIX standalone configs, synthesized from the live
+control‑API schema and the standalone top‑level mapping.
+
+Implementation details live in `internal/schema/README.md`.
+
+### Schema CLI and fixtures
+
+The `cmd/schema` CLI downloads the live APISIX schema and prints the normalized
+schema to stdout. It defaults to the strict variant; use `--loose` to keep
+APISIX's permissive ID rules.
+
+```bash
+go run ./cmd/schema --url http://127.0.0.1:9090 > internal/schema/processed_schema.json
+go run ./cmd/schema --url http://127.0.0.1:9090 --loose > internal/schema/loose_processed_schema.json
+```
+
+To refresh the raw schema fixture used by tests:
+
+```bash
+curl -s http://127.0.0.1:9090/v1/schema > internal/schema/apisix_schema.json
+```
+
+The `internal/schema` tests compare the processed strict schema against
+`internal/schema/processed_schema.json` and the loose schema against
+`internal/schema/loose_processed_schema.json`.
 
 ## Run modes
 
-Standalone (default): compiles and prints the merged config to stdout. No validation or reload.
+Standalone (default): compiles and prints the merged config to stdout. Can optionally use schema validation if `--apisix-use-schema` is provided and `--apisix-control-url` points to the control URL of a running apisix instance. Will not do post-build validation (`apisix test`)
 
-Server mode (`cuesix serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and reloads APISIX on success. `/ready` returns 200 only after a successful reload has been delivered at least once. Certmagic automatically manages its own HTTP server for ACME challenges on the configured port.
+Server mode (`cuesix serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and writes the config file on success. `/ready` returns 200 only after a successful config has been written at least once. Certmagic automatically manages its own HTTP server for ACME challenges on the configured port.
 
 ## Flags and environment variables
 
@@ -161,32 +190,33 @@ Input and runtime mode:
 - `--server-shutdown-timeout` / `CUESIX_SERVER_SHUTDOWN_TIMEOUT`: HTTP server shutdown timeout (default `10s`).
 - `--input` (repeatable) / `CUESIX_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
 - `--cooldown` / `CUESIX_COOLDOWN`: minimum delay between queued compile runs.
-- `--dry-run` / `CUESIX_DRY_RUN` (bool): run pipeline without writing config or triggering reload.
+- `--dry-run` / `CUESIX_DRY_RUN` (bool): run pipeline without writing config.
 
 APISIX paths and validation:
 - `--apisix-home` / `CUESIX_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).
 - `--mirror-dir` / `CUESIX_MIRROR_DIR`: optional mirror directory for validation; if empty, cuesix creates a temp mirror.
 - `--keep-mirror` / `CUESIX_KEEP_MIRROR`: do not clean and re-populate the mirror folder on startup.
 - `--validation-timeout` / `CUESIX_VALIDATION_TIMEOUT`: timeout for `apisix test` validation.
+- `--apisix-use-schema` / `CUESIX_APISIX_USE_SCHEMA`: validate config snippets against the live APISIX schema (requires `--apisix-control-url`).
 
-Reload behavior:
-- `--apisix-url` / `CUESIX_APISIX_URL`: APISIX Admin API base URL (e.g. `http://127.0.0.1:9180`).
-- `--apisix-api-key` / `CUESIX_APISIX_API_KEY`: Admin API key for reload requests.
-- `--reload-method` / `CUESIX_RELOAD_METHOD`: HTTP method for reload requests (default POST).
-- `--reload-timeout` / `CUESIX_RELOAD_TIMEOUT`: timeout for reload HTTP requests.
-- `--retry-max` / `CUESIX_RETRY_MAX`: number of reload retries on failure.
+APISIX Control API:
+- `--apisix-control-url` / `CUESIX_APISIX_CONTROL_URL`: APISIX Control API base URL (default `http://127.0.0.1:9090`).
+- `--apisix-api-key` / `CUESIX_APISIX_API_KEY`: Control API key for schema requests.
+- `--apisix-api-timeout` / `CUESIX_APISIX_API_TIMEOUT`: timeout for Control API HTTP requests.
+- `--retry-max` / `CUESIX_RETRY_MAX`: number of API request retries on failure.
 - `--retry-initial` / `CUESIX_RETRY_INITIAL`: initial backoff before the first retry.
 - `--retry-max-delay` / `CUESIX_RETRY_MAX_DELAY`: cap for retry backoff.
 - `--retry-multiplier` / `CUESIX_RETRY_MULTIPLIER`: backoff multiplier between retries.
 
 Plugins:
-- `--plugin-ssl` / `CUESIX_PLUGIN_SSL`: enable ssl pre-render plugin (required to process `acme://` without certmagic).
+- `--plugin-ssl` / `CUESIX_PLUGIN_SSL`: enable ssl pre-render plugin (required to process `$secret://acme/` without certmagic).
 - `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
 - `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
 - `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
-- `--plugin-ssl-acme-timeout` / `CUESIX_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests.
+- `--plugin-ssl-acme-timeout` / `CUESIX_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests (default `10s`, must be positive).
 - `--plugin-ssl-fallback-cert` / `CUESIX_PLUGIN_SSL_FALLBACK_CERT`: ssl plugin fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
 - `--plugin-ssl-fallback-key` / `CUESIX_PLUGIN_SSL_FALLBACK_KEY`: ssl plugin fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
+- `--plugin-env` / `CUESIX_PLUGIN_ENV`: per-directory env file name used for APISIX `${{ VAR }}` substitutions in input snippets.
 - `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
 Certmagic (serve only):
@@ -201,7 +231,8 @@ Certmagic (serve only):
 - `--certmagic-untracked-grace` / `CUESIX_CERTMAGIC_UNTRACKED_GRACE`: grace period for removing untracked certmagic entries (default `168h`).
 - `--certmagic-cleanup-interval` / `CUESIX_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `24h`).
 - `--certmagic-expired-grace` / `CUESIX_CERTMAGIC_EXPIRED_GRACE`: grace period for removing expired certmagic entries (default `125h`).
-When an ACME certificate cannot be obtained, cuesix will use the SSL plugin fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available cuesix triggers a new compile/reload cycle (once a valid config has been delivered before).
+
+When an ACME certificate cannot be obtained, cuesix will use the SSL plugin fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available cuesix triggers a new compile cycle.
 
 ## Usage
 
@@ -219,7 +250,7 @@ cuesix serve \
   --metrics :9090 \
   --input ./configs \
   --apisix-home /usr/local/apisix \
-  --apisix-url http://127.0.0.1:9180
+  --apisix-control-url http://127.0.0.1:9090
 ```
 
 ## Build

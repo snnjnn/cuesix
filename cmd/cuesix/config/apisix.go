@@ -17,6 +17,7 @@ type APISIX struct {
 	MirrorDir         string
 	KeepMirror        bool
 	ValidationTimeout time.Duration
+	UseSchema         bool
 }
 
 func (c *APISIX) Flags() []cli.Flag {
@@ -47,6 +48,12 @@ func (c *APISIX) Flags() []cli.Flag {
 			Value:    30 * time.Second,
 			Category: "APISIX",
 		},
+		&cli.BoolFlag{
+			Name:     "apisix-use-schema",
+			Usage:    "validate config snippets against APISIX schema (requires --apisix-control-url)",
+			Sources:  cli.EnvVars("CUESIX_APISIX_USE_SCHEMA"),
+			Category: "APISIX",
+		},
 	}
 }
 
@@ -55,6 +62,7 @@ func (c *APISIX) Apply(ctx *cli.Command) {
 	c.MirrorDir = ctx.String("mirror-dir")
 	c.KeepMirror = ctx.Bool("keep-mirror")
 	c.ValidationTimeout = ctx.Duration("validation-timeout")
+	c.UseSchema = ctx.Bool("apisix-use-schema")
 }
 
 func (c APISIX) ConfigPath(outputYAML bool) string {

@@ -21,6 +21,7 @@ type watchCall struct {
 // mockACMETracker implements ACMETracker for tests.
 type mockACMETracker struct {
 	RequestCertificateFunc func(context.Context, string, string) (Tracking, error)
+	BestMatchForFunc       func(context.Context, string, string) (Certificate, bool)
 	WatchFunc              func(int, string) cursor.Owned[Delivery]
 
 	requestCertificateCalls []requestCertificateCall
@@ -56,8 +57,11 @@ func (m *mockTrackedProvider) Name() string {
 	return m.name
 }
 
-func (m *mockTrackedProvider) BestMatchFor(_ context.Context, _ string) (Certificate, bool) {
-	return Certificate{}, false
+func (m *mockTrackedProvider) BestMatchFor(ctx context.Context, identity string) (Certificate, bool) {
+	if m.BestMatchForFunc != nil {
+		return m.BestMatchForFunc(ctx, m.name, identity)
+	}
+	return PEMCertificate{}, false
 }
 
 func (m *mockTrackedProvider) RemoveManaged(_ context.Context, _ ...string) {
@@ -111,7 +115,7 @@ func (m *mockACMEProvider) BestMatchFor(_ context.Context, sni string) (Certific
 	if m.BestMatchForFunc != nil {
 		return m.BestMatchForFunc(sni)
 	}
-	return Certificate{}, false
+	return PEMCertificate{}, false
 }
 
 func (m *mockACMEProvider) RequestCertificate(ctx context.Context, sni string) error {
@@ -146,8 +150,8 @@ func (m mockACMEManager) ResolveProvider(name string) (Provider, error) {
 }
 
 // sslCert builds a minimal ssl.Certificate with expiry set.
-func sslCert(notAfter time.Time) Certificate {
-	return Certificate{
+func sslCert(notAfter time.Time) PEMCertificate {
+	return PEMCertificate{
 		CertPEM:  []byte("cert"),
 		KeyPEM:   []byte("key"),
 		NotAfter: notAfter,

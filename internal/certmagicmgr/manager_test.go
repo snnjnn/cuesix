@@ -51,7 +51,7 @@ func TestNewManagerValidation(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewManager(testutil.Logger(), tt.cfg, nil, ssl.Certificate{}, nil, nil)
+			_, err := NewManager(testutil.Logger(), tt.cfg, nil, ssl.PEMCertificate{}, nil, nil)
 			if err == nil {
 				t.Fatalf("expected error")
 			}
@@ -69,7 +69,7 @@ func TestNewManagerUsesProvidedStorage(t *testing.T) {
 	}
 	storage := &testutil.MockStorage{}
 	adapter := &testutil.MockCertMagic{}
-	_, err := NewManager(testutil.Logger(), cfg, nil, ssl.Certificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, storage)
+	_, err := NewManager(testutil.Logger(), cfg, nil, ssl.PEMCertificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, storage)
 	if err != nil {
 		t.Fatalf("NewManager returned error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestNewManagerUsesAdapterStorageWhenNil(t *testing.T) {
 		},
 	}
 	adapter := &testutil.MockCertMagic{}
-	manager, err := NewManager(testutil.Logger(), cfg, nil, ssl.Certificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, nil)
+	manager, err := NewManager(testutil.Logger(), cfg, nil, ssl.PEMCertificate{CertPEM: []byte("c"), KeyPEM: []byte("k")}, adapter, nil)
 	if err != nil {
 		t.Fatalf("NewManager returned error: %v", err)
 	}

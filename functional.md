@@ -27,7 +27,7 @@ La respuesta a /compile es inmediata, no espera a que se haya ejecutado la compi
 
 La aplicacion mantiene un hash de la ultima configuracion compilada. El hash se basa en una ordenacion determinista y repetible del fichero generado por el modulo cache. Si el resultado de una compilacion coincide con el anterior, la aplicacion no continua con su proceso.
 
-Cuando el plugin SSL esta activo, se usa un certificado de fallback configurado por flags para resolver referencias `file://` faltantes o errores ACME.
+Cuando el plugin SSL esta activo, se usa un certificado de fallback configurado por flags para resolver referencias `$secret://file/` faltantes o errores ACME.
 
 La aplicacion puede exponer un servidor de metricas y un servidor para desafios ACME si esas direcciones estan configuradas. Certmagic solo se usa en modo servidor; en modo standalone las referencias ACME usan el certificado fallback.
 

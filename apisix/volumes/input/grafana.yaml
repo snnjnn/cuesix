@@ -23,8 +23,8 @@ upstreams:
 
 ssls:
   - id: grafana
-    cert: acme://prod
-    key:  acme://prod
+    cert: $secret://acme/prod
+    key:  $secret://acme/prod
     snis:
       - grafana.fivecorporation.com
 

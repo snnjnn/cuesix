@@ -52,11 +52,11 @@ func (p *Provider) Name() string {
 
 func (p *Provider) BestMatchFor(_ context.Context, sni string) (ssl.Certificate, bool) {
 	if p == nil || p.cache == nil || p.adapter == nil {
-		return ssl.Certificate{}, false
+		return nil, false
 	}
 	sni = strings.TrimSpace(sni)
 	if sni == "" {
-		return ssl.Certificate{}, false
+		return nil, false
 	}
 	var matches []certmagic.Certificate
 	p.WithLock(func() {
@@ -141,9 +141,22 @@ func buildProvider(logger *slog.Logger, cfg Config, providerCfg ProviderConfig, 
 	return p
 }
 
-func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
+type certmagicWrap struct {
+	cert     certmagic.Certificate
+	notAfter time.Time
+}
+
+func (c certmagicWrap) NotAfterTime() time.Time {
+	return c.notAfter
+}
+
+func (c certmagicWrap) PEM() (ssl.PEMCertificate, error) {
+	return MarshalCertificate(c.cert)
+}
+
+func MarshalCertificate(cert certmagic.Certificate) (ssl.PEMCertificate, error) {
 	if cert.PrivateKey == nil {
-		return ssl.Certificate{}, errors.New("private key is nil")
+		return ssl.PEMCertificate{}, errors.New("private key is nil")
 	}
 	var certPEM []byte
 	for _, der := range cert.Certificate.Certificate {
@@ -153,11 +166,11 @@ func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 		})...)
 	}
 	if len(certPEM) == 0 {
-		return ssl.Certificate{}, errors.New("empty certificate chain")
+		return ssl.PEMCertificate{}, errors.New("empty certificate chain")
 	}
 	key, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
 	if err != nil {
-		return ssl.Certificate{}, err
+		return ssl.PEMCertificate{}, err
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "PRIVATE KEY",
@@ -170,10 +183,10 @@ func MarshalCertificate(cert certmagic.Certificate) (ssl.Certificate, error) {
 		var err error
 		notAfter, err = leafNotAfter(cert.Certificate.Certificate)
 		if err != nil {
-			return ssl.Certificate{}, err
+			return ssl.PEMCertificate{}, err
 		}
 	}
-	return ssl.Certificate{
+	return ssl.PEMCertificate{
 		CertPEM:  certPEM,
 		KeyPEM:   keyPEM,
 		NotAfter: notAfter,
@@ -211,6 +224,10 @@ func bestMatchForCandidates(matches []certmagic.Certificate, logger *slog.Logger
 		if match.Empty() {
 			continue
 		}
+		if match.PrivateKey == nil {
+			logger.Error("missing private key")
+			continue
+		}
 		leaf := match.Leaf
 		if leaf == nil {
 			parsed, err := parseLeaf(match.Certificate.Certificate)
@@ -226,18 +243,13 @@ func bestMatchForCandidates(matches []certmagic.Certificate, logger *slog.Logger
 		})
 	}
 	if len(candidates) == 0 {
-		return ssl.Certificate{}, false
+		return nil, false
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].notAfter.After(candidates[j].notAfter)
 	})
 	for _, cand := range candidates {
-		cert, err := MarshalCertificate(cand.cert)
-		if err != nil {
-			logger.Error("marshal cert", "error", err)
-			continue
-		}
-		return cert, true
+		return certmagicWrap{cert: cand.cert, notAfter: cand.notAfter}, true
 	}
-	return ssl.Certificate{}, false
+	return nil, false
 }

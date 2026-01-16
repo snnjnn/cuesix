@@ -15,15 +15,28 @@ import (
 )
 
 // ACMECertificate contains an ACME certificate
-type Certificate struct {
+type PEMCertificate struct {
 	CertPEM  []byte
 	KeyPEM   []byte
 	NotAfter time.Time
 }
 
+type Certificate interface {
+	NotAfterTime() time.Time
+	PEM() (PEMCertificate, error)
+}
+
+func (c PEMCertificate) PEM() (PEMCertificate, error) {
+	return c, nil
+}
+
+func (c PEMCertificate) NotAfterTime() time.Time {
+	return c.NotAfter
+}
+
 // SSLPlugin resolves cert/key markers and ensures entries never remain invalid.
 type SSLPlugin struct {
-	Fallback Certificate
+	Fallback PEMCertificate
 	LiveHandler
 	Logger *slog.Logger
 }
@@ -45,21 +58,23 @@ type certTargets struct {
 
 func (t certTargets) tracking() (Tracking, error) {
 	// ACME: provider is the cert text, identity is the single SNI.
-	if strings.HasPrefix(t.cert, ACMEPrefix) {
+	certSecret, certIsSecret := secretPayload(t.cert)
+	keySecret, keyIsSecret := secretPayload(t.key)
+	if certIsSecret && strings.HasPrefix(certSecret, ACMEPrefix) {
 		if len(t.snis) != 1 {
 			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, fmt.Errorf("ssl plugin live requires exactly one sni")
 		}
-		return Tracking{Provider: t.cert, Identity: t.snis[0]}, nil
+		return Tracking{Provider: certSecret, Identity: t.snis[0]}, nil
 	}
-	certIsFile := strings.HasPrefix(t.cert, FilePrefix)
-	keyIsFile := strings.HasPrefix(t.key, FilePrefix)
+	certIsFile := certIsSecret && strings.HasPrefix(certSecret, FilePrefix)
+	keyIsFile := keyIsSecret && strings.HasPrefix(keySecret, FilePrefix)
 	switch {
 	case certIsFile && keyIsFile:
-		certPath, err := sanitizePath(strings.TrimPrefix(t.cert, FilePrefix))
+		certPath, err := sanitizePath(strings.TrimPrefix(certSecret, FilePrefix))
 		if err != nil {
 			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, err
 		}
-		keyPath, err := sanitizePath(strings.TrimPrefix(t.key, FilePrefix))
+		keyPath, err := sanitizePath(strings.TrimPrefix(keySecret, FilePrefix))
 		if err != nil {
 			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, err
 		}
@@ -67,7 +82,7 @@ func (t certTargets) tracking() (Tracking, error) {
 			return Tracking{Provider: FallbackPrefix, Identity: t.fallbackIdentity()}, fmt.Errorf("ssl plugin empty file reference")
 		}
 		return Tracking{
-			Provider: FilePrefix,
+			Provider: FileProviderName,
 			Identity: certPath + "+" + keyPath,
 		}, nil
 	case certIsFile || keyIsFile:
@@ -98,9 +113,11 @@ const (
 )
 
 const (
-	ACMEPrefix     = "acme://"
-	FilePrefix     = "file://"
-	FallbackPrefix = "fallback://"
+	SecretPrefix     = "$secret://"
+	ACMEPrefix       = "acme/"
+	FilePrefix       = "file/"
+	FileProviderName = "file"
+	FallbackPrefix   = "fallback://"
 )
 
 func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map[Tracking]time.Time) (map[string]any, error) {
@@ -273,16 +290,51 @@ func (p *SSLPlugin) collectListPairs(entry map[string]any, id string, snis []str
 }
 
 func resolveTargetType(certText, keyText string) targetType {
-	if strings.HasPrefix(certText, ACMEPrefix) {
+	certKind, certSecret := resolveSecretKind(certText)
+	keyKind, keySecret := resolveSecretKind(keyText)
+	if (certSecret && certKind == secretUnknown) || (keySecret && keyKind == secretUnknown) {
+		return textTarget
+	}
+	if certKind == secretACME {
 		return acmeTarget
 	}
-	if strings.HasPrefix(certText, FilePrefix) {
+	if certKind == secretFile {
 		return fileTarget
 	}
-	if strings.HasPrefix(keyText, FilePrefix) {
+	if keyKind == secretFile {
 		return fileTarget
 	}
 	return textTarget
+}
+
+type secretKind string
+
+const (
+	secretUnknown secretKind = ""
+	secretACME    secretKind = "acme"
+	secretFile    secretKind = "file"
+)
+
+func secretPayload(value string) (string, bool) {
+	if !strings.HasPrefix(value, SecretPrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(value, SecretPrefix), true
+}
+
+func resolveSecretKind(value string) (secretKind, bool) {
+	secret, ok := secretPayload(value)
+	if !ok {
+		return secretUnknown, false
+	}
+	switch {
+	case strings.HasPrefix(secret, ACMEPrefix):
+		return secretACME, true
+	case strings.HasPrefix(secret, FilePrefix):
+		return secretFile, true
+	default:
+		return secretUnknown, true
+	}
 }
 
 func (p *SSLPlugin) entrySNIs(entry map[string]any) []string {
@@ -302,26 +354,26 @@ func (p *SSLPlugin) entrySNIs(entry map[string]any) []string {
 	return slices.Collect(maps.Keys(snis))
 }
 
-func LoadFallbackCertificate(certPath string, keyPath string) (Certificate, error) {
+func LoadFallbackCertificate(certPath string, keyPath string) (PEMCertificate, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("read fallback cert: %w", err)
+		return PEMCertificate{}, fmt.Errorf("read fallback cert: %w", err)
 	}
 	if len(certPEM) == 0 {
-		return Certificate{}, errors.New("fallback cert is empty")
+		return PEMCertificate{}, errors.New("fallback cert is empty")
 	}
 	keyPEM, err := os.ReadFile(keyPath)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("read fallback key: %w", err)
+		return PEMCertificate{}, fmt.Errorf("read fallback key: %w", err)
 	}
 	if len(keyPEM) == 0 {
-		return Certificate{}, errors.New("fallback key is empty")
+		return PEMCertificate{}, errors.New("fallback key is empty")
 	}
 	notAfter, err := parseCertNotAfter(certPEM)
 	if err != nil {
-		return Certificate{}, fmt.Errorf("parse fallback cert: %w", err)
+		return PEMCertificate{}, fmt.Errorf("parse fallback cert: %w", err)
 	}
-	return Certificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
+	return PEMCertificate{CertPEM: certPEM, KeyPEM: keyPEM, NotAfter: notAfter}, nil
 }
 
 func parseCertNotAfter(certPEM []byte) (time.Time, error) {

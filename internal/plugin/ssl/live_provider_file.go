@@ -15,7 +15,7 @@ type FileManager struct {
 }
 
 func (m FileManager) ResolveProvider(name string) (Provider, error) {
-	if name != FilePrefix {
+	if name != FileProviderName {
 		return nil, fmt.Errorf("unknown file provider: %s", name)
 	}
 	return &fileProvider{
@@ -30,7 +30,7 @@ type fileProvider struct {
 }
 
 func (p fileProvider) Name() string {
-	return FilePrefix
+	return FileProviderName
 }
 
 func (p fileProvider) BestMatchFor(_ context.Context, identity string) (Certificate, bool) {
@@ -41,24 +41,24 @@ func (p fileProvider) BestMatchFor(_ context.Context, identity string) (Certific
 	certPath, keyPath, err := parseFileIdentity(identity)
 	if err != nil {
 		logger.Debug("ssl file provider failed to parse identity", "identity", identity, "error", err)
-		return Certificate{}, false
+		return PEMCertificate{}, false
 	}
 	certPEM, err := readFileFromFS(p.filesystems, certPath)
 	if err != nil {
 		logger.Debug("ssl file provider failed to read cert", "path", certPath, "error", err)
-		return Certificate{}, false
+		return PEMCertificate{}, false
 	}
 	keyPEM, err := readFileFromFS(p.filesystems, keyPath)
 	if err != nil {
 		logger.Debug("ssl file provider failed to read key", "path", keyPath, "error", err)
-		return Certificate{}, false
+		return PEMCertificate{}, false
 	}
 	notAfter, err := parseCertNotAfter(certPEM)
 	if err != nil {
 		logger.Debug("ssl file provider failed to parse cert expiry", "path", certPath, "error", err)
-		return Certificate{}, false
+		return PEMCertificate{}, false
 	}
-	return Certificate{
+	return PEMCertificate{
 		CertPEM:  certPEM,
 		KeyPEM:   keyPEM,
 		NotAfter: notAfter,

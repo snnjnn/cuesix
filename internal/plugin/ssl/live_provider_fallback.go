@@ -6,7 +6,7 @@ import (
 )
 
 type FallbackManager struct {
-	Certificate Certificate
+	Certificate PEMCertificate
 }
 
 func (m FallbackManager) ResolveProvider(name string) (Provider, error) {
@@ -17,7 +17,7 @@ func (m FallbackManager) ResolveProvider(name string) (Provider, error) {
 }
 
 type fallbackProvider struct {
-	cert Certificate
+	cert PEMCertificate
 }
 
 func (p fallbackProvider) Name() string {

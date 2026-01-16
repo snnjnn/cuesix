@@ -24,7 +24,7 @@ func ParseACMEProviderSpec(spec string) (ProviderConfig, error) {
 	if cfg.Name == "" || cfg.Email == "" || cfg.CA == "" {
 		return ProviderConfig{}, fmt.Errorf("provider requires name, email, and ca")
 	}
-	// ACME providers must include acme prefix
+	// ACME providers must include the secret acme prefix
 	cfg.Name = ssl.ACMEPrefix + cfg.Name
 	return cfg, nil
 }

@@ -1,7 +1,6 @@
 package factory
 
 import (
-	"io/fs"
 	"iter"
 	"log/slog"
 
@@ -16,11 +15,6 @@ type CompilerFactory struct {
 
 func (c CompilerFactory) Instance() dispatcher.Merger {
 	return c
-}
-
-// Compile delegates to the compiler module.
-func (c CompilerFactory) Fetch(fses ...fs.FS) iter.Seq2[compiler.Snippet, error] {
-	return compiler.Fetch(c.Logger, fses...)
 }
 
 func (c CompilerFactory) Merge(snippets iter.Seq[compiler.Snippet]) (map[string]any, error) {

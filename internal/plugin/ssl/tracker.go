@@ -17,7 +17,7 @@ type Tracking struct {
 
 type Delivery struct {
 	Tracking
-	Certificate
+	PEMCertificate
 }
 
 // Provider exposes provider operations needed by Watcher itself
@@ -39,7 +39,7 @@ type ProviderCache struct {
 }
 
 type trackedCertificate struct {
-	Certificate
+	PEMCertificate
 	TrackedAt time.Time
 }
 
@@ -54,7 +54,28 @@ func (tp TrackedProvider) Name() string {
 
 // Poll cache for updates to the given certs
 func (tp TrackedProvider) BestMatchFor(ctx context.Context, identity string) (Certificate, bool) {
-	return tp.provider.BestMatchFor(ctx, identity)
+	wrap, ok := tp.provider.BestMatchFor(ctx, identity)
+	if !ok {
+		return PEMCertificate{}, false
+	}
+	notAfter := wrap.NotAfterTime()
+	var cached PEMCertificate
+	var hasCached bool
+	key := Tracking{Provider: tp.provider.Name(), Identity: identity}
+	tp.tracker.WithLock(func() {
+		if tracked, ok := tp.tracker.track[key]; ok && !tracked.NotAfter.IsZero() {
+			cached = tracked.PEMCertificate
+			hasCached = true
+		}
+	})
+	if hasCached && cached.NotAfter.Equal(notAfter) {
+		return cached, true
+	}
+	cert, err := wrap.PEM()
+	if err != nil {
+		return PEMCertificate{}, false
+	}
+	return cert, true
 }
 
 func (tp TrackedProvider) RequestCertificate(ctx context.Context, identity string) error {
@@ -69,8 +90,8 @@ func (tp TrackedProvider) RequestCertificate(ctx context.Context, identity strin
 			// If the certificate is ready, broadcast it
 			if !tracked.NotAfter.IsZero() {
 				notif := Delivery{
-					Tracking:    key,
-					Certificate: tracked.Certificate,
+					Tracking:       key,
+					PEMCertificate: tracked.PEMCertificate,
 				}
 				tp.tracker.NotifyAllLocked(ctx, notif)
 			}
@@ -78,8 +99,8 @@ func (tp TrackedProvider) RequestCertificate(ctx context.Context, identity strin
 		}
 		// If not tracked, lock it before proceeding
 		tracked = trackedCertificate{
-			Certificate: Certificate{},
-			TrackedAt:   time.Now(),
+			PEMCertificate: PEMCertificate{},
+			TrackedAt:      time.Now(),
 		}
 		tp.tracker.track[key] = tracked
 	})
@@ -97,8 +118,11 @@ func (tp TrackedProvider) RequestCertificate(ctx context.Context, identity strin
 	// Owned ot not, if it is not already populated, do a brief
 	// peek at the cache to see if an update has arrived
 	if tracked.NotAfter.IsZero() {
-		if best, ok := tp.BestMatchFor(ctx, key.Identity); ok {
-			tp.tracker.updateTrack(ctx, key, best, true, false)
+		if wrap, ok := tp.BestMatchFor(ctx, key.Identity); ok {
+			best, err := wrap.PEM()
+			if err == nil {
+				tp.tracker.updateTrack(ctx, key, best, true, false)
+			}
 		}
 	}
 	return nil
@@ -200,10 +224,13 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 			logger.Error("failed to resolve provider", "provider", providerName)
 			continue
 		}
-		polledCerts := make(map[Tracking]Certificate)
+		polledCerts := make(map[Tracking]PEMCertificate)
 		for _, key := range keys {
-			if best, ok := provider.BestMatchFor(ctx, key.Identity); ok {
-				polledCerts[key] = best
+			if wrap, ok := provider.BestMatchFor(ctx, key.Identity); ok {
+				best, err := wrap.PEM()
+				if err == nil {
+					polledCerts[key] = best
+				}
 			}
 		}
 		// Then, sort tracked entries into committed and remains
@@ -218,7 +245,7 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 					notify := false
 					if update, ok := polledCerts[key]; ok {
 						if update.NotAfter.After(cert.NotAfter) {
-							cert.Certificate = update
+							cert.PEMCertificate = update
 							notify = true
 						}
 					}
@@ -230,8 +257,8 @@ func (w *Tracker) Commit(ctx context.Context, logger *slog.Logger, committed map
 					w.track[key] = cert
 					if notify {
 						w.NotifyAllLocked(ctx, Delivery{
-							Tracking:    key,
-							Certificate: cert.Certificate,
+							Tracking:       key,
+							PEMCertificate: cert.PEMCertificate,
 						})
 					}
 				} else {
@@ -268,8 +295,11 @@ func UpdateLoop(ctx context.Context, logger *slog.Logger, w *Tracker, events cur
 			continue
 		}
 		// Update the certificate, and always notify
-		if best, ok := provider.BestMatchFor(ctx, certInfo.Identity); ok {
-			w.updateTrack(ctx, certInfo, best, true, true)
+		if wrap, ok := provider.BestMatchFor(ctx, certInfo.Identity); ok {
+			best, err := wrap.PEM()
+			if err == nil {
+				w.updateTrack(ctx, certInfo, best, true, true)
+			}
 		} else {
 			logger.Info("ssl tracker event missing certificate", "provider", certInfo.Provider, "identity", certInfo.Identity)
 		}
@@ -290,11 +320,11 @@ func (w *Tracker) sort(providerCache *ProviderCache, keys ...Tracking) map[strin
 	return byProvider
 }
 
-func (w *Tracker) updateTrack(ctx context.Context, key Tracking, best Certificate, notify, notifyAlways bool) {
+func (w *Tracker) updateTrack(ctx context.Context, key Tracking, best PEMCertificate, notify, notifyAlways bool) {
 	w.WithLock(func() {
 		if tracked, ok := w.track[key]; ok {
 			if tracked.NotAfter.IsZero() || best.NotAfter.After(tracked.NotAfter) {
-				tracked.Certificate = best
+				tracked.PEMCertificate = best
 				w.track[key] = tracked
 				if notify {
 					notifyAlways = true
@@ -302,8 +332,8 @@ func (w *Tracker) updateTrack(ctx context.Context, key Tracking, best Certificat
 			}
 			if notifyAlways {
 				w.NotifyAllLocked(ctx, Delivery{
-					Tracking:    key,
-					Certificate: best,
+					Tracking:       key,
+					PEMCertificate: best,
 				})
 			}
 		}

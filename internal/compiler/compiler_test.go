@@ -132,7 +132,8 @@ func TestFetchReadsYAMLFiles(t *testing.T) {
 		"c.txt":  {Data: []byte("ignore")},
 	}
 	var paths []string
-	for snippet, err := range compiler.Fetch(testutil.Logger(), fs1) {
+	logger := testutil.Logger()
+	for snippet, err := range compiler.Fetch(logger, compiler.Enumerate(logger, fs1)) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -152,28 +153,13 @@ func TestFetchPropagatesErrors(t *testing.T) {
 		"bad.yaml": {Data: []byte("{not yaml")},
 	}
 	var gotErr error
-	for _, err := range compiler.Fetch(testutil.Logger(), badFS) {
+	logger := testutil.Logger()
+	for _, err := range compiler.Fetch(logger, compiler.Enumerate(logger, badFS)) {
 		gotErr = err
 		break
 	}
 	if gotErr == nil {
 		t.Fatalf("expected parse error")
-	}
-}
-
-func TestCompileMergesAllFiles(t *testing.T) {
-	t.Parallel()
-	fs1 := fstest.MapFS{
-		"1.yaml": {Data: []byte("routes:\n- id: one")},
-		"2.yaml": {Data: []byte("routes:\n- uris: ['/a']")},
-	}
-	out, err := compiler.Compile(testutil.Logger(), fs1)
-	if err != nil {
-		t.Fatalf("Compile returned error: %v", err)
-	}
-	routes, ok := out["routes"].([]any)
-	if !ok || len(routes) != 2 {
-		t.Fatalf("expected merged routes, got %v", out["routes"])
 	}
 }
 
