@@ -16,7 +16,7 @@ Si el fichero es válido, se reemplaza el fichero de configuración real y se ut
 La aplicacion tiene dos modos de ejecucion:
 
 - Modo standalone (por defecto): compila los fragmentos y escribe la configuracion resultante en stdout, sin validar ni recargar APISIX.
-- Modo servidor (`cuesix serve`): expone endpoints HTTP para disparar la compilacion y, si procede, validar y recargar APISIX.
+- Modo servidor (`sixpack serve`): expone endpoints HTTP para disparar la compilacion y, si procede, validar y recargar APISIX.
 
 En modo servidor, la aplicacion expone una ruta "/compile". Cuando se recibe una peticion POST a esa ruta, sin importar el payload o el contenido, se inicia el proceso de recompilacion. Tambien expone endpoints de salud `/live` y `/ready`.
 

@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
-	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
-	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
+	"github.com/warpcomdev/sixpack/internal/certmagicmgr"
+	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
 )
 
 type SSLSetup struct {

@@ -18,15 +18,15 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v3"
-	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
-	"github.com/warpcomdev/cuesix/cmd/cuesix/control"
-	"github.com/warpcomdev/cuesix/cmd/cuesix/factory"
-	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/cursor"
-	"github.com/warpcomdev/cuesix/internal/dispatcher"
-	"github.com/warpcomdev/cuesix/internal/listener"
-	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
-	"github.com/warpcomdev/cuesix/internal/schema"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/control"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/factory"
+	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/dispatcher"
+	"github.com/warpcomdev/sixpack/internal/listener"
+	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcomdev/sixpack/internal/schema"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -52,7 +52,7 @@ func main() {
 	)
 
 	app := &cli.Command{
-		Name:  "cuesix",
+		Name:  "sixpack",
 		Usage: "compile APISIX standalone config from fragments",
 		Commands: []*cli.Command{
 			{

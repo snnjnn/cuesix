@@ -1,7 +1,7 @@
 ARG APISIX_VERSION=3.14.1-debian
 ARG GOLANG_VERSION=1.25
 
-# Build cuesix app
+# Build sixpack app
 # ----------------
 FROM docker.io/golang:${GOLANG_VERSION} AS builder
 
@@ -9,7 +9,7 @@ WORKDIR /src
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOEXPERIMENT=jsonv2 \
-    go build -trimpath -ldflags="-s -w" -o /out/cuesix ./cmd/cuesix
+    go build -trimpath -ldflags="-s -w" -o /out/sixpack ./cmd/sixpack
 
 # Download lua modules
 # --------------------
@@ -41,10 +41,10 @@ RUN ln -s /usr/lib/x86_64-linux-gnu/libmaxminddb.so.0 \
           /usr/lib/x86_64-linux-gnu/libmaxminddb.so
 
 COPY --from=downloader /maxminddb/lib/resty/maxminddb.lua /usr/local/apisix/lualib/resty/maxminddb.lua
-COPY --from=builder    /out/cuesix /usr/local/bin/cuesix
+COPY --from=builder    /out/sixpack /usr/local/bin/sixpack
 
 # Avoid problems copying the /usr/local/apisix folder
 RUN chmod -R a+rX /usr/local/apisix/deps
 
 USER apisix
-ENTRYPOINT ["cuesix"]
+ENTRYPOINT ["sixpack"]

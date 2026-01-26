@@ -7,7 +7,7 @@ swagger:
     # Build the OpenAPI spec. Prerequisite:
     # go install github.com/swaggo/swag/cmd/swag@latest
     # Ensure $GOBIN or $GOPATH/bin is in PATH so `swag` is available.
-    swag init -g cmd/cuesix/control/api.go --parseInternal --output cmd/cuesix/docs
+    swag init -g cmd/sixpack/control/api.go --parseInternal --output cmd/sixpack/docs
 
 app:
     # Build the web UI. Prerequisite:
@@ -15,7 +15,7 @@ app:
     npm --prefix internal/schema/app run build
 
 build: swagger app
-    GOEXPERIMENT={{GOEXPERIMENT}} CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ./bin/cuesix ./cmd/cuesix
+    GOEXPERIMENT={{GOEXPERIMENT}} CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ./bin/sixpack ./cmd/sixpack
 
 tag TAG: swagger app
     docker build -t {{TAG}} .

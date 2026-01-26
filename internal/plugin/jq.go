@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/runner"
+	"github.com/warpcomdev/sixpack/internal/runner"
 )
 
 // JQPlugin applies a jq pipeline defined in the top-level jq list.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/warpcomdev/cuesix/cmd/cuesix/factory"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/factory"
 )
 
 func TestSchedulerMustAndMight(t *testing.T) {

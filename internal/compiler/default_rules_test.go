@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 	"go.yaml.in/yaml/v4"
 )
 

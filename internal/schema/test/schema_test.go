@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/warpcomdev/cuesix/internal/schema"
+	"github.com/warpcomdev/sixpack/internal/schema"
 )
 
 func TestNormalizeSchemaStrictMatchesFixture(t *testing.T) {

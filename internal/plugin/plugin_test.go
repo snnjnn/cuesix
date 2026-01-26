@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/warpcomdev/cuesix/internal/plugin"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/plugin"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 func TestPreRenderChain(t *testing.T) {

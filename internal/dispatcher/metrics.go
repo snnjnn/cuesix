@@ -3,7 +3,7 @@ package dispatcher
 import "github.com/prometheus/client_golang/prometheus"
 
 const (
-	metricsNamespace = "cuesix"
+	metricsNamespace = "sixpack"
 	metricsSubsystem = "dispatcher"
 )
 

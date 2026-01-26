@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v3"
-	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
 )
 
 type Plugins struct {
@@ -26,58 +26,58 @@ func (c *Plugins) Flags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:     "plugin-ssl",
 			Usage:    "enable ssl pre-render plugin",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL"),
 			Category: "Plugins",
 		},
 		&cli.BoolFlag{
 			Name:     "plugin-yaml",
 			Usage:    "enable yaml post-render plugin",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_YAML"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_YAML"),
 			Category: "Plugins",
 		},
 		&cli.BoolFlag{
 			Name:     "plugin-jq",
 			Usage:    "enable jq post-render plugin",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_JQ"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_JQ"),
 			Value:    true,
 			Category: "Plugins",
 		},
 		&cli.DurationFlag{
 			Name:     "plugin-ssl-acme-timeout",
 			Usage:    "timeout for ssl plugin acme requests",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL_ACME_TIMEOUT"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL_ACME_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Plugins",
 		},
 		&cli.DurationFlag{
 			Name:     "plugin-jq-timeout",
 			Usage:    "timeout for jq transforms",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_JQ_TIMEOUT"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_JQ_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Plugins",
 		},
 		&cli.StringFlag{
 			Name:     "plugin-ssl-fallback-cert",
 			Usage:    "ssl plugin fallback certificate path",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL_FALLBACK_CERT"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL_FALLBACK_CERT"),
 			Category: "Plugins",
 		},
 		&cli.StringFlag{
 			Name:     "plugin-ssl-fallback-key",
 			Usage:    "ssl plugin fallback key path",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL_FALLBACK_KEY"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL_FALLBACK_KEY"),
 			Category: "Plugins",
 		},
 		&cli.StringSliceFlag{
 			Name:     "plugin-ssl-path",
 			Usage:    "ssl plugin certificate path (repeatable)",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_SSL_PATHS"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL_PATHS"),
 			Category: "Plugins",
 		},
 		&cli.StringFlag{
 			Name:     "plugin-env",
 			Usage:    "env filename to load from each input directory",
-			Sources:  cli.EnvVars("CUESIX_PLUGIN_ENV"),
+			Sources:  cli.EnvVars("SIXPACK_PLUGIN_ENV"),
 			Category: "Plugins",
 		},
 	}

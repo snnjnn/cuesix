@@ -1,0 +1,81 @@
+# Default values for smc-apisix-rules.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Optional chart name overrides.
+nameOverride: ""
+fullnameOverride: ""
+
+# Common service settings that point to the smc-apisix chart's Service.
+commonService:
+  name: smc-apisix
+  port: 80
+  targetPort: http
+  selector:
+    app.kubernetes.io/name: smc-apisix
+    app.kubernetes.io/instance: smc-apisix
+
+# Snippet ConfigMaps keyed by entry name; the key is used as a suffix for resource names.
+# APISIX resources support an optional id; it is strongly recommended to set it.
+configmaps: {}
+# example:
+#   example:
+#     snippet: |-
+#       upstreams:
+#         - id: example_upstream
+#           nodes:
+#             "upstream_service:8080": 1
+#       routes:
+#         - id: example_proxy
+#           uri: /*
+#           # Match the service name
+#           hosts:
+#             - example-gated-service
+#             - example-gated-service.namespace_name.svc.cluster.local
+#           upstream_id: example_upstream
+#     service:
+#       name: example-gated-service
+#       port: 80
+#     ingress:
+#       enabled: false
+#       className: ""
+#       annotations: {}
+#       hosts:
+#         - host: example.local
+#           paths:
+#             - path: /
+#               pathType: ImplementationSpecific
+#       tls: []
+
+# Snippet Secrets keyed by entry name; the key is used as a suffix for resource names.
+# APISIX resources support an optional id; it is strongly recommended to set it.
+secrets: {}
+# example:
+#   secure:
+#     snippet: |-
+#       plugin_configs:
+#       - id: example-ingress-plugins
+#         limit-req:
+#           rate: 2
+#           burst: 5
+#           key: remote_addr
+#       routes:
+#         - id: example_ingress
+#           uri: /*
+#           hosts:
+#             # Match the ingress name and the service name
+#             - secure.url.com
+#           plugin_config_id: example-ingress-plugins
+#           upstream:
+#             nodes:
+#               "127.0.0.1:8080": 1
+#     ingress:
+#       enabled: true
+#       className: ""
+#       annotations: {}
+#       hosts:
+#         - host: secure.url.com
+#           paths:
+#             - path: /
+#               pathType: Prefix
+#       tls: []

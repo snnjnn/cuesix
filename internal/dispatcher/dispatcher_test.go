@@ -10,9 +10,9 @@ import (
 
 	"iter"
 
-	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/dispatcher"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/dispatcher"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 type mockFetcher struct {

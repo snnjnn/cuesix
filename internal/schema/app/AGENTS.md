@@ -1,6 +1,6 @@
 This project builds a web frontend for the operation of a configuration management service.
 
-The API of the configuration management service is described in document /cmd/cuesix/docs/swagger.yaml of theis repository.
+The API of the configuration management service is described in document /cmd/sixpack/docs/swagger.yaml of theis repository.
 
 The application uses alpine.js for interactivity, session storage for shared state, and bulma css for layout and styling. The application favors builtin bulma styles and components and tries to keep the html structure clear and semantic, and the css customization to a minimum.
 

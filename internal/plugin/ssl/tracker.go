@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/cursor"
 )
 
 type Tracking struct {

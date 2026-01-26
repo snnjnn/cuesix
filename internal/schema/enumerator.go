@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/cursor"
 )
 
 type SourcesEnumerator struct {

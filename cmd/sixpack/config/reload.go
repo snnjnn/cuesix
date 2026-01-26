@@ -5,8 +5,8 @@ import (
 	"log/slog"
 
 	"github.com/urfave/cli/v3"
-	"github.com/warpcomdev/cuesix/internal/dispatcher"
-	"github.com/warpcomdev/cuesix/internal/reloader"
+	"github.com/warpcomdev/sixpack/internal/dispatcher"
+	"github.com/warpcomdev/sixpack/internal/reloader"
 )
 
 type Reload struct {
@@ -18,7 +18,7 @@ func (c *Reload) Flags() []cli.Flag {
 		&cli.BoolFlag{
 			Name:     "dry-run",
 			Usage:    "run pipeline without writing config",
-			Sources:  cli.EnvVars("CUESIX_DRY_RUN"),
+			Sources:  cli.EnvVars("SIXPACK_DRY_RUN"),
 			Category: "Runtime",
 		},
 	}

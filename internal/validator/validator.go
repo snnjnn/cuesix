@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/runner"
+	"github.com/warpcomdev/sixpack/internal/runner"
 )
 
 type MirrorError string

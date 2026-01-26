@@ -17,14 +17,14 @@ func (c *Input) Flags() []cli.Flag {
 		&cli.DurationFlag{
 			Name:     "cooldown",
 			Usage:    "cooldown duration",
-			Sources:  cli.EnvVars("CUESIX_COOLDOWN"),
+			Sources:  cli.EnvVars("SIXPACK_COOLDOWN"),
 			Value:    0,
 			Category: "Input",
 		},
 		&cli.StringSliceFlag{
 			Name:     "input",
 			Usage:    "input directory (repeatable)",
-			Sources:  cli.EnvVars("CUESIX_INPUT_DIRS"),
+			Sources:  cli.EnvVars("SIXPACK_INPUT_DIRS"),
 			Category: "Input",
 		},
 	}
@@ -37,7 +37,7 @@ func (c *Input) Apply(ctx *cli.Command) {
 
 func (c *Input) Validate() error {
 	if len(c.InputDirs) == 0 {
-		return errors.New("at least one --input or CUESIX_INPUT_DIRS is required")
+		return errors.New("at least one --input or SIXPACK_INPUT_DIRS is required")
 	}
 	return nil
 }

@@ -16,7 +16,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/cursor"
 )
 
 // handles calls to /validate

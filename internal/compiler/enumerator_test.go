@@ -7,8 +7,8 @@ import (
 
 	"iter"
 
-	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 type sourceItem struct {

@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
-	"github.com/warpcomdev/cuesix/internal/compiler"
-	"github.com/warpcomdev/cuesix/internal/dispatcher"
-	"github.com/warpcomdev/cuesix/internal/schema"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
+	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/dispatcher"
+	"github.com/warpcomdev/sixpack/internal/schema"
 )
 
 // SchemaFetcher wraps a base fetcher and validates each snippet against a JSON schema.

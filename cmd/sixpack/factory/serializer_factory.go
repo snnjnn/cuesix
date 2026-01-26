@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
-	"github.com/warpcomdev/cuesix/internal/cursor"
-	"github.com/warpcomdev/cuesix/internal/plugin"
-	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
-	"github.com/warpcomdev/cuesix/internal/serializer"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
+	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/plugin"
+	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcomdev/sixpack/internal/serializer"
 )
 
 type SerializerFactory struct {

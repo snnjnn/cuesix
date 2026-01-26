@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/warpcomdev/cuesix/internal/schema"
+	"github.com/warpcomdev/sixpack/internal/schema"
 	"go.yaml.in/yaml/v4"
 )
 

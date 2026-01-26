@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/cuesix/cmd/cuesix/config"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 func TestAPISIXMirrorCreationAndCleanup(t *testing.T) {

@@ -18,7 +18,7 @@
 upstreams:
   - id: acme-well-known
     nodes:
-    - host: cuesix
+    - host: sixpack
       port: 8882
       weight: 1
     type: roundrobin

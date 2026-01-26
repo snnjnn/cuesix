@@ -4,11 +4,11 @@ import (
 	"net/http"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
-	_ "github.com/warpcomdev/cuesix/cmd/cuesix/docs"
-	"github.com/warpcomdev/cuesix/internal/schema"
+	_ "github.com/warpcomdev/sixpack/cmd/sixpack/docs"
+	"github.com/warpcomdev/sixpack/internal/schema"
 )
 
-// @title Cuesix Schema Control API
+// @title Sixpack Schema Control API
 // @version 1.0
 // @description Control plane helpers for introspecting the APISIX schema and validating source fragments. The API exposes a few cached read endpoints; clients should revalidate changes by reusing the ETag/Last-Modified headers that the server always emits and honoring `Cache-Control: public, max-age=0, must-revalidate`.
 // @BasePath /schema

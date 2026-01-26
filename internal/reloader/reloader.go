@@ -45,7 +45,7 @@ func (r *Reloader) Apply(ctx context.Context, payload []byte, useApi bool) error
 
 func replaceWithPayload(payload []byte, destPath string) error {
 	dir := filepath.Dir(destPath)
-	tmp, err := os.CreateTemp(dir, ".cuesix-reload-*")
+	tmp, err := os.CreateTemp(dir, ".sixpack-reload-*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/cursor"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 func TestTrackerRequestCertificateNew(t *testing.T) {

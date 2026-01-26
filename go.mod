@@ -1,4 +1,4 @@
-module github.com/warpcomdev/cuesix
+module github.com/warpcomdev/sixpack
 
 go 1.25
 

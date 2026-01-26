@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/testutil"
-	"github.com/warpcomdev/cuesix/internal/validator"
+	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/validator"
 )
 
 func TestBuildConfigPath(t *testing.T) {

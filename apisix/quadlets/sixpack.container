@@ -1,0 +1,61 @@
+[Unit]
+Description=Podman - Sixpack
+Requires=apisix-network.service
+Wants=apisix.service
+After=apisix.service
+
+[Container]
+Image=sixpack:latest
+ReadOnly=true
+#AutoUpdate=registry
+ContainerName=sixpack
+Environment=APISIX_STAND_ALONE=true
+Environment=SIXPACK_CERTMAGIC=true
+Environment=SIXPACK_CERTMAGIC_CHALLENGE_PORT=8882
+Environment=SIXPACK_CERTMAGIC_DATA_DIR=/acme
+Environment=SIXPACK_CERTMAGIC_DEFAULT_PROVIDER=staging
+Environment=SIXPACK_CERTMAGIC_PROVIDERS="staging|soporte@fivecorporation.com|https://acme-staging-v02.api.letsencrypt.org/directory,prod|soporte@fivecorporation.com|https://acme-v02.api.letsencrypt.org/directory"
+Environment=SIXPACK_COOLDOWN=30s
+Environment=SIXPACK_INPUT_DIRS=/input
+Environment=SIXPACK_PLUGIN_JQ=true
+Environment=SIXPACK_PLUGIN_SSL=true
+Environment=SIXPACK_PLUGIN_SSL_FALLBACK_CERT=/usr/local/apisix/conf/cert/ssl_PLACE_HOLDER.crt
+Environment=SIXPACK_PLUGIN_SSL_FALLBACK_KEY=/usr/local/apisix/conf/cert/ssl_PLACE_HOLDER.key
+Environment=SIXPACK_PLUGIN_SSL_PATHS=/usr/local/apisix/conf/cert
+Environment=SIXPACK_PLUGIN_YAML=true
+#Environment=SIXPACK_APISIX_API_KEY=
+#Environment=SIXPACK_APISIX_URL=http://apisix-gw:9090
+Environment=SIXPACK_LISTEN=:8880
+Environment=SIXPACK_METRICS_LISTEN=:8881
+Environment=SIXPACK_SERVER_AUTO_TRIGGER=true
+Volume=/opt/apisix/conf:/usr/local/apisix/conf
+Volume=/opt/apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+Volume=/opt/apisix/acme:/acme
+Volume=/opt/apisix/input:/input:ro
+Volume=/opt/apisix/tmp:/tmp
+Volume=/opt/apisix/certs:/usr/local/apisix/certs:ro
+Volume=/opt/apisix/conf:/usr/local/apisix/conf
+Volume=/opt/apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+# These are required to validate configs
+Volume=/opt/apisix/logs:/usr/local/apisix/logs
+Volume=/opt/apisix/tmp:/var/lib/nginx/tmp
+Exec=serve
+# compiler
+PublishPort=8880:8880
+# metrics
+PublishPort=8881:8881
+# acme
+PublishPort=8882:8882
+# USER_ID value is obtained with `id -u` while logged into {USER}
+User=1000
+# GROUP_ID value is obtained with `id -g` while logged into {USER}
+Group=1000
+Network=apisix.network
+
+[Service]
+Restart=always
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
+

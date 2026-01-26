@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 func TestBuildProviderConfiguresStorageAndIssuer(t *testing.T) {

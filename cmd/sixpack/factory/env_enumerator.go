@@ -5,7 +5,7 @@ import (
 	"iter"
 	"log/slog"
 
-	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/sixpack/internal/compiler"
 )
 
 func NewEnvEnumerator(logger *slog.Logger, enumerator compiler.Enumerator, envFilename string) compiler.Enumerator {

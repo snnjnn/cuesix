@@ -17,8 +17,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/warpcomdev/cuesix/internal/cursor"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 func TestSSLPluginUpdateValidation(t *testing.T) {

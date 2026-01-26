@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v3"
-	"github.com/warpcomdev/cuesix/internal/validator"
+	"github.com/warpcomdev/sixpack/internal/validator"
 )
 
 type APISIX struct {
@@ -25,33 +25,33 @@ func (c *APISIX) Flags() []cli.Flag {
 		&cli.StringFlag{
 			Name:     "apisix-home",
 			Usage:    "apisix home path",
-			Sources:  cli.EnvVars("CUESIX_APISIX_HOME"),
+			Sources:  cli.EnvVars("SIXPACK_APISIX_HOME"),
 			Value:    "/usr/local/apisix",
 			Category: "APISIX",
 		},
 		&cli.StringFlag{
 			Name:     "mirror-dir",
 			Usage:    "apisix mirror directory (optional)",
-			Sources:  cli.EnvVars("CUESIX_MIRROR_DIR"),
+			Sources:  cli.EnvVars("SIXPACK_MIRROR_DIR"),
 			Category: "APISIX",
 		},
 		&cli.BoolFlag{
 			Name:     "keep-mirror",
 			Usage:    "Do not remove mirror on startup",
-			Sources:  cli.EnvVars("CUESIX_KEEP_MIRROR"),
+			Sources:  cli.EnvVars("SIXPACK_KEEP_MIRROR"),
 			Category: "APISIX",
 		},
 		&cli.DurationFlag{
 			Name:     "validation-timeout",
 			Usage:    "timeout for apisix test",
-			Sources:  cli.EnvVars("CUESIX_VALIDATION_TIMEOUT"),
+			Sources:  cli.EnvVars("SIXPACK_VALIDATION_TIMEOUT"),
 			Value:    30 * time.Second,
 			Category: "APISIX",
 		},
 		&cli.BoolFlag{
 			Name:     "apisix-use-schema",
 			Usage:    "validate config snippets against APISIX schema (requires --apisix-control-url)",
-			Sources:  cli.EnvVars("CUESIX_APISIX_USE_SCHEMA"),
+			Sources:  cli.EnvVars("SIXPACK_APISIX_USE_SCHEMA"),
 			Category: "APISIX",
 		},
 	}
@@ -81,7 +81,7 @@ func (c APISIX) BuildValidator(logger *slog.Logger) (zero validator.Validator, e
 	mirrorKeep := c.KeepMirror
 	mirrorDir := c.MirrorDir
 	if mirrorDir == "" {
-		tmp, tmpErr := os.MkdirTemp("", "cuesix-apisix-")
+		tmp, tmpErr := os.MkdirTemp("", "sixpack-apisix-")
 		if tmpErr != nil {
 			return zero, fmt.Errorf("create apisix mirror dir failed: %w", tmpErr)
 		}

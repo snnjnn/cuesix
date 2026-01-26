@@ -1,6 +1,6 @@
-# cuesix
+# sixpack
 
-`cuesix` compiles Apache APISIX standalone configuration from YAML fragments, applies APISIX-aware merge rules, and can validate/reload APISIX.
+`sixpack` compiles Apache APISIX standalone configuration from YAML fragments, applies APISIX-aware merge rules, and can validate/reload APISIX.
 
 ## APISIX standalone config in a nutshell
 
@@ -22,9 +22,9 @@ deployment:
 
 APISIX also supports profiles via the `APISIX_PROFILE` environment variable. When set, APISIX loads `config-<profile>.yaml>` and `apisix-<profile>.[yaml|json]`, instead of `comfig.yaml` and `apisix.[yaml|json]`.
 
-## What cuesix does
+## What sixpack does
 
-Cuesix builds a unified dynamic config file, `apisix.[yaml|json]`, by reading many YAML configuration fragments from a list of input folders.
+Sixpack builds a unified dynamic config file, `apisix.[yaml|json]`, by reading many YAML configuration fragments from a list of input folders.
 
 Configuration files for apisix look like this:
 
@@ -53,7 +53,7 @@ routes:
         type: roundrobin
 ```
 
-Cuesix can merge many of these files, by applying a set of **apisix-specific merge rules**:
+Sixpack can merge many of these files, by applying a set of **apisix-specific merge rules**:
 
 - Most apisix lists (like `ssls` or `routes`) can be merged by a key like **id**: lists containing objects with different ids can just be concatenated.
 - Some lists, like `consumers`, have a different merge `key` (`name` instead of `id`).
@@ -62,11 +62,11 @@ Cuesix can merge many of these files, by applying a set of **apisix-specific mer
 
 The full set of merge rules for lists is maintained in the [compiler.go](internal/compiler/compiler.go) file.
 
-By default, cuesix will generate an aggregated `apisix.json` (or `apisix-${APISIX_PROFILE}.json`). It will not honor the value of `deployment.role_data_place.config_provider`. If you need the output to be yaml, use the `--plugin-yaml` flag.
+By default, sixpack will generate an aggregated `apisix.json` (or `apisix-${APISIX_PROFILE}.json`). It will not honor the value of `deployment.role_data_place.config_provider`. If you need the output to be yaml, use the `--plugin-yaml` flag.
 
 ## Features
 
-Besides merging files, cuesix implements some quality-of-life features that expand the expressivity of the input yaml files
+Besides merging files, sixpack implements some quality-of-life features that expand the expressivity of the input yaml files
 
 ### Certificate inlining
 
@@ -129,11 +129,11 @@ Jq transformations must always return the full config object, they cannot be par
 
 By default, apisix produces json output, You can use the `--plugin-yaml` flag to make it produce yaml instead.
 
-Apisix requires the `apisix.yaml` to terminate with the comment `#END`. The cuesix yaml plugin takes care of this.
+Apisix requires the `apisix.yaml` to terminate with the comment `#END`. The sixpack yaml plugin takes care of this.
 
 ### Validation
 
-When running in server mode, cuesix validates the files produced, before replacing the apisix config file.
+When running in server mode, sixpack validates the files produced, before replacing the apisix config file.
 
 Validation uses the `apisix test` command and is automatic. It works for json and yaml files, and it does not require any additional flag.
 
@@ -174,78 +174,78 @@ The `internal/schema` tests compare the processed strict schema against
 
 Standalone (default): compiles and prints the merged config to stdout. Can optionally use schema validation if `--apisix-use-schema` is provided and `--apisix-control-url` points to the control URL of a running apisix instance. Will not do post-build validation (`apisix test`)
 
-Server mode (`cuesix serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and writes the config file on success. `/ready` returns 200 only after a successful config has been written at least once. Certmagic automatically manages its own HTTP server for ACME challenges on the configured port.
+Server mode (`sixpack serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and writes the config file on success. `/ready` returns 200 only after a successful config has been written at least once. Certmagic automatically manages its own HTTP server for ACME challenges on the configured port.
 
 ## Flags and environment variables
 
 All flags can be provided as environment variables.
 
 Input and runtime mode:
-- `--listen` / `CUESIX_LISTEN`: listen address for server mode (default `127.0.0.1:8080`).
-- `--metrics` / `CUESIX_METRICS_LISTEN`: listen address for `/metrics` (empty disables).
-- `--server-read-header-timeout` / `CUESIX_SERVER_READ_HEADER_TIMEOUT`: HTTP server read header timeout (default `5s`).
-- `--server-read-timeout` / `CUESIX_SERVER_READ_TIMEOUT`: HTTP server read timeout (default `10s`).
-- `--server-write-timeout` / `CUESIX_SERVER_WRITE_TIMEOUT`: HTTP server write timeout (default `10s`).
-- `--server-idle-timeout` / `CUESIX_SERVER_IDLE_TIMEOUT`: HTTP server idle timeout (default `60s`).
-- `--server-shutdown-timeout` / `CUESIX_SERVER_SHUTDOWN_TIMEOUT`: HTTP server shutdown timeout (default `10s`).
-- `--input` (repeatable) / `CUESIX_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
-- `--cooldown` / `CUESIX_COOLDOWN`: minimum delay between queued compile runs.
-- `--dry-run` / `CUESIX_DRY_RUN` (bool): run pipeline without writing config.
+- `--listen` / `SIXPACK_LISTEN`: listen address for server mode (default `127.0.0.1:8080`).
+- `--metrics` / `SIXPACK_METRICS_LISTEN`: listen address for `/metrics` (empty disables).
+- `--server-read-header-timeout` / `SIXPACK_SERVER_READ_HEADER_TIMEOUT`: HTTP server read header timeout (default `5s`).
+- `--server-read-timeout` / `SIXPACK_SERVER_READ_TIMEOUT`: HTTP server read timeout (default `10s`).
+- `--server-write-timeout` / `SIXPACK_SERVER_WRITE_TIMEOUT`: HTTP server write timeout (default `10s`).
+- `--server-idle-timeout` / `SIXPACK_SERVER_IDLE_TIMEOUT`: HTTP server idle timeout (default `60s`).
+- `--server-shutdown-timeout` / `SIXPACK_SERVER_SHUTDOWN_TIMEOUT`: HTTP server shutdown timeout (default `10s`).
+- `--input` (repeatable) / `SIXPACK_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
+- `--cooldown` / `SIXPACK_COOLDOWN`: minimum delay between queued compile runs.
+- `--dry-run` / `SIXPACK_DRY_RUN` (bool): run pipeline without writing config.
 
 APISIX paths and validation:
-- `--apisix-home` / `CUESIX_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).
-- `--mirror-dir` / `CUESIX_MIRROR_DIR`: optional mirror directory for validation; if empty, cuesix creates a temp mirror.
-- `--keep-mirror` / `CUESIX_KEEP_MIRROR`: do not clean and re-populate the mirror folder on startup.
-- `--validation-timeout` / `CUESIX_VALIDATION_TIMEOUT`: timeout for `apisix test` validation.
-- `--apisix-use-schema` / `CUESIX_APISIX_USE_SCHEMA`: validate config snippets against the live APISIX schema (requires `--apisix-control-url`).
+- `--apisix-home` / `SIXPACK_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).
+- `--mirror-dir` / `SIXPACK_MIRROR_DIR`: optional mirror directory for validation; if empty, sixpack creates a temp mirror.
+- `--keep-mirror` / `SIXPACK_KEEP_MIRROR`: do not clean and re-populate the mirror folder on startup.
+- `--validation-timeout` / `SIXPACK_VALIDATION_TIMEOUT`: timeout for `apisix test` validation.
+- `--apisix-use-schema` / `SIXPACK_APISIX_USE_SCHEMA`: validate config snippets against the live APISIX schema (requires `--apisix-control-url`).
 
 APISIX Control API:
-- `--apisix-control-url` / `CUESIX_APISIX_CONTROL_URL`: APISIX Control API base URL (default `http://127.0.0.1:9090`).
-- `--apisix-api-key` / `CUESIX_APISIX_API_KEY`: Control API key for schema requests.
-- `--apisix-api-timeout` / `CUESIX_APISIX_API_TIMEOUT`: timeout for Control API HTTP requests.
-- `--retry-max` / `CUESIX_RETRY_MAX`: number of API request retries on failure.
-- `--retry-initial` / `CUESIX_RETRY_INITIAL`: initial backoff before the first retry.
-- `--retry-max-delay` / `CUESIX_RETRY_MAX_DELAY`: cap for retry backoff.
-- `--retry-multiplier` / `CUESIX_RETRY_MULTIPLIER`: backoff multiplier between retries.
+- `--apisix-control-url` / `SIXPACK_APISIX_CONTROL_URL`: APISIX Control API base URL (default `http://127.0.0.1:9090`).
+- `--apisix-api-key` / `SIXPACK_APISIX_API_KEY`: Control API key for schema requests.
+- `--apisix-api-timeout` / `SIXPACK_APISIX_API_TIMEOUT`: timeout for Control API HTTP requests.
+- `--retry-max` / `SIXPACK_RETRY_MAX`: number of API request retries on failure.
+- `--retry-initial` / `SIXPACK_RETRY_INITIAL`: initial backoff before the first retry.
+- `--retry-max-delay` / `SIXPACK_RETRY_MAX_DELAY`: cap for retry backoff.
+- `--retry-multiplier` / `SIXPACK_RETRY_MULTIPLIER`: backoff multiplier between retries.
 
 Plugins:
-- `--plugin-ssl` / `CUESIX_PLUGIN_SSL`: enable ssl pre-render plugin (required to process `$secret://acme/` without certmagic).
-- `--plugin-jq` / `CUESIX_PLUGIN_JQ`: enable jq post-render plugin.
-- `--plugin-jq-timeout` / `CUESIX_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
-- `--plugin-ssl-path` (repeatable) / `CUESIX_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
-- `--plugin-ssl-acme-timeout` / `CUESIX_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests (default `10s`, must be positive).
-- `--plugin-ssl-fallback-cert` / `CUESIX_PLUGIN_SSL_FALLBACK_CERT`: ssl plugin fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
-- `--plugin-ssl-fallback-key` / `CUESIX_PLUGIN_SSL_FALLBACK_KEY`: ssl plugin fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
-- `--plugin-env` / `CUESIX_PLUGIN_ENV`: per-directory env file name used for APISIX `${{ VAR }}` substitutions in input snippets.
-- `--plugin-yaml` / `CUESIX_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
+- `--plugin-ssl` / `SIXPACK_PLUGIN_SSL`: enable ssl pre-render plugin (required to process `$secret://acme/` without certmagic).
+- `--plugin-jq` / `SIXPACK_PLUGIN_JQ`: enable jq post-render plugin.
+- `--plugin-jq-timeout` / `SIXPACK_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
+- `--plugin-ssl-path` (repeatable) / `SIXPACK_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
+- `--plugin-ssl-acme-timeout` / `SIXPACK_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests (default `10s`, must be positive).
+- `--plugin-ssl-fallback-cert` / `SIXPACK_PLUGIN_SSL_FALLBACK_CERT`: ssl plugin fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
+- `--plugin-ssl-fallback-key` / `SIXPACK_PLUGIN_SSL_FALLBACK_KEY`: ssl plugin fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
+- `--plugin-env` / `SIXPACK_PLUGIN_ENV`: per-directory env file name used for APISIX `${{ VAR }}` substitutions in input snippets.
+- `--plugin-yaml` / `SIXPACK_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
 
 Certmagic (serve only):
-- `--certmagic` / `CUESIX_CERTMAGIC` (bool): enable certmagic ACME manager.
-- `--certmagic-provider` (repeatable) / `CUESIX_CERTMAGIC_PROVIDERS` (comma-separated): provider specs (`name|email|ca`).
-- `--certmagic-default-provider` / `CUESIX_CERTMAGIC_DEFAULT_PROVIDER`: default provider name.
-- `--certmagic-data-dir` / `CUESIX_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
-- `--certmagic-challenge-port` / `CUESIX_CERTMAGIC_CHALLENGE_PORT`: HTTP-01 challenge port (default `8080`).
-- `--certmagic-timeout` / `CUESIX_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
-- `--certmagic-watch-interval` / `CUESIX_CERTMAGIC_WATCH_INTERVAL`: refresh interval for certmagic certificate updates (default `1h`).
-- `--certmagic-untracked-interval` / `CUESIX_CERTMAGIC_UNTRACKED_INTERVAL`: interval for removing untracked certmagic entries (default `24h`).
-- `--certmagic-untracked-grace` / `CUESIX_CERTMAGIC_UNTRACKED_GRACE`: grace period for removing untracked certmagic entries (default `168h`).
-- `--certmagic-cleanup-interval` / `CUESIX_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `24h`).
-- `--certmagic-expired-grace` / `CUESIX_CERTMAGIC_EXPIRED_GRACE`: grace period for removing expired certmagic entries (default `125h`).
+- `--certmagic` / `SIXPACK_CERTMAGIC` (bool): enable certmagic ACME manager.
+- `--certmagic-provider` (repeatable) / `SIXPACK_CERTMAGIC_PROVIDERS` (comma-separated): provider specs (`name|email|ca`).
+- `--certmagic-default-provider` / `SIXPACK_CERTMAGIC_DEFAULT_PROVIDER`: default provider name.
+- `--certmagic-data-dir` / `SIXPACK_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
+- `--certmagic-challenge-port` / `SIXPACK_CERTMAGIC_CHALLENGE_PORT`: HTTP-01 challenge port (default `8080`).
+- `--certmagic-timeout` / `SIXPACK_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
+- `--certmagic-watch-interval` / `SIXPACK_CERTMAGIC_WATCH_INTERVAL`: refresh interval for certmagic certificate updates (default `1h`).
+- `--certmagic-untracked-interval` / `SIXPACK_CERTMAGIC_UNTRACKED_INTERVAL`: interval for removing untracked certmagic entries (default `24h`).
+- `--certmagic-untracked-grace` / `SIXPACK_CERTMAGIC_UNTRACKED_GRACE`: grace period for removing untracked certmagic entries (default `168h`).
+- `--certmagic-cleanup-interval` / `SIXPACK_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `24h`).
+- `--certmagic-expired-grace` / `SIXPACK_CERTMAGIC_EXPIRED_GRACE`: grace period for removing expired certmagic entries (default `125h`).
 
-When an ACME certificate cannot be obtained, cuesix will use the SSL plugin fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available cuesix triggers a new compile cycle.
+When an ACME certificate cannot be obtained, sixpack will use the SSL plugin fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available sixpack triggers a new compile cycle.
 
 ## Usage
 
 Standalone:
 
 ```bash
-cuesix compile --input ./configs --input ./more-configs
+sixpack compile --input ./configs --input ./more-configs
 ```
 
 Server mode:
 
 ```bash
-cuesix serve \
+sixpack serve \
   --listen :8080 \
   --metrics :9090 \
   --input ./configs \
@@ -256,7 +256,7 @@ cuesix serve \
 ## Build
 
 ```bash
-docker build -t cuesix:latest .
+docker build -t sixpack:latest .
 ```
 
 ## Layout

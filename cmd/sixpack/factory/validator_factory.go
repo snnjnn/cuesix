@@ -1,8 +1,8 @@
 package factory
 
 import (
-	"github.com/warpcomdev/cuesix/internal/dispatcher"
-	"github.com/warpcomdev/cuesix/internal/validator"
+	"github.com/warpcomdev/sixpack/internal/dispatcher"
+	"github.com/warpcomdev/sixpack/internal/validator"
 )
 
 // compilerAdapter wires the compiler into dispatcher config.

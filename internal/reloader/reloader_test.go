@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/warpcomdev/cuesix/internal/reloader"
-	"github.com/warpcomdev/cuesix/internal/testutil"
+	"github.com/warpcomdev/sixpack/internal/reloader"
+	"github.com/warpcomdev/sixpack/internal/testutil"
 )
 
 func TestApplyWritesConfig(t *testing.T) {
