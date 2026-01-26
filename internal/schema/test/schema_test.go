@@ -52,7 +52,7 @@ func TestNormalizeSchemaLooseMatchesFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read loose_processed_schema.json: %v", err)
 	}
-	output, err := schema.NormalizeSchema(schema.RawSchema{Raw:raw}, false)
+	output, err := schema.NormalizeSchema(schema.RawSchema{Raw: raw}, false)
 	if err != nil {
 		t.Fatalf("generate schema: %v", err)
 	}
