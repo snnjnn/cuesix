@@ -18,6 +18,7 @@ func RegisterAPI(metricsMux *http.ServeMux, backend *schema.ValidationHandler) *
 	metricsMux.Handle("POST /schema/validate", http.StripPrefix("/schema/validate", backend.ValidateBody()))
 	metricsMux.Handle("GET /schema/validate/", http.StripPrefix("/schema/validate", backend.ValidateSource()))
 	metricsMux.Handle("GET /schema/json/", backend.Schema())
+	metricsMux.Handle("/schema/app/echo.html", schema.EchoHandler())
 	metricsMux.Handle("/schema/app/", http.StripPrefix("/schema/app", schema.AppHandler()))
 	metricsMux.Handle("/schema/openapi/", httpSwagger.Handler(
 		httpSwagger.URL("/schema/openapi/doc.json"),
