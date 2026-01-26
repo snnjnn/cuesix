@@ -362,19 +362,19 @@ func TestCollectEntryTargetsAndResolve(t *testing.T) {
 	if len(targets[fileTarget]) == 0 {
 		t.Fatalf("expected file target from list")
 	}
-	if resolveTargetType("$secret://acme/x", "") != acmeTarget {
+	if resolvePairType("$secret://acme/x", "") != acmeTarget {
 		t.Fatalf("resolveTargetType acme failed")
 	}
-	if resolveTargetType("$secret://file/x", "key") != fileTarget {
+	if resolvePairType("$secret://file/x", "key") != fileTarget {
 		t.Fatalf("resolveTargetType file cert failed")
 	}
-	if resolveTargetType("cert", "$secret://file/k") != fileTarget {
+	if resolvePairType("cert", "$secret://file/k") != fileTarget {
 		t.Fatalf("resolveTargetType file key failed")
 	}
-	if resolveTargetType("cert", "key") != textTarget {
+	if resolvePairType("cert", "key") != textTarget {
 		t.Fatalf("resolveTargetType text failed")
 	}
-	if resolveTargetType("$secret://vault/kv", "key") != textTarget {
+	if resolvePairType("$secret://vault/kv", "key") != textTarget {
 		t.Fatalf("resolveTargetType unknown secret failed")
 	}
 }

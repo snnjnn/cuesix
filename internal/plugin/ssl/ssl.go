@@ -103,15 +103,6 @@ func (t certTargets) fallbackIdentity() string {
 	return "fallback"
 }
 
-// This describes types of ssl replacements supported
-type targetType int
-
-const (
-	textTarget targetType = iota
-	fileTarget
-	acmeTarget
-)
-
 const (
 	SecretPrefix     = "$secret://"
 	ACMEPrefix       = "acme/"
@@ -200,6 +191,15 @@ func (p *SSLPlugin) certPairs(entry map[string]any) ([]string, []string) {
 	return certsList, keysList
 }
 
+// This describes types of ssl replacements supported
+type targetType int
+
+const (
+	textTarget targetType = iota
+	fileTarget
+	acmeTarget
+)
+
 func (p *SSLPlugin) collectTargets(entries []any) (map[targetType][]certTargets, error) {
 	if p == nil {
 		return nil, errors.New("ssl plugin is nil")
@@ -249,7 +249,7 @@ func (p *SSLPlugin) collectSinglePair(entry map[string]any, id string, snis []st
 	if !certOk || !keyOk {
 		return
 	}
-	targetKind := resolveTargetType(certText, keyText)
+	targetKind := resolvePairType(certText, keyText)
 	targets[targetKind] = append(targets[targetKind], certTargets{
 		sslId: id,
 		cert:  certText,
@@ -274,7 +274,7 @@ func (p *SSLPlugin) collectListPairs(entry map[string]any, id string, snis []str
 	entry["keys"] = keys
 	for idx, certText := range certs {
 		keyText := keys[idx]
-		targetKind := resolveTargetType(certText, keyText)
+		targetKind := resolvePairType(certText, keyText)
 		index := idx
 		targets[targetKind] = append(targets[targetKind], certTargets{
 			sslId: id,
@@ -289,52 +289,41 @@ func (p *SSLPlugin) collectListPairs(entry map[string]any, id string, snis []str
 	}
 }
 
-func resolveTargetType(certText, keyText string) targetType {
-	certKind, certSecret := resolveSecretKind(certText)
-	keyKind, keySecret := resolveSecretKind(keyText)
-	if (certSecret && certKind == secretUnknown) || (keySecret && keyKind == secretUnknown) {
+func resolvePairType(certText, keyText string) targetType {
+	certKind, certSecret := resolveSingleType(certText)
+	keyKind, keySecret := resolveSingleType(keyText)
+	if (certSecret && certKind == textTarget) || (keySecret && keyKind == textTarget) {
 		return textTarget
 	}
-	if certKind == secretACME {
+	if certKind == acmeTarget {
 		return acmeTarget
 	}
-	if certKind == secretFile {
-		return fileTarget
-	}
-	if keyKind == secretFile {
+	if certKind == fileTarget || keyKind == fileTarget {
 		return fileTarget
 	}
 	return textTarget
 }
 
-type secretKind string
-
-const (
-	secretUnknown secretKind = ""
-	secretACME    secretKind = "acme"
-	secretFile    secretKind = "file"
-)
+func resolveSingleType(value string) (targetType, bool) {
+	secret, ok := secretPayload(value)
+	if !ok {
+		return textTarget, false
+	}
+	switch {
+	case strings.HasPrefix(secret, ACMEPrefix):
+		return acmeTarget, true
+	case strings.HasPrefix(secret, FilePrefix):
+		return fileTarget, true
+	default:
+		return textTarget, true
+	}
+}
 
 func secretPayload(value string) (string, bool) {
 	if !strings.HasPrefix(value, SecretPrefix) {
 		return "", false
 	}
 	return strings.TrimPrefix(value, SecretPrefix), true
-}
-
-func resolveSecretKind(value string) (secretKind, bool) {
-	secret, ok := secretPayload(value)
-	if !ok {
-		return secretUnknown, false
-	}
-	switch {
-	case strings.HasPrefix(secret, ACMEPrefix):
-		return secretACME, true
-	case strings.HasPrefix(secret, FilePrefix):
-		return secretFile, true
-	default:
-		return secretUnknown, true
-	}
 }
 
 func (p *SSLPlugin) entrySNIs(entry map[string]any) []string {
