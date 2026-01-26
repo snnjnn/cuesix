@@ -6,12 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Schema Studio - Echo</title>
   <link rel="stylesheet" href="index.css">
-  <style>
-    .echo-pre {
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-  </style>
 </head>
 
 <body>
@@ -31,75 +25,88 @@
   </nav>
 
   <section class="section">
-    <div class="container is-widescreen">
-      <div class="columns">
-        <div class="column is-one-third">
-          <div class="box">
-            <h1 class="title is-5">Echo Request</h1>
-            <p class="mb-3">Send a GET or POST to this page. The server will reflect the headers and body below.</p>
-            <form method="post" action="echo.html">
-              <div class="field">
-                <label class="label">POST body</label>
-                <div class="control">
-                  <textarea class="textarea is-family-monospace" name="body" rows="8"
-                    placeholder="Type a payload to send with POST"></textarea>
-                </div>
-              </div>
-              <div class="field">
-                <div class="control">
-                  <button type="submit" class="button is-link">Send POST</button>
-                </div>
-              </div>
-            </form>
-            <div class="content is-small">
-              <p>Tip: try <code>curl -i -d 'hello=world' /schema/app/echo.html</code>.</p>
-            </div>
-          </div>
+    <div class="container">
+      <div class="box">
+        <h2 class="title is-5">Request Details</h2>
+        <div class="content">
+          <p><strong>Method:</strong> {{.Method}}</p>
+          <p><strong>Path:</strong> {{.Path}}</p>
         </div>
-        <div class="column">
-          <div class="box">
-            <h2 class="title is-5">Request Details</h2>
-            <div class="content">
-              <p><strong>Method:</strong> {{.Method}}</p>
-              <p><strong>Path:</strong> {{.Path}}</p>
-            </div>
 
-            <h3 class="title is-6">Headers</h3>
-            <table class="table is-fullwidth is-striped is-size-7">
-              <thead>
-                <tr>
-                  <th>Header</th>
-                  <th>Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{- range .Headers}}
-                <tr>
-                  <th>{{.Name}}</th>
-                  <td>
-                    {{- range $idx, $val := .Values -}}
-                    {{- if $idx}}, {{end -}}
-                    {{- $val -}}
+        <h3 class="title is-6">Headers</h3>
+        <table class="table is-fullwidth is-striped is-size-7">
+          <thead>
+            <tr>
+              <th>Header</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{- range .Headers}}
+            <tr>
+              <th>{{.Name}}</th>
+              <td>
+                <span class="is-flex is-flex-wrap-wrap is-align-items-center is-size-7">
+                  {{- range $idx, $val := .Values -}}
+                  {{- if $idx}}<span class="mr-1">,</span>{{end -}}
+                  <span class="is-flex is-align-items-center">
+                    <span class="mr-1" {{- if isHeaderTruncated $val}} title="{{ $val }}"{{- end -}}>
+                      {{- truncateHeaderValue $val -}}
+                    </span>
+                    {{- if isHeaderTruncated $val -}}
+                    <button type="button" class="button is-ghost is-small header-copy" data-full="{{ $val }}"
+                      aria-label="Copy full header value">
+                      <span class="icon is-small">
+                        <i class="fa-regular fa-copy" aria-hidden="true"></i>
+                      </span>
+                    </button>
                     {{- end -}}
-                  </td>
-                </tr>
-                {{- end}}
-              </tbody>
-            </table>
+                  </span>
+                  {{- end -}}
+                </span>
+              </td>
+            </tr>
+            {{- end}}
+          </tbody>
+        </table>
 
-            <h3 class="title is-6">Body</h3>
-            {{- if .BodyError}}
-            <div class="notification is-warning is-size-7">{{.BodyError}}</div>
-            {{- end}}
-            {{- if .BodyTruncated}}
-            <div class="notification is-warning is-size-7">Body truncated to 64KB.</div>
-            {{- end}}
-            <pre class="echo-pre is-size-7">{{.Body}}</pre>
-          </div>
-        </div>
+        <h3 class="title is-6">Body</h3>
+        {{- if .BodyError}}
+        <div class="notification is-warning is-size-7">{{.BodyError}}</div>
+        {{- end}}
+        {{- if .BodyTruncated}}
+        <div class="notification is-warning is-size-7">Body truncated to 64KB.</div>
+        {{- end}}
+        <pre class="is-size-7">{{.Body}}</pre>
       </div>
     </div>
   </section>
+  <script>
+    (() => {
+      const copyValue = async (value) => {
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+          throw new Error('Clipboard API is not available');
+        }
+        await navigator.clipboard.writeText(value);
+      };
+
+      document.addEventListener('click', async (event) => {
+        const button = event.target.closest('.header-copy');
+        if (!button) {
+          return;
+        }
+        const fullValue = button.dataset.full || '';
+        if (!fullValue) {
+          return;
+        }
+        try {
+          await copyValue(fullValue);
+        } catch (error) {
+          console.error('Failed to copy header value', error);
+        }
+      });
+    })();
+  </script>
 </body>
 
 </html>

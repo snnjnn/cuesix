@@ -12,6 +12,8 @@ swagger:
 app:
     # Build the web UI. Prerequisite:
     # cd internal/schema/app && npm install
+    rm internal/schema/app/dist/*.ttf || true
+    rm internal/schema/app/dist/*.woff2 || true
     npm --prefix internal/schema/app run build
 
 build: swagger app

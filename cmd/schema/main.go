@@ -41,7 +41,7 @@ func main() {
 	flag.StringVar(&baseURL, "url", "", "APISIX base URL (for example: http://127.0.0.1:9090)")
 	flag.StringVar(&apiKey, "api-key", "", "APISIX admin API key (optional)")
 	flag.BoolVar(&loose, "loose", false, "emit loose schema (keep APISIX ID flexibility)")
-	flag.BoolVar(&serve, "serve", false, "serve schema at /schema and playground at /schema/playground")
+	flag.BoolVar(&serve, "serve", false, "serve schema at /schema and playground at /schema/app")
 	flag.StringVar(&listen, "listen", "127.0.0.1:8082", "listen address for --serve")
 	flag.Parse()
 

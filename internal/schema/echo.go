@@ -10,6 +10,7 @@ import (
 )
 
 const echoMaxBodyBytes = 64 * 1024
+const echoHeaderValueMaxLen = 80
 
 type headerEntry struct {
 	Name   string
@@ -33,7 +34,11 @@ var (
 
 func loadEchoTemplate() (*template.Template, error) {
 	echoTemplateOnce.Do(func() {
-		echoTemplate, echoTemplateErr = template.ParseFS(playgroundFS, "app/dist/echo.html")
+		funcs := template.FuncMap{
+			"truncateHeaderValue": truncateHeaderValue,
+			"isHeaderTruncated":   isHeaderTruncated,
+		}
+		echoTemplate, echoTemplateErr = template.New("echo.html").Funcs(funcs).ParseFS(playgroundFS, "app/dist/echo.html")
 	})
 	return echoTemplate, echoTemplateErr
 }
@@ -109,4 +114,16 @@ func collectHeaders(header http.Header) []headerEntry {
 	})
 
 	return headers
+}
+
+func truncateHeaderValue(value string) string {
+	runes := []rune(value)
+	if len(runes) <= echoHeaderValueMaxLen {
+		return value
+	}
+	return string(runes[:echoHeaderValueMaxLen-1]) + "…"
+}
+
+func isHeaderTruncated(value string) bool {
+	return len([]rune(value)) > echoHeaderValueMaxLen
 }
