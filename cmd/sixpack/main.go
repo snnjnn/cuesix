@@ -25,6 +25,7 @@ import (
 	"github.com/warpcomdev/sixpack/internal/cursor"
 	"github.com/warpcomdev/sixpack/internal/dispatcher"
 	"github.com/warpcomdev/sixpack/internal/listener"
+	"github.com/warpcomdev/sixpack/internal/plugin"
 	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
 	"github.com/warpcomdev/sixpack/internal/schema"
 	"golang.org/x/sync/errgroup"
@@ -115,10 +116,10 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	sourceEnumerator := schema.NewSourcesEnumerator(logger, nil)
 	var enumerator compiler.Enumerator = sourceEnumerator
 	if pluginCfg.EnvFilename != "" {
-		enumerator = factory.NewEnvEnumerator(logger, enumerator, pluginCfg.EnvFilename)
+		enumerator = plugin.NewEnvEnumerator(logger, enumerator, pluginCfg.EnvFilename)
 	}
 	var (
-		fetcherInstance dispatcher.Fetcher = factory.BuiltinFetcher{Logger: logger, Enumerator: enumerator}
+		fetcherInstance dispatcher.Fetcher = compiler.NewFetcher(logger, enumerator)
 		schemaFetcher   *factory.SchemaFetcher
 	)
 	compFactory := factory.CompilerFactory{

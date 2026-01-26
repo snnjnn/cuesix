@@ -22,8 +22,11 @@ func NewSourcesEnumerator(logger *slog.Logger, enumerator compiler.Enumerator) *
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if enumerator == nil {
+		enumerator = compiler.NewEnumerator(logger)
+	}
 	return &SourcesEnumerator{
-		enumerator: compiler.DefaultEnumerator(logger, enumerator),
+		enumerator: enumerator,
 		sources:    make(map[string][]byte),
 	}
 }

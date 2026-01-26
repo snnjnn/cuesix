@@ -1,15 +1,15 @@
 # sixpack
 
-`sixpack` compiles Apache APISIX standalone configuration from YAML fragments, applies APISIX-aware merge rules, and can validate/reload APISIX.
+`sixpack` compila la configuracion standalone de Apache APISIX a partir de fragmentos YAML, aplica reglas de fusion conscientes de APISIX y puede validar/recargar APISIX.
 
-## APISIX standalone config in a nutshell
+## Configuracion standalone de APISIX en pocas palabras
 
-APISIX has a home directory (default `/usr/local/apisix`), where `conf/` lives. The standalone mode uses two different configuration files inside the `conf/` folder:
+APISIX tiene un directorio home (por defecto `/usr/local/apisix`), donde vive `conf/`. El modo standalone usa dos archivos de configuracion distintos dentro de la carpeta `conf/`:
 
-- `config.yaml`: static runtime config (ports, role, admin settings, etc).
-- `apisix.yaml` or `apisix.json`: dynamic config (routes, services, consumers, plugins).
+- `config.yaml`: config estatica de runtime (puertos, rol, ajustes de admin, etc).
+- `apisix.yaml` o `apisix.json`: config dinamica (rutas, servicios, consumidores, plugins).
 
-APISIX determines whether the dynamic config is YAML or JSON via `config.yaml`:
+APISIX determina si la config dinamica es YAML o JSON via `config.yaml`:
 
 ```yaml
 deployment:
@@ -20,13 +20,13 @@ deployment:
     config_provider: json|yaml
 ```
 
-APISIX also supports profiles via the `APISIX_PROFILE` environment variable. When set, APISIX loads `config-<profile>.yaml>` and `apisix-<profile>.[yaml|json]`, instead of `comfig.yaml` and `apisix.[yaml|json]`.
+APISIX tambien soporta perfiles via la variable de entorno `APISIX_PROFILE`. Cuando esta definida, APISIX carga `config-<profile>.yaml>` y `apisix-<profile>.[yaml|json]`, en lugar de `comfig.yaml` y `apisix.[yaml|json]`.
 
-## What sixpack does
+## Que hace sixpack
 
-Sixpack builds a unified dynamic config file, `apisix.[yaml|json]`, by reading many YAML configuration fragments from a list of input folders.
+Sixpack construye un archivo de config dinamica unificado, `apisix.[yaml|json]`, leyendo muchos fragmentos de configuracion YAML desde una lista de carpetas de entrada.
 
-Configuration files for apisix look like this:
+Los archivos de configuracion para apisix se ven asi:
 
 ```yaml
 ssls:
@@ -53,35 +53,35 @@ routes:
         type: roundrobin
 ```
 
-Sixpack can merge many of these files, by applying a set of **apisix-specific merge rules**:
+Sixpack puede fusionar muchos de estos archivos, aplicando un conjunto de **reglas de fusion especificas de apisix**:
 
-- Most apisix lists (like `ssls` or `routes`) can be merged by a key like **id**: lists containing objects with different ids can just be concatenated.
-- Some lists, like `consumers`, have a different merge `key` (`name` instead of `id`).
-- Tipically, two lists cannot be merged if they both contain an item with the same key (`id`, `user`, whatever).
-- However, some other lists **can** be merged. For instance, `consumers` lists that contain the same `consumer` can we merged if the `consumer` in both lists only differ in the `credentials` attribute. The consumer's `credentials` attribute is a sublist that will itself be merged.
+- La mayoria de las listas de apisix (como `ssls` o `routes`) se pueden fusionar por una clave como **id**: las listas que contienen objetos con ids diferentes se pueden concatenar.
+- Algunas listas, como `consumers`, tienen una `key` de fusion distinta (`name` en lugar de `id`).
+- Tipicamente, dos listas no se pueden fusionar si ambas contienen un elemento con la misma clave (`id`, `user`, lo que sea).
+- Sin embargo, algunas otras listas **si** se pueden fusionar. Por ejemplo, las listas de `consumers` que contienen el mismo `consumer` se pueden fusionar si el `consumer` en ambas listas solo difiere en el atributo `credentials`. El atributo `credentials` del consumer es una sublista que a su vez se fusiona.
 
-The full set of merge rules for lists is maintained in the [compiler.go](internal/compiler/compiler.go) file.
+El conjunto completo de reglas de fusion para listas se mantiene en el archivo [compiler.go](internal/compiler/compiler.go).
 
-By default, sixpack will generate an aggregated `apisix.json` (or `apisix-${APISIX_PROFILE}.json`). It will not honor the value of `deployment.role_data_place.config_provider`. If you need the output to be yaml, use the `--plugin-yaml` flag.
+Por defecto, sixpack generara un `apisix.json` agregado (o `apisix-${APISIX_PROFILE}.json`). No respetara el valor de `deployment.role_data_place.config_provider`. Si necesitas que la salida sea yaml, usa el flag `--plugin-yaml`.
 
-## Features
+## Funcionalidades
 
-Besides merging files, sixpack implements some quality-of-life features that expand the expressivity of the input yaml files
+Ademas de fusionar archivos, sixpack implementa algunas funcionalidades de calidad de vida que amplian la expresividad de los archivos yaml de entrada.
 
-### Certificate inlining
+### Inlining de certificados
 
-The `--plugin-ssl-path` (repeatable) flag activates the SSL plugin. This plugin scans `ssls` entries for `$secret://file/...` or `$secret://acme/...` values in both `cert`/`key` and `certs`/`keys`.
+El flag `--plugin-ssl-path` (repetible) activa el plugin SSL. Este plugin escanea entradas de `ssls` para valores `$secret://file/...` o `$secret://acme/...` tanto en `cert`/`key` como en `certs`/`keys`.
 
-- If a certificate or key URL is `$secret://file/...`, it searches for the given file name in the folders specified with the `--plugin-ssl-path` flag, and embeds them into the yaml. Missing files are replaced with the fallback certificate/key configured via `--plugin-ssl-fallback-cert`/`--plugin-ssl-fallback-key`.
+- Si una URL de certificado o clave es `$secret://file/...`, busca el nombre de archivo dado en las carpetas especificadas con el flag `--plugin-ssl-path`, y los incrusta en el yaml. Los archivos faltantes se reemplazan con el certificado/clave fallback configurado via `--plugin-ssl-fallback-cert`/`--plugin-ssl-fallback-key`.
 
-For example, a config snippet like:
+Por ejemplo, un snippet de config como:
 
 ```yaml
 ssls:
   - cert: "$secret://file/tls-domain-name.pem"
 ```
 
-Will get replaced by:
+Se reemplazara por:
 
 ```yaml
 ssls:
@@ -91,20 +91,20 @@ ssls:
       -----END CERTIFICATE-----
 ```
 
-- If the certificate URL is `$secret://acme/...`, it will try to generate a new ACME certificate.
-  - Acme certificates and SANs is a complicated story, so this mode only works when the `ssls` entry has a single `sni`.
-  - The `key` entry is ignored, it is overriden with the acme key.
-  - If ACME is unavailable or fails, the fallback certificate/key is used.
+- Si la URL del certificado es `$secret://acme/...`, intentara generar un nuevo certificado ACME.
+  - Los certificados ACME y los SANs son un tema complicado, asi que este modo solo funciona cuando la entrada `ssls` tiene un unico `sni`.
+  - La entrada `key` se ignora, se sobrescribe con la key de acme.
+  - Si ACME no esta disponible o falla, se usa el certificado/clave fallback.
 
-If an `ssls` entry has malformed `cert`/`key` or `certs`/`keys` (wrong types or list length mismatch), it is left untouched.
+Si una entrada `ssls` tiene `cert`/`key` o `certs`/`keys` mal formados (tipos incorrectos o longitudes de lista no coinciden), se deja intacta.
 
-### Config-wide transformations
+### Transformaciones a nivel de configuracion
 
-Sometimes you might need to post-process `apisix` snippets. For instance, adding a particular plugin to all routes that match a given criteria.
+A veces necesitas post-procesar snippets de `apisix`. Por ejemplo, agregar un plugin particular a todas las rutas que cumplen cierto criterio.
 
-The `jq` plugin allows you to embed jq-based transformations into your config snippets. Those transformations will be applied across the whole merged config file.
+El plugin `jq` te permite incrustar transformaciones basadas en jq dentro de tus snippets de configuracion. Esas transformaciones se aplicaran sobre todo el archivo de config fusionado.
 
-For example, say you need to enable basic auth for all routes that begin with `/admin/`. After enabling transformations with the `--plugin-jq`  flag, you can use the following yaml snippet:
+Por ejemplo, si necesitas habilitar basic auth para todas las rutas que comienzan con `/admin/`. Luego de habilitar transformaciones con el flag `--plugin-jq`, puedes usar el siguiente snippet yaml:
 
 ```yaml
 jq:
@@ -121,120 +121,114 @@ jq:
       ))
 ```
 
-The transformations are merged and applied in descending priority (`prio`) order. The order within the same priority is undefined.
+Las transformaciones se fusionan y se aplican en orden descendente de prioridad (`prio`). El orden dentro de la misma prioridad es indefinido.
 
-Jq transformations must always return the full config object, they cannot be partial.
+Las transformaciones jq siempre deben devolver el objeto de configuracion completo, no pueden ser parciales.
 
-### YAML provider
+### Proveedor YAML
 
-By default, apisix produces json output, You can use the `--plugin-yaml` flag to make it produce yaml instead.
+Por defecto, apisix produce salida json. Puedes usar el flag `--plugin-yaml` para que produzca yaml en su lugar.
 
-Apisix requires the `apisix.yaml` to terminate with the comment `#END`. The sixpack yaml plugin takes care of this.
+Apisix requiere que `apisix.yaml` termine con el comentario `#END`. El plugin yaml de sixpack se encarga de esto.
 
-### Validation
+### Validacion
 
-When running in server mode, sixpack validates the files produced, before replacing the apisix config file.
+Cuando se ejecuta en modo servidor, sixpack valida los archivos producidos antes de reemplazar el archivo de config de apisix.
 
-Validation uses the `apisix test` command and is automatic. It works for json and yaml files, and it does not require any additional flag.
+La validacion usa el comando `apisix test` y es automatica. Funciona para archivos json y yaml, y no requiere flags adicionales.
 
-When validation fails, an error message is logged. If it doesn't fail, the config file is replaced.
+Cuando la validacion falla, se loguea un mensaje de error. Si no falla, el archivo de config se reemplaza.
 
-To enable schema validation from APISIX, you need to provide the URL of the apisix control endpoint with the flag `--apisix-control-url http://127.0.0.1:9090`.
+Para habilitar la validacion de esquema de APISIX, debes proporcionar la URL del endpoint de control de apisix con el flag `--apisix-control-url http://127.0.0.1:9090`.
 
-### Schema endpoint
+### Endpoint de esquema
 
-In server mode, the metrics server also exposes `GET /schema`. It returns a
-complete JSON Schema for APISIX standalone configs, synthesized from the live
-control‑API schema and the standalone top‑level mapping.
+En modo servidor, el servidor de metricas tambien expone `GET /schema`. Devuelve un JSON Schema completo para configuraciones standalone de APISIX, sintetizado a partir del esquema en vivo del control API y el mapping de nivel superior del standalone.
 
-Implementation details live in `internal/schema/README.md`.
+Los detalles de implementacion estan en `internal/schema/README.md`.
 
-### Schema CLI and fixtures
+### CLI de esquema y fixtures
 
-The `cmd/schema` CLI downloads the live APISIX schema and prints the normalized
-schema to stdout. It defaults to the strict variant; use `--loose` to keep
-APISIX's permissive ID rules.
+La CLI `cmd/schema` descarga el esquema en vivo de APISIX e imprime el esquema normalizado a stdout. Por defecto usa la variante estricta; usa `--loose` para mantener las reglas permisivas de IDs de APISIX.
 
 ```bash
 go run ./cmd/schema --url http://127.0.0.1:9090 > internal/schema/processed_schema.json
 go run ./cmd/schema --url http://127.0.0.1:9090 --loose > internal/schema/loose_processed_schema.json
 ```
 
-To refresh the raw schema fixture used by tests:
+Para refrescar el fixture del esquema crudo usado por los tests:
 
 ```bash
 curl -s http://127.0.0.1:9090/v1/schema > internal/schema/apisix_schema.json
 ```
 
-The `internal/schema` tests compare the processed strict schema against
-`internal/schema/processed_schema.json` and the loose schema against
-`internal/schema/loose_processed_schema.json`.
+Los tests de `internal/schema` comparan el esquema estricto procesado contra `internal/schema/processed_schema.json` y el esquema laxo contra `internal/schema/loose_processed_schema.json`.
 
-## Run modes
+## Modos de ejecucion
 
-Standalone (default): compiles and prints the merged config to stdout. Can optionally use schema validation if `--apisix-use-schema` is provided and `--apisix-control-url` points to the control URL of a running apisix instance. Will not do post-build validation (`apisix test`)
+Standalone (por defecto): compila e imprime la config fusionada a stdout. Opcionalmente puede usar validacion de esquema si se proporciona `--apisix-use-schema` y `--apisix-control-url` apunta a la URL de control de una instancia de apisix en ejecucion. No hace validacion post-build (`apisix test`).
 
-Server mode (`sixpack serve`): exposes `POST /compile`, `GET /live`, and `GET /ready`, runs the pipeline, validates the result, and writes the config file on success. `/ready` returns 200 only after a successful config has been written at least once. Certmagic automatically manages its own HTTP server for ACME challenges on the configured port.
+Modo servidor (`sixpack serve`): expone `POST /compile`, `GET /live` y `GET /ready`, ejecuta el pipeline, valida el resultado y escribe el archivo de config en caso de exito. `/ready` devuelve 200 solo despues de que se haya escrito una configuracion exitosa al menos una vez. Certmagic gestiona automaticamente su propio servidor HTTP para desafios ACME en el puerto configurado.
 
-## Flags and environment variables
+## Flags y variables de entorno
 
-All flags can be provided as environment variables.
+Todos los flags se pueden proporcionar como variables de entorno.
 
-Input and runtime mode:
-- `--listen` / `SIXPACK_LISTEN`: listen address for server mode (default `127.0.0.1:8080`).
-- `--metrics` / `SIXPACK_METRICS_LISTEN`: listen address for `/metrics` (empty disables).
-- `--server-read-header-timeout` / `SIXPACK_SERVER_READ_HEADER_TIMEOUT`: HTTP server read header timeout (default `5s`).
-- `--server-read-timeout` / `SIXPACK_SERVER_READ_TIMEOUT`: HTTP server read timeout (default `10s`).
-- `--server-write-timeout` / `SIXPACK_SERVER_WRITE_TIMEOUT`: HTTP server write timeout (default `10s`).
-- `--server-idle-timeout` / `SIXPACK_SERVER_IDLE_TIMEOUT`: HTTP server idle timeout (default `60s`).
-- `--server-shutdown-timeout` / `SIXPACK_SERVER_SHUTDOWN_TIMEOUT`: HTTP server shutdown timeout (default `10s`).
-- `--input` (repeatable) / `SIXPACK_INPUT_DIRS` (comma-separated): input directories with YAML fragments.
-- `--cooldown` / `SIXPACK_COOLDOWN`: minimum delay between queued compile runs.
-- `--dry-run` / `SIXPACK_DRY_RUN` (bool): run pipeline without writing config.
+Entrada y modo de ejecucion:
+- `--listen` / `SIXPACK_LISTEN`: direccion de escucha para modo servidor (por defecto `127.0.0.1:8080`).
+- `--metrics` / `SIXPACK_METRICS_LISTEN`: direccion de escucha para `/metrics` (vacio lo deshabilita).
+- `--server-read-header-timeout` / `SIXPACK_SERVER_READ_HEADER_TIMEOUT`: timeout de lectura de headers HTTP del servidor (por defecto `5s`).
+- `--server-read-timeout` / `SIXPACK_SERVER_READ_TIMEOUT`: timeout de lectura HTTP del servidor (por defecto `10s`).
+- `--server-write-timeout` / `SIXPACK_SERVER_WRITE_TIMEOUT`: timeout de escritura HTTP del servidor (por defecto `10s`).
+- `--server-idle-timeout` / `SIXPACK_SERVER_IDLE_TIMEOUT`: timeout de idle HTTP del servidor (por defecto `60s`).
+- `--server-shutdown-timeout` / `SIXPACK_SERVER_SHUTDOWN_TIMEOUT`: timeout de apagado del servidor HTTP (por defecto `10s`).
+- `--input` (repetible) / `SIXPACK_INPUT_DIRS` (separado por comas): directorios de entrada con fragmentos YAML.
+- `--cooldown` / `SIXPACK_COOLDOWN`: demora minima entre ejecuciones de compilacion encoladas.
+- `--dry-run` / `SIXPACK_DRY_RUN` (bool): ejecuta el pipeline sin escribir la config.
 
-APISIX paths and validation:
-- `--apisix-home` / `SIXPACK_APISIX_HOME`: APISIX home directory (default `/usr/local/apisix`).
-- `--mirror-dir` / `SIXPACK_MIRROR_DIR`: optional mirror directory for validation; if empty, sixpack creates a temp mirror.
-- `--keep-mirror` / `SIXPACK_KEEP_MIRROR`: do not clean and re-populate the mirror folder on startup.
-- `--validation-timeout` / `SIXPACK_VALIDATION_TIMEOUT`: timeout for `apisix test` validation.
-- `--apisix-use-schema` / `SIXPACK_APISIX_USE_SCHEMA`: validate config snippets against the live APISIX schema (requires `--apisix-control-url`).
+Rutas de APISIX y validacion:
+- `--apisix-home` / `SIXPACK_APISIX_HOME`: directorio home de APISIX (por defecto `/usr/local/apisix`).
+- `--mirror-dir` / `SIXPACK_MIRROR_DIR`: directorio mirror opcional para validacion; si esta vacio, sixpack crea un mirror temporal.
+- `--keep-mirror` / `SIXPACK_KEEP_MIRROR`: no limpia ni repuebla la carpeta mirror al iniciar.
+- `--validation-timeout` / `SIXPACK_VALIDATION_TIMEOUT`: timeout para la validacion `apisix test`.
+- `--apisix-use-schema` / `SIXPACK_APISIX_USE_SCHEMA`: valida snippets de config contra el esquema en vivo de APISIX (requiere `--apisix-control-url`).
 
 APISIX Control API:
-- `--apisix-control-url` / `SIXPACK_APISIX_CONTROL_URL`: APISIX Control API base URL (default `http://127.0.0.1:9090`).
-- `--apisix-api-key` / `SIXPACK_APISIX_API_KEY`: Control API key for schema requests.
-- `--apisix-api-timeout` / `SIXPACK_APISIX_API_TIMEOUT`: timeout for Control API HTTP requests.
-- `--retry-max` / `SIXPACK_RETRY_MAX`: number of API request retries on failure.
-- `--retry-initial` / `SIXPACK_RETRY_INITIAL`: initial backoff before the first retry.
-- `--retry-max-delay` / `SIXPACK_RETRY_MAX_DELAY`: cap for retry backoff.
-- `--retry-multiplier` / `SIXPACK_RETRY_MULTIPLIER`: backoff multiplier between retries.
+- `--apisix-control-url` / `SIXPACK_APISIX_CONTROL_URL`: URL base de la Control API de APISIX (por defecto `http://127.0.0.1:9090`).
+- `--apisix-api-key` / `SIXPACK_APISIX_API_KEY`: API key de Control API para solicitudes de esquema.
+- `--apisix-api-timeout` / `SIXPACK_APISIX_API_TIMEOUT`: timeout para solicitudes HTTP a la Control API.
+- `--retry-max` / `SIXPACK_RETRY_MAX`: numero de reintentos de API en falla.
+- `--retry-initial` / `SIXPACK_RETRY_INITIAL`: backoff inicial antes del primer reintento.
+- `--retry-max-delay` / `SIXPACK_RETRY_MAX_DELAY`: tope para el backoff de reintentos.
+- `--retry-multiplier` / `SIXPACK_RETRY_MULTIPLIER`: multiplicador de backoff entre reintentos.
 
 Plugins:
-- `--plugin-ssl` / `SIXPACK_PLUGIN_SSL`: enable ssl pre-render plugin (required to process `$secret://acme/` without certmagic).
-- `--plugin-jq` / `SIXPACK_PLUGIN_JQ`: enable jq post-render plugin.
-- `--plugin-jq-timeout` / `SIXPACK_PLUGIN_JQ_TIMEOUT`: timeout for jq transforms.
-- `--plugin-ssl-path` (repeatable) / `SIXPACK_PLUGIN_SSL_PATHS` (comma-separated): search paths for SSL certificate files.
-- `--plugin-ssl-acme-timeout` / `SIXPACK_PLUGIN_SSL_ACME_TIMEOUT`: timeout for ssl plugin ACME requests (default `10s`, must be positive).
-- `--plugin-ssl-fallback-cert` / `SIXPACK_PLUGIN_SSL_FALLBACK_CERT`: ssl plugin fallback certificate path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
-- `--plugin-ssl-fallback-key` / `SIXPACK_PLUGIN_SSL_FALLBACK_KEY`: ssl plugin fallback key path (default `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
-- `--plugin-env` / `SIXPACK_PLUGIN_ENV`: per-directory env file name used for APISIX `${{ VAR }}` substitutions in input snippets.
-- `--plugin-yaml` / `SIXPACK_PLUGIN_YAML`: enable YAML post-render plugin (use when `config_provider: yaml`).
+- `--plugin-ssl` / `SIXPACK_PLUGIN_SSL`: habilita el plugin SSL de pre-render (requerido para procesar `$secret://acme/` sin certmagic).
+- `--plugin-jq` / `SIXPACK_PLUGIN_JQ`: habilita el plugin jq de post-render.
+- `--plugin-jq-timeout` / `SIXPACK_PLUGIN_JQ_TIMEOUT`: timeout para transformaciones jq.
+- `--plugin-ssl-path` (repetible) / `SIXPACK_PLUGIN_SSL_PATHS` (separado por comas): rutas de busqueda para archivos de certificados SSL.
+- `--plugin-ssl-acme-timeout` / `SIXPACK_PLUGIN_SSL_ACME_TIMEOUT`: timeout para requests ACME del plugin ssl (por defecto `10s`, debe ser positivo).
+- `--plugin-ssl-fallback-cert` / `SIXPACK_PLUGIN_SSL_FALLBACK_CERT`: ruta del certificado fallback del plugin ssl (por defecto `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.crt`).
+- `--plugin-ssl-fallback-key` / `SIXPACK_PLUGIN_SSL_FALLBACK_KEY`: ruta de la key fallback del plugin ssl (por defecto `${APISIX_HOME}/conf/cert/ssl_PLACE_HOLDER.key`).
+- `--plugin-env` / `SIXPACK_PLUGIN_ENV`: nombre del archivo env por directorio usado para sustituciones `${{ VAR }}` de APISIX en snippets de entrada.
+- `--plugin-yaml` / `SIXPACK_PLUGIN_YAML`: habilita el plugin YAML de post-render (usar cuando `config_provider: yaml`).
 
-Certmagic (serve only):
-- `--certmagic` / `SIXPACK_CERTMAGIC` (bool): enable certmagic ACME manager.
-- `--certmagic-provider` (repeatable) / `SIXPACK_CERTMAGIC_PROVIDERS` (comma-separated): provider specs (`name|email|ca`).
-- `--certmagic-default-provider` / `SIXPACK_CERTMAGIC_DEFAULT_PROVIDER`: default provider name.
-- `--certmagic-data-dir` / `SIXPACK_CERTMAGIC_DATA_DIR`: certmagic data directory (required when enabled).
-- `--certmagic-challenge-port` / `SIXPACK_CERTMAGIC_CHALLENGE_PORT`: HTTP-01 challenge port (default `8080`).
-- `--certmagic-timeout` / `SIXPACK_CERTMAGIC_TIMEOUT`: default certificate obtain timeout.
-- `--certmagic-watch-interval` / `SIXPACK_CERTMAGIC_WATCH_INTERVAL`: refresh interval for certmagic certificate updates (default `1h`).
-- `--certmagic-untracked-interval` / `SIXPACK_CERTMAGIC_UNTRACKED_INTERVAL`: interval for removing untracked certmagic entries (default `24h`).
-- `--certmagic-untracked-grace` / `SIXPACK_CERTMAGIC_UNTRACKED_GRACE`: grace period for removing untracked certmagic entries (default `168h`).
-- `--certmagic-cleanup-interval` / `SIXPACK_CERTMAGIC_EXPIRED_INTERVAL`: interval for removing expired certmagic entries (default `24h`).
-- `--certmagic-expired-grace` / `SIXPACK_CERTMAGIC_EXPIRED_GRACE`: grace period for removing expired certmagic entries (default `125h`).
+Certmagic (solo serve):
+- `--certmagic` / `SIXPACK_CERTMAGIC` (bool): habilita el manager ACME certmagic.
+- `--certmagic-provider` (repetible) / `SIXPACK_CERTMAGIC_PROVIDERS` (separado por comas): specs de proveedor (`name|email|ca`).
+- `--certmagic-default-provider` / `SIXPACK_CERTMAGIC_DEFAULT_PROVIDER`: nombre del proveedor por defecto.
+- `--certmagic-data-dir` / `SIXPACK_CERTMAGIC_DATA_DIR`: directorio de datos de certmagic (requerido cuando esta habilitado).
+- `--certmagic-challenge-port` / `SIXPACK_CERTMAGIC_CHALLENGE_PORT`: puerto de desafio HTTP-01 (por defecto `8080`).
+- `--certmagic-timeout` / `SIXPACK_CERTMAGIC_TIMEOUT`: timeout por defecto para obtener certificados.
+- `--certmagic-watch-interval` / `SIXPACK_CERTMAGIC_WATCH_INTERVAL`: intervalo de refresco para actualizaciones de certificados certmagic (por defecto `1h`).
+- `--certmagic-untracked-interval` / `SIXPACK_CERTMAGIC_UNTRACKED_INTERVAL`: intervalo para remover entradas certmagic no rastreadas (por defecto `24h`).
+- `--certmagic-untracked-grace` / `SIXPACK_CERTMAGIC_UNTRACKED_GRACE`: periodo de gracia para remover entradas certmagic no rastreadas (por defecto `168h`).
+- `--certmagic-cleanup-interval` / `SIXPACK_CERTMAGIC_EXPIRED_INTERVAL`: intervalo para remover entradas certmagic expiradas (por defecto `24h`).
+- `--certmagic-expired-grace` / `SIXPACK_CERTMAGIC_EXPIRED_GRACE`: periodo de gracia para remover entradas certmagic expiradas (por defecto `125h`).
 
-When an ACME certificate cannot be obtained, sixpack will use the SSL plugin fallback certificate to keep the `ssls` entry valid. Certmagic keeps retrying, and when a certificate becomes available sixpack triggers a new compile cycle.
+Cuando no se puede obtener un certificado ACME, sixpack usara el certificado fallback del plugin SSL para mantener valida la entrada `ssls`. Certmagic sigue reintentando, y cuando un certificado esta disponible sixpack dispara un nuevo ciclo de compilacion.
 
-## Usage
+## Uso
 
 Standalone:
 
@@ -242,7 +236,7 @@ Standalone:
 sixpack compile --input ./configs --input ./more-configs
 ```
 
-Server mode:
+Modo servidor:
 
 ```bash
 sixpack serve \
@@ -261,4 +255,4 @@ docker build -t sixpack:latest .
 
 ## Layout
 
-See `AGENTS.md` for module responsibilities and documentation requirements.
+Ver `AGENTS.md` para responsabilidades de modulos y requisitos de documentacion.
