@@ -1,0 +1,179 @@
+basePath: /schema
+definitions:
+  schema.ValidationIssue:
+    properties:
+      absoluteKeywordLocation:
+        type: string
+      detail:
+        type: string
+      instanceLocation:
+        type: string
+      keywordLocation:
+        type: string
+      message:
+        type: string
+      schemaLocation:
+        type: string
+    type: object
+  schema.ValidationResponse:
+    properties:
+      error: {}
+      errors:
+        items:
+          $ref: '#/definitions/schema.ValidationIssue'
+        type: array
+      valid:
+        type: boolean
+    type: object
+info:
+  contact: {}
+  description: 'Control plane helpers for introspecting the APISIX schema and validating
+    source fragments. The API exposes a few cached read endpoints; clients should
+    revalidate changes by reusing the ETag/Last-Modified headers that the server always
+    emits and honoring `Cache-Control: public, max-age=0, must-revalidate`.'
+  title: Sixpack Schema Control API
+  version: "1.0"
+paths:
+  /json/:
+    get:
+      description: <p>Returns the cached normalized schema document that backs all
+        validation endpoints.</p>
+      produces:
+      - application/schema+json
+      responses:
+        "200":
+          description: Normalized JSON Schema document
+          schema:
+            type: string
+      summary: Retrieve the normalized APISIX JSON Schema
+      tags:
+      - Schema
+  /sources:
+    get:
+      description: |-
+        <p>Returns the list of discovered fragment paths.</p>
+        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+      parameters:
+      - description: Previously returned ETag used to skip unnecessary downloads
+        in: header
+        name: If-None-Match
+        type: string
+      - description: RFC1123 timestamp to compare against the `Last-Modified` header
+        in: header
+        name: If-Modified-Since
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of available source paths
+          schema:
+            items:
+              type: string
+            type: array
+        "404":
+          description: No sources found
+          schema:
+            type: string
+      summary: List known source fragments
+      tags:
+      - Schema
+  /sources/{path}:
+    get:
+      description: |-
+        <p>Returns the raw YAML payload for a given path.</p>
+        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+      parameters:
+      - description: Relative fragment path (e.g., `routes/example.yaml`); omit to
+          list paths.
+        in: path
+        name: path
+        type: string
+      - description: Previously returned ETag used to skip unnecessary downloads
+        in: header
+        name: If-None-Match
+        type: string
+      - description: RFC1123 timestamp to compare against the `Last-Modified` header
+        in: header
+        name: If-Modified-Since
+        type: string
+      produces:
+      - application/yaml
+      responses:
+        "200":
+          description: YAML fragment content
+          schema:
+            type: string
+        "404":
+          description: Fragment not found
+          schema:
+            type: string
+      summary: Fetch a single fragment
+      tags:
+      - Schema
+  /validate:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        <p>Posts JSON or YAML content along with optional query params used as environment overrides.</p>
+        <p>Any number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as `?DOMAIN=apisix.org` or `?consumer=bob`.</p>
+        <p>Example URLs: `/schema/validate/routes/example.yaml?DOMAIN=apisix.org&consumer=bob`.</p>
+        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+      parameters:
+      - description: JSON or YAML payload to validate
+        in: body
+        name: body
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Validation result
+          schema:
+            $ref: '#/definitions/schema.ValidationResponse'
+        "400":
+          description: Malformed or empty payload
+          schema:
+            $ref: '#/definitions/schema.ValidationResponse'
+      summary: Validate an inline payload against the schema
+      tags:
+      - Schema
+  /validate/{path}:
+    get:
+      description: |-
+        <p>Validates the fragment referenced by the request path while treating every query parameter as an environment override.</p>
+        <p>Any number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as `?DOMAIN=apisix.org` or `?consumer=bob`.</p>
+        <p>Example URLs: `/schema/validate/routes/example.yaml?DOMAIN=apisix.org&consumer=bob`.</p>
+        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+      parameters:
+      - description: Relative fragment path to validate
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: ETag from a prior validation response
+        in: header
+        name: If-None-Match
+        type: string
+      - description: Timestamp to compare against the validation's Last-Modified
+        in: header
+        name: If-Modified-Since
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Validation result
+          schema:
+            $ref: '#/definitions/schema.ValidationResponse'
+        "404":
+          description: Fragment not found
+          schema:
+            $ref: '#/definitions/schema.ValidationResponse'
+      summary: Validate a cached source fragment with environment overrides
+      tags:
+      - Schema
+swagger: "2.0"
