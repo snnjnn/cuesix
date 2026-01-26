@@ -21,13 +21,13 @@ import (
 	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
 	"github.com/warpcomdev/sixpack/cmd/sixpack/control"
 	"github.com/warpcomdev/sixpack/cmd/sixpack/factory"
+	"github.com/warpcomdev/sixpack/internal/app"
 	"github.com/warpcomdev/sixpack/internal/compiler"
 	"github.com/warpcomdev/sixpack/internal/cursor"
 	"github.com/warpcomdev/sixpack/internal/dispatcher"
 	"github.com/warpcomdev/sixpack/internal/listener"
 	"github.com/warpcomdev/sixpack/internal/plugin"
 	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
-	"github.com/warpcomdev/sixpack/internal/schema"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -113,7 +113,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	}
 
 	// Build enumerator, fetcher, and compiler factory
-	sourceEnumerator := schema.NewSourcesEnumerator(logger, nil)
+	sourceEnumerator := app.NewSourcesEnumerator(logger, nil)
 	var enumerator compiler.Enumerator = sourceEnumerator
 	if pluginCfg.EnvFilename != "" {
 		enumerator = plugin.NewEnvEnumerator(logger, enumerator, pluginCfg.EnvFilename)
@@ -286,7 +286,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	var metricsServer *http.Server
 	if strings.TrimSpace(serverCfg.MetricsAddr) != "" {
 		schemaClient := &http.Client{Timeout: apiControlCfg.Timeout}
-		validationHandler := schema.NewValidationHandler(logger, apiControlCfg.URL, apiControlCfg.APIKey, schemaClient, apiControlCfg.Timeout, false, sourceEnumerator, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
+		validationHandler := app.NewValidationHandler(logger, apiControlCfg.URL, apiControlCfg.APIKey, schemaClient, apiControlCfg.Timeout, false, sourceEnumerator, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
 		metricsMux := http.NewServeMux()
 		control.RegisterAPI(metricsMux, validationHandler)
 		metricsMux.Handle("GET /metrics", promhttp.Handler())

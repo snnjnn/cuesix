@@ -12,9 +12,9 @@ swagger:
 app:
     # Build the web UI. Prerequisite:
     # cd internal/schema/app && npm install
-    rm internal/schema/app/dist/*.ttf || true
-    rm internal/schema/app/dist/*.woff2 || true
-    npm --prefix internal/schema/app run build
+    rm internal/app/assets/dist/*.ttf || true
+    rm internal/app/assets/dist/*.woff2 || true
+    npm --prefix internal/app/assets run build
 
 build: swagger app
     GOEXPERIMENT={{GOEXPERIMENT}} CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ./bin/sixpack ./cmd/sixpack

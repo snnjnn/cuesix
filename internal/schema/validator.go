@@ -1,11 +1,8 @@
 package schema
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -81,27 +78,6 @@ func (p ValidationProbe) Validate(schema *jsonschema.Schema, defaults ParsedSche
 
 func ApplyDefaults(schema ParsedSchema, instance any) {
 	applyDefaults(schema, instance, schema.Parsed, make(map[string]struct{}))
-}
-
-func decodeValidationRequest(w http.ResponseWriter, r *http.Request) (ValidationProbe, error) {
-	query := r.URL.Query()
-	env := make(map[string]string)
-	for k := range query {
-		env[k] = r.URL.Query().Get(k)
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, schemaMaxBytes)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		return ValidationProbe{}, err
-	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return ValidationProbe{}, errors.New("empty payload")
-	}
-	return ValidationProbe{
-		Payload: body,
-		IsYaml:  false,
-		Env:     env,
-	}, nil
 }
 
 func applyDefaults(schema ParsedSchema, instance any, root any, seen map[string]struct{}) {

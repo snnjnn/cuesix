@@ -17,6 +17,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/warpcomdev/sixpack/cmd/sixpack/control"
 	_ "github.com/warpcomdev/sixpack/cmd/sixpack/docs"
+	"github.com/warpcomdev/sixpack/internal/app"
 	"github.com/warpcomdev/sixpack/internal/schema"
 )
 
@@ -56,7 +57,7 @@ func main() {
 	// @BasePath /
 	if serve {
 		schemaClient := &http.Client{Timeout: 10 * time.Second}
-		schemaMux := schema.NewValidationHandler(logger, baseURL, apiKey, schemaClient, 10*time.Second, false, nil, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
+		schemaMux := app.NewValidationHandler(logger, baseURL, apiKey, schemaClient, 10*time.Second, false, nil, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
 		mux := http.NewServeMux()
 		control.RegisterAPI(mux, schemaMux)
 		server := &http.Server{

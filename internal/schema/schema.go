@@ -20,8 +20,8 @@ import (
 )
 
 const schemaVersion = "https://json-schema.org/draft/2020-12/schema"
-const schemaMaxBytes = 16 << 20
 const schemaRetryDelay = time.Second
+const SchemaMaxBytes = 16 << 20
 
 type ResourceKind string
 
@@ -90,7 +90,7 @@ func FetchSchemaUntil(ctx context.Context, logger *slog.Logger, client *http.Cli
 		if err != nil {
 			return err
 		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, schemaMaxBytes))
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, SchemaMaxBytes))
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		if readErr != nil {

@@ -1,4 +1,4 @@
-package schema
+package app
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcomdev/sixpack/internal/schema"
 )
 
 // handles calls to /validate
@@ -32,9 +33,9 @@ type ValidationHandler struct {
 	Loose      bool
 	Backoff    backoff.BackOff
 	// Caches
-	cached    NormalizedSchema
+	cached    schema.NormalizedSchema
 	compiled  *jsonschema.Schema
-	schemaDoc ParsedSchema
+	schemaDoc schema.ParsedSchema
 }
 
 func NewValidationHandler(logger *slog.Logger, baseURL, apiKey string, client *http.Client, timeout time.Duration, loose bool, sources *SourcesEnumerator, bo backoff.BackOff) *ValidationHandler {
@@ -136,8 +137,8 @@ func (vh *ValidationHandler) GetSource() http.Handler {
 // @Param path path string true "Relative fragment path to validate"
 // @Param If-None-Match header string false "ETag from a prior validation response"
 // @Param If-Modified-Since header string false "Timestamp to compare against the validation's Last-Modified"
-// @Success 200 {object} ValidationResponse "Validation result"
-// @Failure 404 {object} ValidationResponse "Fragment not found"
+// @Success 200 {object} schema.ValidationResponse "Validation result"
+// @Failure 404 {object} schema.ValidationResponse "Fragment not found"
 // @Router /validate/{path} [get]
 func (vh *ValidationHandler) ValidateSource() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -166,14 +167,14 @@ func (vh *ValidationHandler) ValidateSource() http.Handler {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		if path == "__sample__" {
 			// DEBUG
-			writeValidationJSON(w, http.StatusOK, ValidationResponse{
+			writeValidationJSON(w, http.StatusOK, schema.ValidationResponse{
 				Valid: true,
 			})
 			return
 		}
 		content, ok := vh.Enumerator.Get(path)
 		if !ok {
-			writeValidationJSON(w, http.StatusNotFound, ValidationResponse{
+			writeValidationJSON(w, http.StatusNotFound, schema.ValidationResponse{
 				Valid: false,
 				Error: fmt.Errorf("Path not found: %s", path),
 			})
@@ -181,9 +182,9 @@ func (vh *ValidationHandler) ValidateSource() http.Handler {
 		}
 
 		// Get the schema
-		_, schema, defaults, err := vh.GetSchema(r.Context())
+		_, schemaInstance, defaults, err := vh.GetSchema(r.Context())
 		if err != nil {
-			writeValidationJSON(w, http.StatusInternalServerError, ValidationResponse{
+			writeValidationJSON(w, http.StatusInternalServerError, schema.ValidationResponse{
 				Valid: false,
 				Error: fmt.Errorf("Path not found: %s", path),
 			})
@@ -191,11 +192,11 @@ func (vh *ValidationHandler) ValidateSource() http.Handler {
 		}
 
 		// And run validation
-		writeValidationJSON(w, http.StatusOK, ValidationProbe{
+		writeValidationJSON(w, http.StatusOK, schema.ValidationProbe{
 			Payload: content,
 			IsYaml:  true,
 			Env:     env,
-		}.Validate(schema, defaults))
+		}.Validate(schemaInstance, defaults))
 	})
 }
 
@@ -208,12 +209,12 @@ func (vh *ValidationHandler) ValidateSource() http.Handler {
 // @Accept application/json
 // @Produce application/json
 // @Param body body string true "JSON or YAML payload to validate"
-// @Success 200 {object} ValidationResponse "Validation result"
-// @Failure 400 {object} ValidationResponse "Malformed or empty payload"
+// @Success 200 {object} schema.ValidationResponse "Validation result"
+// @Failure 400 {object} schema.ValidationResponse "Malformed or empty payload"
 // @Router /validate [post]
 func (vh *ValidationHandler) ValidateBody() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, schema, defaults, err := vh.GetSchema(r.Context())
+		_, schemaInstance, defaults, err := vh.GetSchema(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -221,13 +222,13 @@ func (vh *ValidationHandler) ValidateBody() http.Handler {
 
 		probe, err := decodeValidationRequest(w, r)
 		if err != nil {
-			writeValidationJSON(w, http.StatusBadRequest, ValidationResponse{
+			writeValidationJSON(w, http.StatusBadRequest, schema.ValidationResponse{
 				Valid: false,
 				Error: err,
 			})
 			return
 		}
-		writeValidationJSON(w, http.StatusOK, probe.Validate(schema, defaults))
+		writeValidationJSON(w, http.StatusOK, probe.Validate(schemaInstance, defaults))
 	})
 }
 
@@ -284,9 +285,9 @@ func cacheTag(ts time.Time, scope string) (string, string) {
 	return fmt.Sprintf("\"%s\"", base), ts.UTC().Format(http.TimeFormat)
 }
 
-func (vh *ValidationHandler) GetSchema(ctx context.Context) (NormalizedSchema, *jsonschema.Schema, ParsedSchema, error) {
+func (vh *ValidationHandler) GetSchema(ctx context.Context) (schema.NormalizedSchema, *jsonschema.Schema, schema.ParsedSchema, error) {
 	if strings.TrimSpace(vh.BaseURL) == "" {
-		return NormalizedSchema{}, nil, ParsedSchema{}, errors.New("missing apisix base url")
+		return schema.NormalizedSchema{}, nil, schema.ParsedSchema{}, errors.New("missing apisix base url")
 	}
 	vh.Lock.Lock()
 	defer vh.Unlock()
@@ -303,17 +304,17 @@ func (vh *ValidationHandler) GetSchema(ctx context.Context) (NormalizedSchema, *
 		ctx, cancel = context.WithTimeout(ctx, vh.Timeout)
 		defer cancel()
 	}
-	raw, err := FetchSchemaUntil(ctx, vh.Logger, client, vh.BaseURL, vh.ApiKey, vh.Backoff)
+	raw, err := schema.FetchSchemaUntil(ctx, vh.Logger, client, vh.BaseURL, vh.ApiKey, vh.Backoff)
 	if err != nil {
-		return NormalizedSchema{}, nil, ParsedSchema{}, err
+		return schema.NormalizedSchema{}, nil, schema.ParsedSchema{}, err
 	}
-	cached, err = NormalizeSchema(raw, !vh.Loose)
+	cached, err = schema.NormalizeSchema(raw, !vh.Loose)
 	if err != nil {
-		return NormalizedSchema{}, nil, ParsedSchema{}, err
+		return schema.NormalizedSchema{}, nil, schema.ParsedSchema{}, err
 	}
-	schemaDoc, compiled, err = Compile(cached)
+	schemaDoc, compiled, err = schema.Compile(cached)
 	if err != nil {
-		return NormalizedSchema{}, nil, ParsedSchema{}, err
+		return schema.NormalizedSchema{}, nil, schema.ParsedSchema{}, err
 	}
 	vh.cached = cached
 	vh.compiled = compiled
@@ -321,7 +322,7 @@ func (vh *ValidationHandler) GetSchema(ctx context.Context) (NormalizedSchema, *
 	return cached, compiled, schemaDoc, nil
 }
 
-func writeValidationJSON(w http.ResponseWriter, status int, payload ValidationResponse) {
+func writeValidationJSON(w http.ResponseWriter, status int, payload schema.ValidationResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)

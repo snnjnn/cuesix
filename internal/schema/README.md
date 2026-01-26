@@ -9,7 +9,7 @@ go run ../../cmd/schema --url https://apisix-pre.iotplatform.telefonica.com --lo
 ## Playground compilation with esbuild
 
 ```bash
-npx esbuild app/src/index.js --bundle --outdir=app/dist --splitting --format=esm --loader:.svg=file
+npx esbuild app/src/index.js --bundle --outdir=assets/dist --splitting --format=esm --loader:.svg=file
 ```
 
 Or:

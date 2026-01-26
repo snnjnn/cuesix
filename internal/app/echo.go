@@ -1,4 +1,4 @@
-package schema
+package app
 
 import (
 	"errors"
@@ -38,7 +38,7 @@ func loadEchoTemplate() (*template.Template, error) {
 			"truncateHeaderValue": truncateHeaderValue,
 			"isHeaderTruncated":   isHeaderTruncated,
 		}
-		echoTemplate, echoTemplateErr = template.New("echo.html").Funcs(funcs).ParseFS(playgroundFS, "app/dist/echo.html")
+		echoTemplate, echoTemplateErr = template.New("echo.html").Funcs(funcs).ParseFS(playgroundFS, "assets/dist/echo.html")
 	})
 	return echoTemplate, echoTemplateErr
 }
