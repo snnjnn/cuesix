@@ -139,7 +139,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	for range cursor.All(ctx, cursor.Channel(d.queue)) {
 		dispatcherDequeued.Inc()
 		dequeuedAt := time.Now()
-		if err := d.waitAfterDequeue(ctx, dequeuedAt); err != nil {
+		if err := d.waitForCooldown(ctx); err != nil {
 			return err
 		}
 		d.lastDequeued = dequeuedAt
@@ -259,17 +259,6 @@ func (d *Dispatcher) waitForCooldown(ctx context.Context) error {
 		return nil
 	}
 	remaining := d.config.Cooldown - time.Since(d.lastDequeued)
-	if remaining <= 0 {
-		return nil
-	}
-	return sleepContext(ctx, remaining)
-}
-
-func (d *Dispatcher) waitAfterDequeue(ctx context.Context, dequeuedAt time.Time) error {
-	if d.config.Cooldown <= 0 || d.lastDequeued.IsZero() {
-		return nil
-	}
-	remaining := d.config.Cooldown - dequeuedAt.Sub(d.lastDequeued)
 	if remaining <= 0 {
 		return nil
 	}
