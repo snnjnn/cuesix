@@ -57,7 +57,7 @@ func EnvEnumerate(logger *slog.Logger, envFilename string, sources iter.Seq2[com
 			envVars := baseEnv
 			if envFilename != "" {
 				dir := path.Dir(source.Path)
-				cacheKey := envCacheKey{filesystem: source.FS, dir: dir}
+				cacheKey := envCacheKey{fsID: source.FSID, dir: dir}
 				entry, exists := envCache[cacheKey]
 				if !exists {
 					entry.vars, entry.err = loadEnvVars(source.FS, dir, envFilename, baseEnv)
@@ -80,8 +80,8 @@ func EnvEnumerate(logger *slog.Logger, envFilename string, sources iter.Seq2[com
 }
 
 type envCacheKey struct {
-	filesystem fs.FS
-	dir        string
+	fsID int
+	dir  string
 }
 
 type envCacheEntry struct {

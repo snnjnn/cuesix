@@ -20,7 +20,9 @@ type DefaultEnumerator struct {
 }
 
 type Source struct {
+	// Since fs.FS does not support equality, we use FSID to identify different filesystems.
 	FS   fs.FS
+	FSID int
 	Path string
 	Data []byte
 }
@@ -34,7 +36,7 @@ func Enumerate(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Source, error] {
 		logger = slog.Default()
 	}
 	return func(yield func(Source, error) bool) {
-		for _, filesystem := range fses {
+		for index, filesystem := range fses {
 			paths, err := listYAMLFiles(filesystem)
 			if err != nil {
 				if !yield(Source{}, err) {
@@ -51,7 +53,7 @@ func Enumerate(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Source, error] {
 					}
 					continue
 				}
-				if !yield(Source{FS: filesystem, Path: path, Data: content}, nil) {
+				if !yield(Source{FSID: index, FS: filesystem, Path: path, Data: content}, nil) {
 					return
 				}
 			}
