@@ -80,8 +80,13 @@ func DefaultMergingRules() MergingRule {
 				Kind:             KindList,
 				IDAttr:           "id",
 				IDOptional:       true,
-				AllowMergeSameID: false,
-				Children:         basicRules("services", nil),
+				AllowMergeSameID: true,
+				Children: basicRules("services", map[string]MergingRule{
+					"hosts": {
+						Path: "services/hosts",
+						Kind: KindScalarList,
+					},
+				}),
 			},
 			"upstreams": {
 				Path:             "/upstreams",
