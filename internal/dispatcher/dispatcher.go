@@ -177,7 +177,14 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 			dispatcherErrors.WithLabelValues("fetch").Inc()
 			return err
 		}
+		if snippet.Data == nil {
+			logger.Warn("skipping empty snippet (decoded nil map)", "path", snippet.Path)
+			continue
+		}
 		snippets = append(snippets, snippet)
+	}
+	if len(snippets) == 0 {
+		logger.Warn("no snippets fetched after filtering")
 	}
 	dispatcherDuration.WithLabelValues("fetch").Observe(time.Since(stageStart).Seconds())
 	logger.Info("fetch stage complete", "duration", time.Since(stageStart))
