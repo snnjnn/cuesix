@@ -3,16 +3,15 @@ package dispatcher_test
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"sync"
 	"testing"
 	"time"
 
 	"iter"
 
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/dispatcher"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 type mockFetcher struct {
@@ -20,7 +19,7 @@ type mockFetcher struct {
 	err      error
 }
 
-func (m mockFetcher) Fetch(fses ...fs.FS) iter.Seq2[compiler.Snippet, error] {
+func (m mockFetcher) Fetch(roots ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error] {
 	return func(yield func(compiler.Snippet, error) bool) {
 		if m.err != nil {
 			yield(compiler.Snippet{}, m.err)
@@ -101,7 +100,7 @@ type mockReloader struct {
 	errs     []error
 }
 
-func (m *mockReloader) Apply(ctx context.Context, payload []byte, useApi bool) error {
+func (m *mockReloader) Apply(ctx context.Context, virtualgw string, payload []byte) error {
 	m.payloads = append(m.payloads, payload)
 	idx := len(m.payloads) - 1
 	if idx < len(m.errs) && m.errs[idx] != nil {
@@ -110,19 +109,43 @@ func (m *mockReloader) Apply(ctx context.Context, payload []byte, useApi bool) e
 	return nil
 }
 
+type mockMergerFactory struct {
+	instance dispatcher.Merger
+}
+
+func (m mockMergerFactory) Instance(string) dispatcher.Merger {
+	return m.instance
+}
+
+type mockSerializerFactory struct {
+	instance dispatcher.Serializer
+}
+
+func (m mockSerializerFactory) Instance(string) dispatcher.Serializer {
+	return m.instance
+}
+
+type mockValidatorFactory struct {
+	instance dispatcher.Validator
+}
+
+func (m mockValidatorFactory) Instance(string) dispatcher.Validator {
+	return m.instance
+}
+
 func newDispatcherSuite(fetcher mockFetcher, merger *mockMerger, serializer *mockSerializer, validator *mockValidator, reloader *mockReloader, runs int) (*dispatcher.Dispatcher, chan struct{}) {
 	done := make(chan struct{}, runs)
 	cfg := dispatcher.Config{
 		Fetcher:           fetcher,
-		MergerFactory:     func() dispatcher.Merger { return merger },
-		SerializerFactory: func() dispatcher.Serializer { return serializer },
-		ValidatorFactory:  func() dispatcher.Validator { return validator },
+		MergerFactory:     mockMergerFactory{instance: merger},
+		SerializerFactory: mockSerializerFactory{instance: serializer},
+		ValidatorFactory:  mockValidatorFactory{instance: validator},
 		Reloader:          reloader,
 		Scheduler: func(_ context.Context, action func()) {
 			action()
 			done <- struct{}{}
 		},
-		Filesystems: []fs.FS{nil},
+		Filesystems: []compiler.InputRoot{{Name: "test"}},
 	}
 	d, err := dispatcher.New(testutil.Logger(), cfg)
 	if err != nil {
@@ -136,12 +159,10 @@ func runDispatcher(t *testing.T, d *dispatcher.Dispatcher, done chan struct{}, r
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_ = d.Run(ctx)
-	}()
-	for i := 0; i < runs; i++ {
+	})
+	for i := range runs {
 		d.Notify()
 		select {
 		case <-done:
@@ -159,7 +180,10 @@ func TestResetAndCommitViaRun(t *testing.T) {
 	serializer := &mockSerializer{}
 	validator := &mockValidator{}
 	reloader := &mockReloader{}
-	d, done := newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{Data: map[string]any{"a": 1}}}}, merger, serializer, validator, reloader, 1)
+	d, done := newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{
+		Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+		Data:      map[string]any{"a": 1},
+	}}}, merger, serializer, validator, reloader, 1)
 
 	runDispatcher(t, d, done, 1)
 	if merger.ResetCount != 1 || serializer.ResetCount != 1 || validator.ResetCount != 1 {
@@ -174,7 +198,10 @@ func TestResetAndCommitViaRun(t *testing.T) {
 	serializer = &mockSerializer{}
 	validator = &mockValidator{}
 	reloader = &mockReloader{errs: []error{errors.New("boom")}}
-	d, done = newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{Data: map[string]any{"a": 1}}}}, merger, serializer, validator, reloader, 1)
+	d, done = newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{
+		Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+		Data:      map[string]any{"a": 1},
+	}}}, merger, serializer, validator, reloader, 1)
 	runDispatcher(t, d, done, 1)
 	if merger.CommitCount != 0 || serializer.CommitCount != 0 || validator.CommitCount != 0 {
 		t.Fatalf("expected no commits on reload failure, got merger=%d serializer=%d validator=%d", merger.CommitCount, serializer.CommitCount, validator.CommitCount)
@@ -187,7 +214,10 @@ func TestCachingSkipsReloadAfterSuccessfulCommit(t *testing.T) {
 	serializer := &mockSerializer{outputs: [][]byte{[]byte("cfg"), nil}}
 	validator := &mockValidator{}
 	reloader := &mockReloader{}
-	d, done := newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{Data: map[string]any{"a": 1}}}}, merger, serializer, validator, reloader, 2)
+	d, done := newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{
+		Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+		Data:      map[string]any{"a": 1},
+	}}}, merger, serializer, validator, reloader, 2)
 
 	runDispatcher(t, d, done, 2)
 	if len(reloader.payloads) != 1 {
@@ -204,7 +234,10 @@ func TestCachingRetriesAfterFailure(t *testing.T) {
 	serializer := &mockSerializer{outputs: [][]byte{[]byte("cfg1"), []byte("cfg2"), nil}}
 	validator := &mockValidator{}
 	reloader := &mockReloader{errs: []error{nil, errors.New("fail"), nil}}
-	d, done := newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{Data: map[string]any{"a": 1}}}}, merger, serializer, validator, reloader, 3)
+	d, done := newDispatcherSuite(mockFetcher{snippets: []compiler.Snippet{{
+		Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+		Data:      map[string]any{"a": 1},
+	}}}, merger, serializer, validator, reloader, 3)
 
 	runDispatcher(t, d, done, 3)
 	if len(reloader.payloads) != 3 {

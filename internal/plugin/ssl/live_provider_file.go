@@ -14,6 +14,7 @@ type FileManager struct {
 	Logger      *slog.Logger
 }
 
+// ResolveProvider returns the file-based certificate provider.
 func (m FileManager) ResolveProvider(name string) (Provider, error) {
 	if name != FileProviderName {
 		return nil, fmt.Errorf("unknown file provider: %s", name)
@@ -29,10 +30,12 @@ type fileProvider struct {
 	logger      *slog.Logger
 }
 
+// Name returns the provider name.
 func (p fileProvider) Name() string {
 	return FileProviderName
 }
 
+// BestMatchFor loads and validates a certificate/key pair from configured filesystems.
 func (p fileProvider) BestMatchFor(_ context.Context, identity string) (Certificate, bool) {
 	logger := p.logger
 	if logger == nil {
@@ -65,6 +68,7 @@ func (p fileProvider) BestMatchFor(_ context.Context, identity string) (Certific
 	}, true
 }
 
+// RequestCertificate verifies that the requested file-backed certificate exists.
 func (p fileProvider) RequestCertificate(ctx context.Context, identity string) error {
 	if _, ok := p.BestMatchFor(ctx, identity); !ok {
 		return fmt.Errorf("file provider missing certificate for %s", identity)
@@ -72,6 +76,7 @@ func (p fileProvider) RequestCertificate(ctx context.Context, identity string) e
 	return nil
 }
 
+// RemoveManaged is a no-op for file-based certificates.
 func (p fileProvider) RemoveManaged(_ context.Context, _ ...string) {
 }
 

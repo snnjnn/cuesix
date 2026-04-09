@@ -7,6 +7,7 @@ import (
 
 var apisixEnvPattern = regexp.MustCompile(`\$\{\{\s*([A-Za-z_][A-Za-z0-9_]*)?\s*(?::=\s*([^}]*))?\s*\}\}`)
 
+// SubstituteAPISIX replaces APISIX env placeholders with provided values/defaults.
 func SubstituteAPISIX(input string, envVars map[string]string) string {
 	return apisixEnvPattern.ReplaceAllStringFunc(input, func(match string) string {
 		parts := apisixEnvPattern.FindStringSubmatch(match)

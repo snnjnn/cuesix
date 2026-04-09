@@ -9,11 +9,10 @@ import (
 	"log/slog"
 	"maps"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/compiler"
 )
 
 type envEnumerator struct {
@@ -22,31 +21,34 @@ type envEnumerator struct {
 	envFilename string
 }
 
-func NewEnvEnumerator(logger *slog.Logger, enumerator compiler.Enumerator, envFilename string) compiler.Enumerator {
+// NewEnvEnumerator wraps enumeration with APISIX-style env substitution.
+func NewEnvEnumerator(logger *slog.Logger, enumerator compiler.Enumerator, envFilename string) (compiler.Enumerator, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if enumerator == nil {
-		enumerator = compiler.NewEnumerator(logger)
+		return nil, errors.New("Enumerator cannot be nil")
 	}
 	return envEnumerator{
 		logger:      logger,
 		envFilename: envFilename,
 		enumerator:  enumerator,
-	}
+	}, nil
 }
 
-func (e envEnumerator) Enumerate(fss ...fs.FS) iter.Seq2[compiler.Source, error] {
-	return EnvEnumerate(e.logger, e.envFilename, e.enumerator.Enumerate(fss...))
+// Enumerate delegates enumeration and applies environment substitution.
+func (e envEnumerator) Enumerate(roots ...compiler.InputRoot) iter.Seq2[compiler.Source, error] {
+	return EnvEnumerate(e.logger, e.envFilename, e.enumerator.Enumerate(roots...))
 }
 
+// EnvEnumerate substitutes placeholders using process env and optional env files.
 func EnvEnumerate(logger *slog.Logger, envFilename string, sources iter.Seq2[compiler.Source, error]) iter.Seq2[compiler.Source, error] {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return func(yield func(compiler.Source, error) bool) {
 		baseEnv := loadEnvironment()
-		envCache := map[envCacheKey]envCacheEntry{}
+		envCache := map[string]envCacheEntry{}
 		for source, err := range sources {
 			if err != nil {
 				if !yield(source, err) {
@@ -56,15 +58,15 @@ func EnvEnumerate(logger *slog.Logger, envFilename string, sources iter.Seq2[com
 			}
 			envVars := baseEnv
 			if envFilename != "" {
-				dir := path.Dir(source.Path)
-				cacheKey := envCacheKey{fsID: source.FSID, dir: dir}
+				dir := source.Ref.Dir()
+				cacheKey := dir.Key()
 				entry, exists := envCache[cacheKey]
 				if !exists {
-					entry.vars, entry.err = loadEnvVars(source.FS, dir, envFilename, baseEnv)
+					entry.vars, entry.err = loadEnvVars(source.FS, source.Ref.Sibling(envFilename).Path, baseEnv)
 					envCache[cacheKey] = entry
 				}
 				if entry.err != nil {
-					if !yield(source, fmt.Errorf("env file %s: %w", path.Join(dir, envFilename), entry.err)) {
+					if !yield(source, fmt.Errorf("env file %s: %w", source.Ref.Sibling(envFilename).Path, entry.err)) {
 						return
 					}
 					continue
@@ -77,11 +79,6 @@ func EnvEnumerate(logger *slog.Logger, envFilename string, sources iter.Seq2[com
 			}
 		}
 	}
-}
-
-type envCacheKey struct {
-	fsID int
-	dir  string
 }
 
 type envCacheEntry struct {
@@ -101,8 +98,7 @@ func loadEnvironment() map[string]string {
 	return envVars
 }
 
-func loadEnvVars(filesystem fs.FS, dir, envPattern string, baseEnv map[string]string) (map[string]string, error) {
-	envPath := path.Join(dir, envPattern)
+func loadEnvVars(filesystem fs.FS, envPath string, baseEnv map[string]string) (map[string]string, error) {
 	data, err := fs.ReadFile(filesystem, envPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

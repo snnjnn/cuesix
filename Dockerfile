@@ -3,11 +3,11 @@
 # Multi-stage build
 # ==========================================================
 
-ARG APISIX_VERSION=3.14.1-debian
-ARG GOLANG_VERSION=1.25
+ARG APISIX_VERSION=3.15.0-debian
+ARG GOLANG_VERSION=1.26
 
 ############################
-# Stage 1 — Build GeoIP2 module
+# Stage 1 — Build native APISIX modules (GeoIP2, sixpack)
 ############################
 FROM docker.io/apache/apisix:${APISIX_VERSION} AS geoip-builder
 
@@ -29,6 +29,9 @@ RUN apt-get update && \
 
 WORKDIR /tmp
 
+# Copy local buffering module source
+COPY src/buffering/module /tmp/ngx_http_sixpack_buffering_module
+
 # Detect OpenResty version
 RUN OPENRESTY_VERSION=$(nginx -v 2>&1 | cut -d/ -f2) && \
     echo "Detected OpenResty version: ${OPENRESTY_VERSION}" && \
@@ -48,9 +51,11 @@ RUN set -eux; \
         --with-compat \
         --with-cc-opt="${CC_OPT}" \
         --with-ld-opt="${LD_OPT}" \
-        --add-dynamic-module=../../../ngx_http_geoip2_module; \
+        --add-dynamic-module=../../../ngx_http_geoip2_module \
+        --add-dynamic-module=../../../ngx_http_sixpack_buffering_module; \
     make modules; \
-    cp objs/ngx_http_geoip2_module.so /tmp/ngx_http_geoip2_module.so
+    cp objs/ngx_http_geoip2_module.so /tmp/ngx_http_geoip2_module.so; \
+    cp objs/ngx_http_sixpack_buffering_module.so /tmp/ngx_http_sixpack_buffering_module.so
 
 ############################
 # Stage 2 — Build sixpack binary
@@ -87,8 +92,7 @@ USER root
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        jq \
-        libmaxminddb0 && \
+        libmaxminddb0 curl dnsutils && \
     rm -rf /var/lib/apt/lists/*
 
 # Optional compatibility symlink
@@ -101,10 +105,20 @@ COPY --from=geoip-builder /tmp/ngx_http_geoip2_module.so \
 
 RUN chmod 644 /usr/local/apisix/modules/ngx_http_geoip2_module.so
 
+# Copy buffering native module
+COPY --from=geoip-builder /tmp/ngx_http_sixpack_buffering_module.so \
+    /usr/local/apisix/modules/ngx_http_sixpack_buffering_module.so
+
+RUN chmod 644 /usr/local/apisix/modules/ngx_http_sixpack_buffering_module.so
+
 # Copy Lua maxminddb helper
 COPY --from=lua-downloader \
     /maxminddb/lib/resty/maxminddb.lua \
-    /usr/local/apisix/lualib/resty/maxminddb.lua
+    /usr/local/apisix/resty/maxminddb.lua
+
+# Copy Lua runtime module (canonical: resty.sixpack -> resty/sixpack.lua)
+COPY src/buffering/lua/resty/sixpack.lua \
+    /usr/local/apisix/resty/sixpack.lua
 
 # Copy sixpack binary
 COPY --from=sixpack-builder /out/sixpack /usr/local/bin/sixpack

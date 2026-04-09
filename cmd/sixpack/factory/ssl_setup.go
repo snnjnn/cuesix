@@ -3,12 +3,13 @@ package factory
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"strings"
 
-	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
-	"github.com/warpcomdev/sixpack/internal/certmagicmgr"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/cmd/sixpack/config"
+	"github.com/warpcondev/cuesix/internal/certmagicmgr"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
 )
 
 type SSLSetup struct {
@@ -22,7 +23,8 @@ type SSLSetup struct {
 	Events       chan ssl.Tracking
 }
 
-func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apisixCfg config.APISIX) (SSLSetup, error) {
+// NewSSLSetup wires SSL file, fallback, and optional Certmagic managers.
+func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apisixCfg config.Apisix) (SSLSetup, error) {
 	var setup SSLSetup
 	if cert, ok, err := pluginCfg.LoadFallbackCertificate(apisixCfg.Home, pluginCfg.EnableSSL); ok {
 		if err != nil {
@@ -32,9 +34,13 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 		setup.FallbackCert = cert
 	}
 	if pluginCfg.EnableSSL {
-		fses, err := BuildFilesystems(pluginCfg.SSLPaths)
+		roots, err := BuildFilesystems(pluginCfg.SSLPaths)
 		if err != nil {
 			return setup, err
+		}
+		fses := make([]fs.FS, 0, len(roots))
+		for _, root := range roots {
+			fses = append(fses, root.FS)
 		}
 		setup.FileManager = ssl.FileManager{Filesystems: fses, Logger: logger}
 	}
@@ -85,6 +91,7 @@ type adaptedManager struct {
 	certmagicmgr.Manager
 }
 
+// ResolveProvider adapts the Certmagic manager provider to the SSL interface.
 func (a adaptedManager) ResolveProvider(name string) (ssl.Provider, error) {
 	return a.Manager.ResolveProvider(name)
 }

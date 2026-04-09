@@ -43,6 +43,7 @@ func loadEchoTemplate() (*template.Template, error) {
 	return echoTemplate, echoTemplateErr
 }
 
+// EchoHandler renders request method, path, headers, and body for debugging.
 func EchoHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodPost {

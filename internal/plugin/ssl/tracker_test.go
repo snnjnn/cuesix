@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/cursor"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 func TestTrackerRequestCertificateNew(t *testing.T) {
@@ -141,8 +141,7 @@ func TestUpdateLoopMutesUntracked(t *testing.T) {
 	events <- Tracking{Provider: "p1", Identity: "example.com"}
 	close(events)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	watch := tracker.Watch(1, "")
 	defer watch.Close()
 	UpdateLoop(ctx, testutil.Logger(), tracker, cursor.Channel(events))
@@ -171,8 +170,7 @@ func TestUpdateLoopBroadcastsTracked(t *testing.T) {
 	events <- Tracking{Provider: "p1", Identity: "example.com"}
 	close(events)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	watch := tracker.Watch(1, "")
 	defer watch.Close()
 

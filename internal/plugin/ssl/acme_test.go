@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/cursor"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 func TestACMEHandlerReplaceTargetsSuccess(t *testing.T) {
@@ -122,7 +122,6 @@ func TestACMEHandlerReplaceTargetsFallbacks(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var certOut, keyOut string

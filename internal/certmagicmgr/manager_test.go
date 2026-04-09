@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 func TestNewManagerValidation(t *testing.T) {
@@ -48,7 +48,6 @@ func TestNewManagerValidation(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := NewManager(testutil.Logger(), tt.cfg, nil, ssl.PEMCertificate{}, nil, nil)
@@ -163,7 +162,6 @@ func TestManagerResolveProvider(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, err := tt.manager.ResolveProvider(tt.input)
@@ -236,7 +234,6 @@ func TestParseACMEProviderSpec(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := ParseACMEProviderSpec(tt.spec)

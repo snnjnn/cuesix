@@ -21,6 +21,7 @@ type MockRunner struct {
 	output   []MockOutput
 }
 
+// RunCommand records command input and replays the next mocked output.
 func (m *MockRunner) RunCommand(_ context.Context, workDir string, input []byte, cmd string, args ...string) ([]byte, []byte, error) {
 	m.Inputs = append(m.Inputs, MockInput{
 		WorkDir: workDir,
@@ -37,6 +38,7 @@ func (m *MockRunner) RunCommand(_ context.Context, workDir string, input []byte,
 	return output.Stdout, output.Stderr, output.Err
 }
 
+// NewMock builds a mock runner with queued command outputs.
 func NewMock(output ...MockOutput) *MockRunner {
 	return &MockRunner{
 		output: output,

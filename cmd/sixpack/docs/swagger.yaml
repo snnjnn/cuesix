@@ -1,5 +1,20 @@
 basePath: /schema
 definitions:
+  recorder.Descriptor:
+    properties:
+      paths:
+        description: Source keys that contribute to this object
+        items:
+          type: string
+        type: array
+      tags:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        description: Tags associated to the object
+        type: object
+    type: object
   schema.ValidationIssue:
     properties:
       absoluteKeywordLocation:
@@ -34,7 +49,7 @@ info:
   title: Sixpack Schema Control API
   version: "1.0"
 paths:
-  /json/:
+  /json:
     get:
       description: <p>Returns the cached normalized schema document that backs all
         validation endpoints.</p>
@@ -45,13 +60,17 @@ paths:
           description: Normalized JSON Schema document
           schema:
             type: string
+        "502":
+          description: Schema backend unavailable
+          schema:
+            type: string
       summary: Retrieve the normalized APISIX JSON Schema
       tags:
       - Schema
   /sources:
     get:
       description: |-
-        <p>Returns the list of discovered fragment paths.</p>
+        <p>Returns discovered source fragments as a map of source key to leaf virtual gateway.</p>
         <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
       parameters:
       - description: Previously returned ETag used to skip unnecessary downloads
@@ -66,28 +85,24 @@ paths:
       - application/json
       responses:
         "200":
-          description: List of available source paths
+          description: Map of source key to leaf virtual gateway
           schema:
-            items:
+            additionalProperties:
               type: string
-            type: array
-        "404":
-          description: No sources found
-          schema:
-            type: string
+            type: object
       summary: List known source fragments
       tags:
-      - Schema
+      - Source
   /sources/{path}:
     get:
       description: |-
-        <p>Returns the raw YAML payload for a given path.</p>
+        <p>Returns the raw YAML payload for a given source key.</p>
         <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
       parameters:
-      - description: Relative fragment path (e.g., `routes/example.yaml`); omit to
-          list paths.
+      - description: Opaque source key returned by `GET /sources`
         in: path
         name: path
+        required: true
         type: string
       - description: Previously returned ETag used to skip unnecessary downloads
         in: header
@@ -110,16 +125,18 @@ paths:
             type: string
       summary: Fetch a single fragment
       tags:
-      - Schema
+      - Source
   /validate:
     post:
       consumes:
       - application/json
+      - text/plain
+      - application/yaml
+      - text/yaml
       description: |-
         <p>Posts JSON or YAML content along with optional query params used as environment overrides.</p>
         <p>Any number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as `?DOMAIN=apisix.org` or `?consumer=bob`.</p>
-        <p>Example URLs: `/schema/validate/routes/example.yaml?DOMAIN=apisix.org&consumer=bob`.</p>
-        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+        <p>Example request: `POST /schema/validate?DOMAIN=apisix.org&consumer=bob` with the candidate payload in the request body.</p>
       parameters:
       - description: JSON or YAML payload to validate
         in: body
@@ -138,6 +155,10 @@ paths:
           description: Malformed or empty payload
           schema:
             $ref: '#/definitions/schema.ValidationResponse'
+        "500":
+          description: Schema backend unavailable
+          schema:
+            type: string
       summary: Validate an inline payload against the schema
       tags:
       - Schema
@@ -146,10 +167,10 @@ paths:
       description: |-
         <p>Validates the fragment referenced by the request path while treating every query parameter as an environment override.</p>
         <p>Any number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as `?DOMAIN=apisix.org` or `?consumer=bob`.</p>
-        <p>Example URLs: `/schema/validate/routes/example.yaml?DOMAIN=apisix.org&consumer=bob`.</p>
+        <p>Example URLs: `/schema/validate/&lt;source-key&gt;?DOMAIN=apisix.org&consumer=bob`.</p>
         <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
       parameters:
-      - description: Relative fragment path to validate
+      - description: Opaque source key to validate
         in: path
         name: path
         required: true
@@ -176,4 +197,99 @@ paths:
       summary: Validate a cached source fragment with environment overrides
       tags:
       - Schema
+  /virtualgw:
+    get:
+      description: <p>Returns a JSON object mapping each known virtual gateway to
+        its current readiness state.</p>
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Virtual gateway readiness map
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      summary: List virtual gateway readiness
+      tags:
+      - Ready
+  /virtualgw/{virtualgw}:
+    get:
+      description: |-
+        <p>Returns an index of (object kind, id) => list of sources that contain the object</p>
+        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+      parameters:
+      - description: Previously returned ETag used to skip unnecessary downloads
+        in: header
+        name: If-None-Match
+        type: string
+      - description: RFC1123 timestamp to compare against the `Last-Modified` header
+        in: header
+        name: If-Modified-Since
+        type: string
+      - description: Virtual gateway name
+        in: path
+        name: virtualgw
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Index of (kind id) to list of paths
+          schema:
+            additionalProperties:
+              additionalProperties:
+                $ref: '#/definitions/recorder.Descriptor'
+              type: object
+            type: object
+        "400":
+          description: No virtual gateway specified
+          schema:
+            type: string
+        "417":
+          description: No config committed
+          schema:
+            type: string
+      summary: Fetch index of (object kind, id) => list of paths
+      tags:
+      - Config
+  /virtualgw/{virtualgw}/{path}:
+    get:
+      description: |-
+        <p>Returns the raw YAML payload for a given config object.</p>
+        <p>Every response includes `ETag`, `Last-Modified`, and `Cache-Control: public, max-age=0, must-revalidate`, so clients should reuse those values and revalidate with `If-None-Match` or `If-Modified-Since` to bump into `304 Not Modified` when nothing changed.</p>
+      parameters:
+      - description: Virtual gateway name
+        in: path
+        name: virtualgw
+        required: true
+        type: string
+      - description: Object path in the format {kind}/{id} (e.g., `routes/123`)
+        in: path
+        name: path
+        required: true
+        type: string
+      - description: Previously returned ETag used to skip unnecessary downloads
+        in: header
+        name: If-None-Match
+        type: string
+      - description: RFC1123 timestamp to compare against the `Last-Modified` header
+        in: header
+        name: If-Modified-Since
+        type: string
+      produces:
+      - application/yaml
+      responses:
+        "200":
+          description: YAML fragment content
+          schema:
+            type: string
+        "404":
+          description: Fragment not found
+          schema:
+            type: string
+      summary: Fetch a single config object
+      tags:
+      - Config
 swagger: "2.0"

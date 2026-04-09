@@ -114,6 +114,14 @@ export class YamlEditorManager {
     this.view?.requestMeasure();
   }
 
+  destroy() {
+    if (!this.view) {
+      return;
+    }
+    this.view.destroy();
+    this.view = null;
+  }
+
   setDoc(value, { addToHistory = false } = {}) {
     const view = this.view;
     if (!view) {

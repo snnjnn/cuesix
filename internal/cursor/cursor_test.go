@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/cursor"
 )
 
 func TestChannelNextAndAll(t *testing.T) {
@@ -90,11 +90,9 @@ func TestLoopDispatchesAndStops(t *testing.T) {
 
 	events := make(chan string, 2)
 	var doneWG sync.WaitGroup
-	doneWG.Add(1)
-	go func() {
-		defer doneWG.Done()
+	doneWG.Go(func() {
 		cursor.Loop(context.Background(), w, cursor.Channel(events))
-	}()
+	})
 
 	events <- "first"
 	events <- "second"

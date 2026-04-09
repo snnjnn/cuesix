@@ -8,6 +8,7 @@ import (
 
 type System struct{}
 
+// RunCommand executes an external command with optional working dir and stdin.
 func (System) RunCommand(ctx context.Context, workDir string, input []byte, name string, args ...string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	if workDir != "" {
@@ -24,6 +25,7 @@ func (System) RunCommand(ctx context.Context, workDir string, input []byte, name
 	return stdout.Bytes(), stderr.Bytes(), err
 }
 
+// New returns the default system command runner.
 func New() System {
 	return System{}
 }

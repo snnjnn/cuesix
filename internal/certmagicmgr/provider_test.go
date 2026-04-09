@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 type stubIssuer struct {
@@ -38,7 +38,6 @@ func TestProviderRequestCertificateValidation(t *testing.T) {
 		{name: "empty sni", provider: &Provider{magic: &certmagic.Config{}}, sni: "   ", wantErr: "sni is required"},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			err := tt.provider.RequestCertificate(context.Background(), tt.sni)
@@ -294,7 +293,6 @@ func TestBestMatchForCandidates(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			wrap, ok := bestMatchForCandidates(tt.input, testutil.Logger())

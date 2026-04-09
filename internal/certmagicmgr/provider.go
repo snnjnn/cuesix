@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcomdev/sixpack/internal/cursor"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
 )
 
 type Provider struct {
@@ -43,6 +43,7 @@ func (p *Provider) RequestCertificate(ctx context.Context, sni string) error {
 	return err
 }
 
+// Name returns the provider name.
 func (p *Provider) Name() string {
 	if p == nil {
 		return ""
@@ -50,6 +51,7 @@ func (p *Provider) Name() string {
 	return p.cfg.Name
 }
 
+// BestMatchFor returns the best matching certificate for the requested SNI.
 func (p *Provider) BestMatchFor(_ context.Context, sni string) (ssl.Certificate, bool) {
 	if p == nil || p.cache == nil || p.adapter == nil {
 		return nil, false
@@ -146,14 +148,17 @@ type certmagicWrap struct {
 	notAfter time.Time
 }
 
+// NotAfterTime returns the certificate expiration time.
 func (c certmagicWrap) NotAfterTime() time.Time {
 	return c.notAfter
 }
 
+// PEM returns the PEM-encoded certificate.
 func (c certmagicWrap) PEM() (ssl.PEMCertificate, error) {
 	return MarshalCertificate(c.cert)
 }
 
+// MarshalCertificate converts a certmagic certificate to PEMCertificate.
 func MarshalCertificate(cert certmagic.Certificate) (ssl.PEMCertificate, error) {
 	if cert.PrivateKey == nil {
 		return ssl.PEMCertificate{}, errors.New("private key is nil")

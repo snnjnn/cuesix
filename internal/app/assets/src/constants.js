@@ -1,6 +1,8 @@
 export const ENDPOINTS = {
   validate: '../validate',
-  sources: '../sources'
+  sources: '../sources',
+  gateways: '../virtualgw',
+  virtualgw: '../virtualgw'
 };
 
 export const SAMPLE_YAML = `ssls:
@@ -28,5 +30,6 @@ export const SAMPLE_SOURCE = {
 
 export const MODES = {
   browse: 'browse',
+  index: 'index',
   playground: 'playground'
 };

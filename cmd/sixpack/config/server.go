@@ -6,15 +6,20 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-type Server struct {
+// Settings for any http server
+type HTTPServer struct {
 	ListenAddr        string
-	MetricsAddr       string
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
-	AutoTrigger       bool
+}
+
+// Settings specifically for the server mode
+type Server struct {
+	MetricsAddr string
+	AutoTrigger bool
 }
 
 type Timeouts struct {
@@ -24,20 +29,14 @@ type Timeouts struct {
 	IdleTimeout       time.Duration
 }
 
-func (c *Server) Flags() []cli.Flag {
+// Flags returns HTTP server and metrics command-line flags.
+func (c *HTTPServer) Flags() []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
 			Name:     "listen",
 			Usage:    "listen address",
 			Sources:  cli.EnvVars("SIXPACK_LISTEN"),
 			Value:    "127.0.0.1:8080",
-			Category: "Server",
-		},
-		&cli.StringFlag{
-			Name:     "metrics",
-			Usage:    "metrics listen address (empty to disable)",
-			Sources:  cli.EnvVars("SIXPACK_METRICS_LISTEN"),
-			Value:    ":8081",
 			Category: "Server",
 		},
 		&cli.DurationFlag{
@@ -75,6 +74,19 @@ func (c *Server) Flags() []cli.Flag {
 			Value:    10 * time.Second,
 			Category: "Server",
 		},
+	}
+}
+
+// Flags returns HTTP server and metrics command-line flags.
+func (c *Server) Flags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:     "metrics",
+			Usage:    "metrics listen address (empty to disable)",
+			Sources:  cli.EnvVars("SIXPACK_METRICS_LISTEN"),
+			Value:    ":8081",
+			Category: "Server",
+		},
 		&cli.BoolFlag{
 			Name:     "auto-trigger",
 			Usage:    "trigger the compile loop automatically, once",
@@ -85,18 +97,34 @@ func (c *Server) Flags() []cli.Flag {
 	}
 }
 
-func (c *Server) Apply(ctx *cli.Command) {
+// Apply loads server settings from parsed CLI flags.
+func (c *HTTPServer) Apply(ctx *cli.Command) {
 	c.ListenAddr = ctx.String("listen")
-	c.MetricsAddr = ctx.String("metrics")
 	c.ReadHeaderTimeout = ctx.Duration("server-read-header-timeout")
 	c.ReadTimeout = ctx.Duration("server-read-timeout")
 	c.WriteTimeout = ctx.Duration("server-write-timeout")
 	c.IdleTimeout = ctx.Duration("server-idle-timeout")
 	c.ShutdownTimeout = ctx.Duration("server-shutdown-timeout")
+}
+
+// Apply loads server settings from parsed CLI flags.
+func (c *Server) Apply(ctx *cli.Command) {
+	c.MetricsAddr = ctx.String("metrics")
 	c.AutoTrigger = ctx.Bool("auto-trigger")
 }
 
-func (c Server) Timeouts() Timeouts {
+// Validate input flags values
+func (c *HTTPServer) Validate() error {
+	return nil
+}
+
+// Validate input flags values
+func (c *Server) Validate() error {
+	return nil
+}
+
+// Timeouts returns the configured timeouts.
+func (c *HTTPServer) Timeouts() Timeouts {
 	return Timeouts{
 		ReadHeaderTimeout: c.ReadHeaderTimeout,
 		ReadTimeout:       c.ReadTimeout,

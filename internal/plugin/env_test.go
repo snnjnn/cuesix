@@ -7,9 +7,9 @@ import (
 
 	"iter"
 
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/plugin"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/plugin"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 type sourceItem struct {
@@ -32,7 +32,7 @@ func TestEnvSubstituteUsesEnvAndDefaults(t *testing.T) {
 
 	source := compiler.Source{
 		FS:   fstest.MapFS{},
-		Path: "config.yaml",
+		Ref:  compiler.SourceRef{Root: "test", Path: "config.yaml"},
 		Data: []byte("host: ${{ API_HOST }}\nmissing: ${{ MISSING := /default }}\nempty: ${{ MISSING }}\nblank: ${{ := /blank }}\n"),
 	}
 
@@ -64,14 +64,14 @@ func TestEnvSubstituteEnvFileOverridesAndMissing(t *testing.T) {
 		{
 			source: compiler.Source{
 				FS:   fs,
-				Path: "configs/app.yaml",
+				Ref:  compiler.SourceRef{Root: "test", Path: "configs/app.yaml"},
 				Data: []byte("host: ${{ API_HOST }}\nonly: ${{ ONLY_FILE }}\n"),
 			},
 		},
 		{
 			source: compiler.Source{
 				FS:   fs,
-				Path: "other/app.yaml",
+				Ref:  compiler.SourceRef{Root: "test", Path: "other/app.yaml"},
 				Data: []byte("host: ${{ API_HOST }}\n"),
 			},
 		},
@@ -79,7 +79,7 @@ func TestEnvSubstituteEnvFileOverridesAndMissing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		got[sourceOut.Path] = string(sourceOut.Data)
+		got[sourceOut.Ref.Path] = string(sourceOut.Data)
 	}
 
 	if got["configs/app.yaml"] != "host: file.example\nonly: file-only\n" {
@@ -98,7 +98,7 @@ func TestEnvSubstituteEnvFileParseError(t *testing.T) {
 	}
 	source := compiler.Source{
 		FS:   fs,
-		Path: "bad/app.yaml",
+		Ref:  compiler.SourceRef{Root: "test", Path: "bad/app.yaml"},
 		Data: []byte("host: ${{ API_HOST }}\n"),
 	}
 

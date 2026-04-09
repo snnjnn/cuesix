@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/cursor"
 )
 
 type requestCertificateCall struct {

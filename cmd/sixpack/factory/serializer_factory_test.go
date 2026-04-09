@@ -3,10 +3,12 @@ package factory
 import (
 	"context"
 	"log/slog"
+	"maps"
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
 )
 
 // mockTracker only implements the methods used by serializer_factory loops.
@@ -34,8 +36,8 @@ func TestCommitLoopRunsWhenNoCommittedCerts(t *testing.T) {
 		sslSetup: SSLSetup{
 			AcmeTracker: (*ssl.Tracker)(nil),
 		},
-		scheduler:      NewScheduler(),
-		CommittedCerts: make(map[ssl.Tracking]time.Time),
+		scheduler: NewScheduler(),
+		instances: make(map[string]*SerializerInstance),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -44,7 +46,7 @@ func TestCommitLoopRunsWhenNoCommittedCerts(t *testing.T) {
 	// Swap tracker by shadowing CommitLoop invocation
 	go func() {
 		factory.loop(ctx, 10*time.Millisecond, func() {
-			tracker.Commit(ctx, slog.Default(), factory.CommittedCerts, time.Second)
+			tracker.Commit(ctx, slog.Default(), factory.allCommittedCerts(), time.Second)
 		})
 	}()
 	// Allow one loop tick.
@@ -65,14 +67,18 @@ func TestCommitLoopRunsWhenCommittedCertsPresent(t *testing.T) {
 		sslSetup: SSLSetup{
 			AcmeTracker: (*ssl.Tracker)(nil),
 		},
-		scheduler:      NewScheduler(),
-		CommittedCerts: map[ssl.Tracking]time.Time{{Provider: "p", Identity: "a"}: time.Now()},
+		scheduler: NewScheduler(),
+		instances: map[string]*SerializerInstance{
+			compiler.DEFAULT_VIRTUALGW: &SerializerInstance{
+				CommittedCerts: map[ssl.Tracking]time.Time{{Provider: "p", Identity: "a"}: time.Now()},
+			},
+		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
 		factory.loop(ctx, 10*time.Millisecond, func() {
-			tracker.Commit(ctx, slog.Default(), factory.CommittedCerts, time.Second)
+			tracker.Commit(ctx, slog.Default(), factory.allCommittedCerts(), time.Second)
 		})
 	}()
 	time.Sleep(20 * time.Millisecond)
@@ -82,5 +88,45 @@ func TestCommitLoopRunsWhenCommittedCertsPresent(t *testing.T) {
 	}
 	if tracker.commitCalls[0].count != 1 {
 		t.Fatalf("expected commit count 1, got %d", tracker.commitCalls[0].count)
+	}
+}
+
+func TestAllCommittedCertsUnionsAcrossVirtualGateways(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	shared := ssl.Tracking{Provider: "p", Identity: "shared.example"}
+	leftOnly := ssl.Tracking{Provider: "p", Identity: "left.example"}
+	rightOnly := ssl.Tracking{Provider: "p", Identity: "right.example"}
+	leftTime := now.Add(-time.Minute)
+	rightTime := now
+
+	factory := SerializerFactory{
+		instances: map[string]*SerializerInstance{
+			compiler.DEFAULT_VIRTUALGW: {
+				CommittedCerts: map[ssl.Tracking]time.Time{
+					shared:   leftTime,
+					leftOnly: leftTime,
+				},
+			},
+			"secondary": {
+				CommittedCerts: map[ssl.Tracking]time.Time{
+					shared:    rightTime,
+					rightOnly: rightTime,
+				},
+			},
+		},
+	}
+
+	got := factory.allCommittedCerts()
+	if len(got) != 3 {
+		t.Fatalf("expected 3 committed certs, got %d", len(got))
+	}
+	if !maps.Equal(got, map[ssl.Tracking]time.Time{
+		shared:    rightTime,
+		leftOnly:  leftTime,
+		rightOnly: rightTime,
+	}) {
+		t.Fatalf("unexpected committed cert union: %#v", got)
 	}
 }

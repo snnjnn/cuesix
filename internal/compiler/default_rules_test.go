@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/testutil"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -49,8 +49,8 @@ func TestDefaultMergingRulesFromFiles(t *testing.T) {
 			right := normalizeOrFatal(t, spec.Right)
 			expected := normalizeOrFatal(t, spec.Expected)
 			merged, mergeErr := compiler.Merge(testutil.Logger(), snippetSeq([]compiler.Snippet{
-				{Path: "left.yaml", Data: left},
-				{Path: "right.yaml", Data: right},
+				{Ref: snippetRef("left.yaml"), Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW), Data: left},
+				{Ref: snippetRef("right.yaml"), Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW), Data: right},
 			}))
 			if spec.Error != "" {
 				if mergeErr == nil || !strings.Contains(mergeErr.Error(), spec.Error) {
@@ -65,6 +65,35 @@ func TestDefaultMergingRulesFromFiles(t *testing.T) {
 				t.Fatalf("merged diff (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestDefaultMergingRulesSupportsLabels(t *testing.T) {
+	t.Parallel()
+
+	rules := compiler.DefaultMergingRules()
+	tests := map[string]bool{
+		"routes":          true,
+		"services":        true,
+		"upstreams":       true,
+		"ssls":            true,
+		"global_rules":    false,
+		"consumer_groups": true,
+		"plugin_configs":  true,
+		"stream_routes":   true,
+		"protos":          true,
+		"consumers":       true,
+		"plugin_metadata": false,
+	}
+
+	for key, want := range tests {
+		rule, ok := rules.Children[key]
+		if !ok {
+			t.Fatalf("missing default rule for %s", key)
+		}
+		if rule.SupportsLabels != want {
+			t.Fatalf("%s SupportsLabels = %v, want %v", key, rule.SupportsLabels, want)
+		}
 	}
 }
 
@@ -110,7 +139,7 @@ func normalizeValue(v any) (any, error) {
 			out[ks] = n
 		}
 		return out, nil
-	case []interface{}:
+	case []any:
 		out := make([]any, len(typed))
 		for i, val := range typed {
 			n, err := normalizeValue(val)

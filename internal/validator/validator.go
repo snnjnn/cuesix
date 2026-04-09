@@ -11,11 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/runner"
+	"github.com/warpcondev/cuesix/internal/runner"
 )
 
 type MirrorError string
 
+// Error returns the error message.
 func (e MirrorError) Error() string {
 	return string(e)
 }
@@ -39,6 +40,7 @@ type Runner interface {
 	RunCommand(ctx context.Context, workDir string, input []byte, name string, args ...string) (stdout, stderr []byte, err error)
 }
 
+// BuildConfigPath returns the APISIX config file path for the selected format/profile.
 func BuildConfigPath(apisixHome string, isYAML bool) string {
 	profile := strings.TrimSpace(os.Getenv("APISIX_PROFILE"))
 	ext := ".json"
@@ -72,6 +74,7 @@ func New(logger *slog.Logger, sourceDir string, mirrorDir string, useExisting bo
 	}, nil
 }
 
+// Cleanup removes the mirror directory unless reuse was requested.
 func (v Validator) Cleanup() error {
 	if v.useExisting {
 		return nil
@@ -90,6 +93,7 @@ type ValidationError struct {
 	Cause  error
 }
 
+// Error returns the error message.
 func (e *ValidationError) Error() string {
 	if len(e.Output) == 0 && e.Cause != nil {
 		return e.Cause.Error()
@@ -100,6 +104,7 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("validation failed: %s", string(e.Output))
 }
 
+// Unwrap returns the wrapped error.
 func (e *ValidationError) Unwrap() error {
 	return e.Cause
 }
@@ -180,7 +185,11 @@ func prepareMirror(sourceDir string, mirrorDir string, useExisting bool) error {
 		if err := clearDir(mirrorDir); err != nil {
 			return fmt.Errorf("failed to clear mirror folder: %w", err)
 		}
-		if err := os.CopyFS(mirrorDir, os.DirFS(sourceDir)); err != nil {
+		// Make sure to omit the "logs" folder, because it has a
+		// socket that cannot be opted out since apisix 3.15.0
+		// (logs/worker_events.sock, openresty lua events).
+		srcFS := FilterFS(os.DirFS(sourceDir), "logs")
+		if err := os.CopyFS(mirrorDir, srcFS); err != nil {
 			return fmt.Errorf("failed to populate mirror folder: %w", err)
 		}
 	}

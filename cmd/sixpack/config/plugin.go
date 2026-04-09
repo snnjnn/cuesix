@@ -5,15 +5,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
 	"github.com/urfave/cli/v3"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
 )
 
 type Plugins struct {
 	EnableSSL      bool
-	EnableYAML     bool
-	EnableJQ       bool
-	JQTimeout      time.Duration
 	SSLPaths       []string
 	SSLACMETimeout time.Duration
 	FallbackCert   string
@@ -21,6 +18,7 @@ type Plugins struct {
 	EnvFilename    string
 }
 
+// Flags returns plugin-related command-line flags.
 func (c *Plugins) Flags() []cli.Flag {
 	return []cli.Flag{
 		&cli.BoolFlag{
@@ -29,30 +27,10 @@ func (c *Plugins) Flags() []cli.Flag {
 			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL"),
 			Category: "Plugins",
 		},
-		&cli.BoolFlag{
-			Name:     "plugin-yaml",
-			Usage:    "enable yaml post-render plugin",
-			Sources:  cli.EnvVars("SIXPACK_PLUGIN_YAML"),
-			Category: "Plugins",
-		},
-		&cli.BoolFlag{
-			Name:     "plugin-jq",
-			Usage:    "enable jq post-render plugin",
-			Sources:  cli.EnvVars("SIXPACK_PLUGIN_JQ"),
-			Value:    true,
-			Category: "Plugins",
-		},
 		&cli.DurationFlag{
 			Name:     "plugin-ssl-acme-timeout",
 			Usage:    "timeout for ssl plugin acme requests",
 			Sources:  cli.EnvVars("SIXPACK_PLUGIN_SSL_ACME_TIMEOUT"),
-			Value:    10 * time.Second,
-			Category: "Plugins",
-		},
-		&cli.DurationFlag{
-			Name:     "plugin-jq-timeout",
-			Usage:    "timeout for jq transforms",
-			Sources:  cli.EnvVars("SIXPACK_PLUGIN_JQ_TIMEOUT"),
 			Value:    10 * time.Second,
 			Category: "Plugins",
 		},
@@ -83,11 +61,9 @@ func (c *Plugins) Flags() []cli.Flag {
 	}
 }
 
+// Apply loads plugin settings from parsed CLI flags.
 func (c *Plugins) Apply(ctx *cli.Command) {
 	c.EnableSSL = ctx.Bool("plugin-ssl")
-	c.EnableYAML = ctx.Bool("plugin-yaml")
-	c.EnableJQ = ctx.Bool("plugin-jq")
-	c.JQTimeout = ctx.Duration("plugin-jq-timeout")
 	c.SSLACMETimeout = ctx.Duration("plugin-ssl-acme-timeout")
 	c.SSLPaths = ctx.StringSlice("plugin-ssl-path")
 	c.FallbackCert = ctx.String("plugin-ssl-fallback-cert")
@@ -95,6 +71,7 @@ func (c *Plugins) Apply(ctx *cli.Command) {
 	c.EnvFilename = ctx.String("plugin-env")
 }
 
+// LoadFallbackCertificate loads the configured SSL fallback certificate pair.
 func (c *Plugins) LoadFallbackCertificate(apisixHome string, certmagicEnabled bool) (ssl.PEMCertificate, bool, error) {
 	if len(c.SSLPaths) == 0 && !certmagicEnabled {
 		return ssl.PEMCertificate{}, false, nil
@@ -116,6 +93,7 @@ func (c *Plugins) LoadFallbackCertificate(apisixHome string, certmagicEnabled bo
 	return cert, true, nil
 }
 
+// Validate checks plugin configuration constraints.
 func (c *Plugins) Validate() error {
 	if c.EnableSSL && c.SSLACMETimeout <= 0 {
 		return errors.New("plugin ssl acme timeout must be positive")

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcomdev/sixpack/internal/certmagicmgr"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/internal/certmagicmgr"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 func TestProviderRequestAndBestMatchPublic(t *testing.T) {

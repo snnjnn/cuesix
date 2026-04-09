@@ -10,6 +10,7 @@ import (
 // YAMLPlugin converts JSON payloads to YAML and appends the #END marker.
 type YAMLPlugin struct{}
 
+// Update converts JSON payload bytes to YAML and appends the APISIX #END marker.
 func (p *YAMLPlugin) Update(logger *slog.Logger, payload []byte) ([]byte, error) {
 	if len(payload) == 0 {
 		logger.Info("yaml plugin empty payload")

@@ -44,6 +44,7 @@ type MockCertMagic struct {
 	AllMatchingCertificatesCalls []AllMatchingCertificatesCall
 }
 
+// HTTPChallengeHandler applies the configured HTTP challenge handler stub.
 func (m *MockCertMagic) HTTPChallengeHandler(handler http.Handler) http.Handler {
 	if m.HTTPChallengeHandlerFunc != nil {
 		return m.HTTPChallengeHandlerFunc(handler)
@@ -51,6 +52,7 @@ func (m *MockCertMagic) HTTPChallengeHandler(handler http.Handler) http.Handler 
 	return handler
 }
 
+// ManageAsync records a call and delegates to ManageAsyncFunc when configured.
 func (m *MockCertMagic) ManageAsync(ctx context.Context, cfg *certmagic.Config, snis []string) error {
 	m.ManageAsyncCalls = append(m.ManageAsyncCalls, ManageAsyncCall{
 		Ctx:    ctx,
@@ -63,6 +65,7 @@ func (m *MockCertMagic) ManageAsync(ctx context.Context, cfg *certmagic.Config, 
 	return nil
 }
 
+// RemoveManaged records a call and delegates to RemoveManagedFunc when configured.
 func (m *MockCertMagic) RemoveManaged(cache *certmagic.Cache, issuers []certmagic.SubjectIssuer) {
 	m.RemoveManagedCalls = append(m.RemoveManagedCalls, RemoveManagedCall{
 		Cache:   cache,
@@ -73,6 +76,7 @@ func (m *MockCertMagic) RemoveManaged(cache *certmagic.Cache, issuers []certmagi
 	}
 }
 
+// AllMatchingCertificates records a call and returns configured certificates.
 func (m *MockCertMagic) AllMatchingCertificates(cache *certmagic.Cache, sni string) []certmagic.Certificate {
 	m.AllMatchingCertificatesCalls = append(m.AllMatchingCertificatesCalls, AllMatchingCertificatesCall{
 		Cache: cache,
@@ -93,6 +97,7 @@ type MockStorage struct {
 	UpdateConfigCalls []UpdateConfigCall
 }
 
+// CleanStorage records a call and delegates to CleanStorageFunc when configured.
 func (m *MockStorage) CleanStorage(ctx context.Context, opts certmagic.CleanStorageOptions) error {
 	m.CleanStorageCalls = append(m.CleanStorageCalls, CleanStorageCall{
 		Ctx:  ctx,
@@ -104,6 +109,7 @@ func (m *MockStorage) CleanStorage(ctx context.Context, opts certmagic.CleanStor
 	return nil
 }
 
+// UpdateConfig records a call and delegates to UpdateConfigFunc when configured.
 func (m *MockStorage) UpdateConfig(cfg *certmagic.Config) {
 	m.UpdateConfigCalls = append(m.UpdateConfigCalls, UpdateConfigCall{
 		Config: cfg,

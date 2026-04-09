@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
 )
 
 // ProviderConfig configures a single ACME provider.

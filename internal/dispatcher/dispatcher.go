@@ -3,26 +3,25 @@ package dispatcher
 import (
 	"context"
 	"errors"
-	"io/fs"
 	"iter"
 	"log/slog"
 	"slices"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/cursor"
 )
 
 type Scheduler func(ctx context.Context, action func())
 
 type Fetcher interface {
-	Fetch(fses ...fs.FS) iter.Seq2[compiler.Snippet, error]
+	Fetch(roots ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error]
 }
 
 type State interface {
 	// Reset the state to begin a new processing cycle
 	Reset()
-	// Commit the stae after deploying to apisix succeeded
+	// Commit the state after deploying to apisix succeeded
 	Commit()
 }
 
@@ -42,38 +41,55 @@ type Validator interface {
 }
 
 type Reloader interface {
-	Apply(ctx context.Context, payload []byte, useApi bool) error
+	Apply(ctx context.Context, virtualgw string, payload []byte) error
+}
+
+type ValidatorFactory interface {
+	Instance(virtualgw string) Validator
+}
+
+type MergerFactory interface {
+	Instance(virtualgw string) Merger
+}
+
+type SerializerFactory interface {
+	Instance(virtualgw string) Serializer
 }
 
 // Config wires the dispatcher dependencies and runtime options.
 type Config struct {
 	// Compiler, Cache, Validator, and Reloader define the pipeline stages.
 	Fetcher           Fetcher
-	MergerFactory     func() Merger
-	SerializerFactory func() Serializer
-	ValidatorFactory  func() Validator
+	MergerFactory     MergerFactory
+	SerializerFactory SerializerFactory
+	ValidatorFactory  ValidatorFactory
 	Reloader          Reloader
 	Scheduler         Scheduler
 	// Filesystems provide the input directories to read YAML fragments from.
-	Filesystems []fs.FS
+	Filesystems []compiler.InputRoot
 	// OutputYAML controls whether validation is performed against YAML instead of JSON.
 	OutputYAML bool
 	// Cooldown defines the minimum interval between dequeued runs.
 	Cooldown time.Duration
 }
 
+type VirtualGateway struct {
+	merger        Merger
+	serializer    Serializer
+	validator     Validator
+	lastCommit    []byte
+	commitSuccess bool
+}
+
 // Dispatcher queues compile requests and runs the compile/validate/reload pipeline.
 type Dispatcher struct {
+	// Logger for this dispatcher instance
+	logger       *slog.Logger
 	config       Config
 	queue        chan struct{}
 	lastDequeued time.Time
 	// Last running success
-	lastCommit    []byte
-	commitSuccess bool
-	// Virtual API gateways state
-	vag state
-	// Logger for this dispatcher instance
-	logger *slog.Logger
+	virtualgw map[string]*VirtualGateway
 }
 
 // New builds a dispatcher with the provided configuration.
@@ -99,10 +115,12 @@ func New(logger *slog.Logger, cfg Config) (*Dispatcher, error) {
 	if len(cfg.Filesystems) == 0 {
 		return nil, errors.New("filesystems are required")
 	}
+	gateways := make(map[string]*VirtualGateway)
 	return &Dispatcher{
-		config: cfg,
-		queue:  make(chan struct{}, 1),
-		logger: logger,
+		logger:    logger,
+		config:    cfg,
+		queue:     make(chan struct{}, 1),
+		virtualgw: gateways,
 	}, nil
 }
 
@@ -116,12 +134,6 @@ func (d *Dispatcher) Notify() {
 	}
 }
 
-type state struct {
-	merger     Merger
-	serializer Serializer
-	validator  Validator
-}
-
 // Run consumes queued events until the context is canceled.
 func (d *Dispatcher) Run(ctx context.Context) error {
 	if d == nil {
@@ -130,11 +142,6 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 	logger := d.logger
 	if err := d.waitForCooldown(ctx); err != nil {
 		return err
-	}
-	d.vag = state{
-		merger:     d.config.MergerFactory(),
-		serializer: d.config.SerializerFactory(),
-		validator:  d.config.ValidatorFactory(),
 	}
 	for range cursor.All(ctx, cursor.Channel(d.queue)) {
 		dispatcherDequeued.Inc()
@@ -150,7 +157,7 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 			}
 		})
 	}
-	return nil
+	return ctx.Err()
 }
 
 // Internal function that models the pipeline
@@ -164,24 +171,23 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 		dispatcherDuration.WithLabelValues("total").Observe(time.Since(start).Seconds())
 	}()
 
-	// Reset the commitSuccess flag
-	wasSucessful := d.commitSuccess
-	d.commitSuccess = false
-
 	stageStart := time.Now()
 	// TODO: Add snippets by label, and validate together?
 	logger.Info("fetch stage start")
-	snippets := make([]compiler.Snippet, 0, 10)
+	snippets := make(map[string][]compiler.Snippet)
 	for snippet, err := range d.config.Fetcher.Fetch(d.config.Filesystems...) {
 		if err != nil {
 			dispatcherErrors.WithLabelValues("fetch").Inc()
 			return err
 		}
 		if snippet.Data == nil {
-			logger.Warn("skipping empty snippet (decoded nil map)", "path", snippet.Path)
+			logger.Warn("skipping empty snippet (decoded nil map)", "source", snippet.Ref.Key())
 			continue
 		}
-		snippets = append(snippets, snippet)
+		// Support hierarchical virtual gateways (e.g. "foo/bar")
+		for _, virtualgw := range snippet.Virtualgw.Hierarchy() {
+			snippets[virtualgw] = append(snippets[virtualgw], snippet)
+		}
 	}
 	if len(snippets) == 0 {
 		logger.Warn("no snippets fetched after filtering")
@@ -189,13 +195,36 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 	dispatcherDuration.WithLabelValues("fetch").Observe(time.Since(stageStart).Seconds())
 	logger.Info("fetch stage complete", "duration", time.Since(stageStart))
 
-	// VAG selection: currently we only support one VAG
-	vag := d.vag
+	// Vag processing
+	errs := make([]error, 0, len(snippets))
+	for virtualgw, snippetList := range snippets {
+		state, ok := d.virtualgw[virtualgw]
+		if !ok {
+			state = &VirtualGateway{
+				merger:     d.config.MergerFactory.Instance(virtualgw),
+				serializer: d.config.SerializerFactory.Instance(virtualgw),
+				validator:  d.config.ValidatorFactory.Instance(virtualgw),
+			}
+			d.virtualgw[virtualgw] = state
+		}
+		if err := d.handleGateway(ctx, virtualgw, state, snippetList); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
 
-	stageStart = time.Now()
+func (d *Dispatcher) handleGateway(ctx context.Context, vgwname string, virtualgw *VirtualGateway, snippets []compiler.Snippet) error {
+	// Reset the commitSuccess flag
+	wasSucessful := virtualgw.commitSuccess
+	virtualgw.commitSuccess = false
+
+	logger := d.logger.With("virtualgw", vgwname)
+	stageStart := time.Now()
 	logger.Info("Merge stage start")
-	vag.merger.Reset()
-	merged, err := vag.merger.Merge(slices.Values(snippets))
+
+	virtualgw.merger.Reset()
+	merged, err := virtualgw.merger.Merge(slices.Values(snippets))
 	if err != nil {
 		dispatcherErrors.WithLabelValues("merge").Inc()
 		return err
@@ -205,8 +234,8 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 
 	stageStart = time.Now()
 	logger.Info("serialization stage start")
-	vag.serializer.Reset()
-	serialized, err := vag.serializer.Serialize(merged)
+	virtualgw.serializer.Reset()
+	serialized, err := virtualgw.serializer.Serialize(merged)
 	if err != nil {
 		dispatcherErrors.WithLabelValues("serialize").Inc()
 		return err
@@ -216,18 +245,18 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 	if serialized == nil {
 		if wasSucessful {
 			logger.Info("no changes detected; skipping reload")
-			d.commitSuccess = true
+			virtualgw.commitSuccess = true
 			return nil
 		}
 		logger.Info("will retry last committed config")
-		serialized = d.lastCommit
+		serialized = virtualgw.lastCommit
 	}
 	logger.Info("serialize stage complete", "duration", time.Since(stageStart))
 
 	stageStart = time.Now()
 	logger.Info("validation stage start")
-	vag.validator.Reset()
-	ok, err := vag.validator.Validate(serialized, d.config.OutputYAML)
+	virtualgw.validator.Reset()
+	ok, err := virtualgw.validator.Validate(serialized, d.config.OutputYAML)
 	if err != nil {
 		dispatcherErrors.WithLabelValues("validate").Inc()
 		return err
@@ -242,7 +271,7 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 
 	stageStart = time.Now()
 	logger.Info("reload stage start")
-	if err := d.config.Reloader.Apply(ctx, serialized, true); err != nil {
+	if err := d.config.Reloader.Apply(ctx, vgwname, serialized); err != nil {
 		dispatcherDuration.WithLabelValues("reload").Observe(time.Since(stageStart).Seconds())
 		dispatcherErrors.WithLabelValues("reload").Inc()
 		return err
@@ -251,13 +280,13 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 	logger.Info("reload stage complete", "duration", time.Since(stageStart))
 
 	// Register configuration as successful
-	d.lastCommit = serialized
-	d.commitSuccess = true
+	virtualgw.lastCommit = serialized
+	virtualgw.commitSuccess = true
 
 	// And commit state
-	vag.merger.Commit()
-	vag.serializer.Commit()
-	vag.validator.Commit()
+	virtualgw.merger.Commit()
+	virtualgw.serializer.Commit()
+	virtualgw.validator.Commit()
 	return nil
 }
 

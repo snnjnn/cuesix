@@ -3,7 +3,7 @@ package compiler_test
 import (
 	"testing"
 
-	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/compiler"
 )
 
 func TestSubstituteAPISIX(t *testing.T) {
@@ -67,7 +67,6 @@ func TestSubstituteAPISIX(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got := compiler.SubstituteAPISIX(tc.input, env); got != tc.want {

@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/warpcomdev/sixpack/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/cursor"
 )
 
 type Tracking struct {
@@ -48,6 +48,7 @@ type TrackedProvider struct {
 	tracker  *Tracker
 }
 
+// Name returns the provider name.
 func (tp TrackedProvider) Name() string {
 	return tp.provider.Name()
 }
@@ -78,6 +79,7 @@ func (tp TrackedProvider) BestMatchFor(ctx context.Context, identity string) (Ce
 	return cert, true
 }
 
+// RequestCertificate ensures tracking exists and triggers provider provisioning if needed.
 func (tp TrackedProvider) RequestCertificate(ctx context.Context, identity string) error {
 	// Lets first check if the certificate is tracked
 	var (
@@ -165,7 +167,7 @@ type Tracker struct {
 	cursor.Watcher[Delivery]
 }
 
-// NewWatcher builds a watcher for certificate updates.
+// NewTracker builds a tracker for certificate updates and subscriptions.
 func NewTracker(logger *slog.Logger, manager Manager) (*Tracker, error) {
 	if logger == nil {
 		logger = slog.Default()

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcomdev/sixpack/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/compiler"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -36,6 +36,7 @@ type ValidationProbe struct {
 	Env     map[string]string `json:"env"`
 }
 
+// Validate runs a JSON Schema validation against instance.
 func Validate(schema *jsonschema.Schema, instance any) ValidationResponse {
 	var issues []ValidationIssue
 	err := schema.Validate(instance)
@@ -46,6 +47,7 @@ func Validate(schema *jsonschema.Schema, instance any) ValidationResponse {
 	}
 }
 
+// Validate substitutes env vars, decodes payload, applies defaults, and validates.
 func (p ValidationProbe) Validate(schema *jsonschema.Schema, defaults ParsedSchema) ValidationResponse {
 	substituted := compiler.SubstituteAPISIX(string(p.Payload), p.Env)
 	if len(substituted) == 0 {
@@ -76,6 +78,7 @@ func (p ValidationProbe) Validate(schema *jsonschema.Schema, defaults ParsedSche
 	return Validate(schema, doc)
 }
 
+// ApplyDefaults fills instance fields using schema default values and refs.
 func ApplyDefaults(schema ParsedSchema, instance any) {
 	applyDefaults(schema, instance, schema.Parsed, make(map[string]struct{}))
 }
@@ -176,7 +179,7 @@ func resolveRef(root any, ref string) any {
 	}
 
 	cur := root
-	for _, part := range strings.Split(ref[2:], "/") {
+	for part := range strings.SplitSeq(ref[2:], "/") {
 		part = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
 
 		switch node := cur.(type) {

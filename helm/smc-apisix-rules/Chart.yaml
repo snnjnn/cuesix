@@ -1,6 +1,0 @@
-apiVersion: v2
-name: smc-apisix-rules
-description: Rules chart for smc-apisix snippets and ingress wiring
-type: application
-version: 0.1.0
-appVersion: "1.0.0"

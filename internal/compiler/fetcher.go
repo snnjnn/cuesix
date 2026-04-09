@@ -2,65 +2,13 @@ package compiler
 
 import (
 	"fmt"
-	"io/fs"
 	"iter"
 	"log/slog"
-	"path/filepath"
-	"sort"
 
 	"go.yaml.in/yaml/v4"
 )
 
-func NewEnumerator(logger *slog.Logger) DefaultEnumerator {
-	return DefaultEnumerator{Logger: logger}
-}
-
-type DefaultEnumerator struct {
-	Logger *slog.Logger
-}
-
-type Source struct {
-	// Since fs.FS does not support equality, we use FSID to identify different filesystems.
-	FS   fs.FS
-	FSID int
-	Path string
-	Data []byte
-}
-
-func (be DefaultEnumerator) Enumerate(fss ...fs.FS) iter.Seq2[Source, error] {
-	return Enumerate(be.Logger, fss...)
-}
-
-func Enumerate(logger *slog.Logger, fses ...fs.FS) iter.Seq2[Source, error] {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	return func(yield func(Source, error) bool) {
-		for index, filesystem := range fses {
-			paths, err := listYAMLFiles(filesystem)
-			if err != nil {
-				if !yield(Source{}, err) {
-					return
-				}
-				continue
-			}
-			for _, path := range paths {
-				logger.Info("enumerator located file", "path", path)
-				content, err := fs.ReadFile(filesystem, path)
-				if err != nil {
-					if !yield(Source{}, fmt.Errorf("enumerator read %s: %w", path, err)) {
-						return
-					}
-					continue
-				}
-				if !yield(Source{FSID: index, FS: filesystem, Path: path, Data: content}, nil) {
-					return
-				}
-			}
-		}
-	}
-}
-
+// NewFetcher returns the default snippet fetcher.
 func NewFetcher(logger *slog.Logger, enumerator Enumerator) DefaultFetcher {
 	return DefaultFetcher{
 		Logger:     logger,
@@ -68,19 +16,17 @@ func NewFetcher(logger *slog.Logger, enumerator Enumerator) DefaultFetcher {
 	}
 }
 
-type Enumerator interface {
-	Enumerate(...fs.FS) iter.Seq2[Source, error]
-}
-
 type DefaultFetcher struct {
 	Logger     *slog.Logger
 	Enumerator Enumerator
 }
 
-func (bf DefaultFetcher) Fetch(fss ...fs.FS) iter.Seq2[Snippet, error] {
-	return Fetch(bf.Logger, bf.Enumerator.Enumerate(fss...))
+// Fetch decodes enumerated YAML sources into snippets.
+func (bf DefaultFetcher) Fetch(roots ...InputRoot) iter.Seq2[Snippet, error] {
+	return Fetch(bf.Logger, bf.Enumerator.Enumerate(roots...))
 }
 
+// Fetch decodes enumerated YAML sources into snippets.
 func Fetch(logger *slog.Logger, enumeration iter.Seq2[Source, error]) iter.Seq2[Snippet, error] {
 	if logger == nil {
 		logger = slog.Default()
@@ -101,12 +47,12 @@ func Fetch(logger *slog.Logger, enumeration iter.Seq2[Source, error]) iter.Seq2[
 			}
 			value, err := decodeYAML(source.Data)
 			if err != nil {
-				if !yield(Snippet{}, fmt.Errorf("decode %s: %w", source.Path, err)) {
+				if !yield(Snippet{}, fmt.Errorf("decode %s: %w", source.Ref.Path, err)) {
 					return
 				}
 				continue
 			}
-			if !yield(Snippet{Path: source.Path, Data: value}, nil) {
+			if !yield(Snippet{Ref: source.Ref, Virtualgw: source.Virtualgw, Data: value}, nil) {
 				return
 			}
 		}
@@ -119,26 +65,4 @@ func decodeYAML(content []byte) (map[string]any, error) {
 		return nil, err
 	}
 	return value, nil
-}
-
-func listYAMLFiles(filesystem fs.FS) ([]string, error) {
-	var paths []string
-	err := fs.WalkDir(filesystem, ".", func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		ext := filepath.Ext(path)
-		if ext == ".yaml" || ext == ".yml" {
-			paths = append(paths, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(paths)
-	return paths, nil
 }

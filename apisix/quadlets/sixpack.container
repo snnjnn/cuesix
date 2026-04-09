@@ -1,11 +1,11 @@
 [Unit]
-Description=Podman - Sixpack
+Description=Podman - Cuesix
 Requires=apisix-network.service
 Wants=apisix.service
 After=apisix.service
 
 [Container]
-Image=sixpack:latest
+Image=docker.io/warpcomdev/sixpack:latest
 ReadOnly=true
 #AutoUpdate=registry
 ContainerName=sixpack
@@ -14,7 +14,7 @@ Environment=SIXPACK_CERTMAGIC=true
 Environment=SIXPACK_CERTMAGIC_CHALLENGE_PORT=8882
 Environment=SIXPACK_CERTMAGIC_DATA_DIR=/acme
 Environment=SIXPACK_CERTMAGIC_DEFAULT_PROVIDER=staging
-Environment=SIXPACK_CERTMAGIC_PROVIDERS="staging|soporte@fivecorporation.com|https://acme-staging-v02.api.letsencrypt.org/directory,prod|soporte@fivecorporation.com|https://acme-v02.api.letsencrypt.org/directory"
+Environment=SIXPACK_CERTMAGIC_PROVIDERS="staging|YOUR_EMAIL|https://acme-staging-v02.api.letsencrypt.org/directory,prod|YOUR_EMAIL|https://acme-v02.api.letsencrypt.org/directory"
 Environment=SIXPACK_COOLDOWN=30s
 Environment=SIXPACK_INPUT_DIRS=/input
 Environment=SIXPACK_PLUGIN_JQ=true
@@ -36,9 +36,12 @@ Volume=/opt/apisix/tmp:/tmp
 Volume=/opt/apisix/certs:/usr/local/apisix/certs:ro
 Volume=/opt/apisix/conf:/usr/local/apisix/conf
 Volume=/opt/apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+# Add GeoIP volume
+Volume=/opt/geoip:/usr/local/share/geoip:ro
 # These are required to validate configs
 Volume=/opt/apisix/logs:/usr/local/apisix/logs
 Volume=/opt/apisix/tmp:/var/lib/nginx/tmp
+Entrypoint=/usr/local/bin/sixpack
 Exec=serve
 # compiler
 PublishPort=8880:8880
@@ -58,4 +61,3 @@ TimeoutStartSec=900
 
 [Install]
 WantedBy=multi-user.target
-

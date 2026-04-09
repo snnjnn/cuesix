@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
-	"github.com/warpcomdev/sixpack/internal/testutil"
+	"github.com/warpcondev/cuesix/cmd/sixpack/config"
+	"github.com/warpcondev/cuesix/internal/testutil"
 )
 
 func TestAPISIXMirrorCreationAndCleanup(t *testing.T) {
@@ -19,8 +19,8 @@ func TestAPISIXMirrorCreationAndCleanup(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "conf", "apisix.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	cfg := config.APISIX{Home: home, ValidationTimeout: time.Second}
-	v, err := cfg.BuildValidator(testutil.Logger())
+	cfg := config.StandaloneValidator{ValidationTimeout: time.Second}
+	v, err := cfg.BuildValidator(testutil.Logger(), home)
 	if err != nil {
 		t.Fatalf("BuildValidator error: %v", err)
 	}

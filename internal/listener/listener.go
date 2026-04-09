@@ -5,21 +5,40 @@ import (
 	"net/http"
 )
 
-// Notifier is notified when /compile is requested.
-type Notifier interface {
-	Notify()
+// Publisher exposes readiness status
+type Publisher interface {
 	Ready() bool
 }
 
-// NewHandler builds the HTTP handler that exposes POST /compile.
-func NewHandler(notifier Notifier) (http.Handler, error) {
-	if notifier == nil {
-		return nil, errors.New("notifier is required")
-	}
+// Notifier is notified when /compile is requested.
+type Notifier interface {
+	Notify()
+}
+
+func NewHandler(notifier Notifier, publisher Publisher) (*http.ServeMux, error) {
 	mux := http.NewServeMux()
-	mux.Handle("GET /live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	if notifier == nil && publisher == nil {
+		return nil, errors.New("notifier or publisher are required")
+	}
+	if notifier != nil {
+		registerNotifier(mux, notifier)
+	}
+	if publisher != nil {
+		registerPublisher(mux, publisher)
+	}
+	return mux, nil
+}
+
+// registerNotifier builds the HTTP handler that exposes POST /compile.
+func registerNotifier(mux *http.ServeMux, notifier Notifier) {
+	mux.Handle("POST /compile", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		notifier.Notify()
+		w.WriteHeader(http.StatusNoContent)
 	}))
+}
+
+// registerPublisher builds the HTTP handler that exposes GET /live and GET /ready.
+func registerPublisher(mux *http.ServeMux, notifier Publisher) {
 	mux.Handle("GET /ready", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if notifier.Ready() {
 			w.WriteHeader(http.StatusOK)
@@ -27,17 +46,7 @@ func NewHandler(notifier Notifier) (http.Handler, error) {
 		}
 		w.WriteHeader(http.StatusTooEarly)
 	}))
-	mux.Handle("POST /compile", compileHandler(notifier))
-	return mux, nil
-}
-
-func compileHandler(notifier Notifier) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		notifier.Notify()
-		w.WriteHeader(http.StatusNoContent)
-	})
+	mux.Handle("GET /live", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 }

@@ -1,4 +1,4 @@
-name: services reject duplicate id
+name: services conflict on scalar field
 left:
   services:
     - id: svc
@@ -7,4 +7,4 @@ right:
   services:
     - id: svc
       name: b
-error: duplicate id svc
+error: scalar conflict at name

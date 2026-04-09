@@ -1,0 +1,19 @@
+ngx_addon_name=ngx_http_sixpack_buffering_module
+
+# Two code paths are required because this file is consumed by Nginx/OpenResty
+# configure in different modes:
+# - dynamic module mode: --add-dynamic-module=...
+# - legacy/static addon mode: older addon variable wiring
+if test -n "$ngx_module_link"; then
+    # Dynamic module path (used by this repo's Docker build).
+    # auto/module generates the .so build rules and module metadata.
+    ngx_module_type=HTTP
+    ngx_module_name=ngx_http_sixpack_buffering_module
+    ngx_module_srcs="$ngx_addon_dir/ngx_http_sixpack_buffering_module.c"
+    . auto/module
+else
+    # Legacy/static addon path fallback.
+    # Keeps compatibility with environments that still consume addon vars.
+    HTTP_MODULES="$HTTP_MODULES ngx_http_sixpack_buffering_module"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_sixpack_buffering_module.c"
+fi

@@ -14,16 +14,35 @@ async function fetchOrThrow(url, options = {}, accept404 = false) {
 }
 
 export class SourceStore {
-  async listSources() {
+  async listVirtualGateways(signal) {
+    const response = await fetchOrThrow(ENDPOINTS.gateways, { signal }, true);
+    if (response === null) {
+      return {};
+    }
+    const gateways = await response.json();
+    if (!gateways || typeof gateways !== 'object') {
+      return {};
+    }
+    return gateways;
+  }
+
+  async getIndex(virtualGateway, signal) {
+    const normalizedVirtualGateway = String(virtualGateway || '').replace(/^\/+|\/+$/g, '');
+    const indexUrl = `${ENDPOINTS.virtualgw}/${encodeURIComponent(normalizedVirtualGateway)}`;
+    const response = await fetchOrThrow(indexUrl, { signal });
+    return response.json();
+  }
+
+  async listSourceMap() {
     const response = await fetchOrThrow(ENDPOINTS.sources, {}, true);
     if (response === null) {
-      return [SAMPLE_SOURCE.value];
+      return {};
     }
     const sources = await response.json();
-    if (!Array.isArray(sources) || sources.length === 0) {
-      return [];
+    if (sources && typeof sources === 'object') {
+      return sources;
     }
-    return sources;
+    return {};
   }
 
   async getSourceContent(selectedPath) {
@@ -34,6 +53,15 @@ export class SourceStore {
     const normalizedPath = selectedPath.replace(/^\//, '');
     const sourceUrl = `../sources/${encodeURI(normalizedPath)}`;
     const response = await fetchOrThrow(sourceUrl);
+    return response.text();
+  }
+
+  async getConfigContent(virtualGateway, kind, id) {
+    const normalizedVirtualGateway = String(virtualGateway || '').replace(/^\/+|\/+$/g, '');
+    const normalizedKind = String(kind || '').replace(/^\/+|\/+$/g, '');
+    const normalizedId = String(id || '').replace(/^\/+|\/+$/g, '');
+    const configUrl = `${ENDPOINTS.virtualgw}/${encodeURIComponent(normalizedVirtualGateway)}/${encodeURIComponent(normalizedKind)}/${encodeURIComponent(normalizedId)}`;
+    const response = await fetchOrThrow(configUrl);
     return response.text();
   }
 }

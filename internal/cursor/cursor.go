@@ -30,6 +30,9 @@ func (c Cursor[T]) Next(ctx context.Context) (zero T, ok bool) {
 	}
 }
 
+// All converts a cursor into an iterator sequence bound to the context.
+// Note: this function does not notify when the context is cancelled, the caller
+// must check context cancellation with ctx.Err()
 func All[T any](ctx context.Context, c Cursor[T]) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for {
@@ -119,6 +122,7 @@ func Loop[T any](ctx context.Context, w *Watcher[T], events Cursor[T]) {
 	}
 }
 
+// WithLock executes closure while holding the mutex.
 func (l *Lock) WithLock(closure func()) {
 	l.Lock()
 	defer l.Unlock()

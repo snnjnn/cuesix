@@ -17,19 +17,36 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/warpcondev/cuesix/cmd/sixpack/config"
+	"github.com/warpcondev/cuesix/cmd/sixpack/control"
+	"github.com/warpcondev/cuesix/cmd/sixpack/factory"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcondev/cuesix/internal/listener"
+	"github.com/warpcondev/cuesix/internal/plugin"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/recorder"
+	"github.com/warpcondev/cuesix/internal/schema"
+	"github.com/warpcondev/cuesix/internal/sse"
+	"github.com/warpcondev/cuesix/internal/validator"
 	"github.com/urfave/cli/v3"
-	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
-	"github.com/warpcomdev/sixpack/cmd/sixpack/control"
-	"github.com/warpcomdev/sixpack/cmd/sixpack/factory"
-	"github.com/warpcomdev/sixpack/internal/app"
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/cursor"
-	"github.com/warpcomdev/sixpack/internal/dispatcher"
-	"github.com/warpcomdev/sixpack/internal/listener"
-	"github.com/warpcomdev/sixpack/internal/plugin"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
 	"golang.org/x/sync/errgroup"
 )
+
+type fullConfig struct {
+	Input               config.Input
+	Apisix              config.Apisix
+	StandaloneValidator config.StandaloneValidator
+	Plugins             config.Plugins
+	Certmagic           config.Certmagic
+	HTTPServer          config.HTTPServer
+	Server              config.Server
+	Reload              config.Reload
+	APIControl          config.APIControl
+	ServerSideEvents    config.ServerSideEvents
+	Client              config.Client
+}
 
 func main() {
 
@@ -42,15 +59,35 @@ func main() {
 	)
 	slog.SetDefault(logger)
 
-	var (
-		inputCfg        = config.Input{}
-		apisixCfg       = config.APISIX{}
-		pluginsConfig   = config.Plugins{}
-		certmagicConfig = config.Certmagic{}
-		serverConfig    = config.Server{}
-		reloadConfig    = config.Reload{}
-		apiControlCfg   = config.APIControl{}
-	)
+	var cfg fullConfig
+
+	compileFlags := []flagConfig{
+		&cfg.Input,
+		&cfg.Apisix,
+		&cfg.StandaloneValidator,
+		&cfg.Plugins,
+		&cfg.Certmagic,
+		&cfg.Reload,
+		&cfg.APIControl,
+	}
+	serveFlags := []flagConfig{
+		&cfg.Input,
+		&cfg.Apisix,
+		&cfg.StandaloneValidator,
+		&cfg.Plugins,
+		&cfg.Certmagic,
+		&cfg.Reload,
+		&cfg.HTTPServer,
+		&cfg.Server,
+		&cfg.APIControl,
+		&cfg.ServerSideEvents,
+	}
+	clientFlags := []flagConfig{
+		&cfg.Reload,
+		&cfg.Apisix,
+		&cfg.Client,
+		&cfg.HTTPServer,
+	}
 
 	app := &cli.Command{
 		Name:  "sixpack",
@@ -60,22 +97,42 @@ func main() {
 				Name:  "compile",
 				Usage: "compile config and write to stdout",
 				Flags: func() []cli.Flag {
-					return joinFlags(&inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &apiControlCfg)
+					return joinFlags(compileFlags...)
 				}(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					applyFlags(cmd, &inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &apiControlCfg)
-					return run(logger, inputCfg, serverConfig, apisixCfg, reloadConfig, pluginsConfig, certmagicConfig, apiControlCfg, false)
+					applyFlags(cmd, compileFlags...)
+					if err := validateFlags(serveFlags...); err != nil {
+						return err
+					}
+					return run(logger, cfg, false)
 				},
 			},
 			{
 				Name:  "serve",
 				Usage: "run HTTP server and reload APISIX on changes",
 				Flags: func() []cli.Flag {
-					return joinFlags(&inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &serverConfig, &apiControlCfg)
+					return joinFlags(serveFlags...)
 				}(),
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					applyFlags(cmd, &inputCfg, &apisixCfg, &pluginsConfig, &certmagicConfig, &reloadConfig, &serverConfig, &apiControlCfg)
-					return run(logger, inputCfg, serverConfig, apisixCfg, reloadConfig, pluginsConfig, certmagicConfig, apiControlCfg, true)
+					applyFlags(cmd, serveFlags...)
+					if err := validateFlags(serveFlags...); err != nil {
+						return err
+					}
+					return run(logger, cfg, true)
+				},
+			},
+			{
+				Name:  "client",
+				Usage: "watch a remote sixpack SSE endpoint and apply received configs",
+				Flags: func() []cli.Flag {
+					return joinFlags(clientFlags...)
+				}(),
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					applyFlags(cmd, clientFlags...)
+					if err := validateFlags(clientFlags...); err != nil {
+						return err
+					}
+					return runClient(logger, cfg)
 				},
 			},
 		},
@@ -86,37 +143,43 @@ func main() {
 	}
 }
 
-func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, apisixCfg config.APISIX, reloadCfg config.Reload, pluginCfg config.Plugins, certmagicCfg config.Certmagic, apiControlCfg config.APIControl, serve bool) error {
-
-	// Validate common configs
-	if err := inputCfg.Validate(); err != nil {
-		return err
-	}
-	if err := certmagicCfg.Validate(); err != nil {
-		return err
-	}
-	if err := pluginCfg.Validate(); err != nil {
-		return err
-	}
-
+func run(logger *slog.Logger, cfg fullConfig, serve bool) error {
 	// Build input filesystem views.
-	fses, err := factory.BuildFilesystems(inputCfg.InputDirs)
+	fses, err := factory.BuildFilesystems(cfg.Input.InputDirs)
 	if err != nil {
 		return fmt.Errorf("input dirs: %w", err)
 	}
 
 	// Configure SSL dependencies
-	sslSetup, err := factory.NewSSLSetup(logger, pluginCfg, certmagicCfg, apisixCfg)
+	sslSetup, err := factory.NewSSLSetup(logger, cfg.Plugins, cfg.Certmagic, cfg.Apisix)
 	if err != nil {
 		logger.Error("SSL setup init failed", "error", err)
 		return err
 	}
 
-	// Build enumerator, fetcher, and compiler factory
-	sourceEnumerator := app.NewSourcesEnumerator(logger, nil)
+	// Build resolver, enumerator, fetcher, and compiler factory
+	var resolver compiler.Resolver = compiler.DefaultResolver{
+		VirtualGateway: compiler.FromKey(cfg.Apisix.Virtualgw),
+	}
+	if cfg.Input.GatewayFromDots {
+		// Derive the virtualgateway from directory name. The directory name
+		// is split in prefix.suffix, and only prefix is used as virtual gw name.
+		resolver = control.GatewayFromDots{
+			Resolver: resolver,
+		}
+	}
+	sourceEnumerator, err := recorder.NewSourcesEnumerator(logger, compiler.NewEnumerator(logger, resolver))
+	if err != nil {
+		logger.Error("enumerator init failed", "error", err)
+		return err
+	}
 	var enumerator compiler.Enumerator = sourceEnumerator
-	if pluginCfg.EnvFilename != "" {
-		enumerator = plugin.NewEnvEnumerator(logger, enumerator, pluginCfg.EnvFilename)
+	if cfg.Plugins.EnvFilename != "" {
+		enumerator, err = plugin.NewEnvEnumerator(logger, enumerator, cfg.Plugins.EnvFilename)
+		if err != nil {
+			logger.Error("env enumerator init failed", "error", err)
+			return err
+		}
 	}
 	var (
 		fetcherInstance dispatcher.Fetcher = compiler.NewFetcher(logger, enumerator)
@@ -124,8 +187,11 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	)
 	compFactory := factory.CompilerFactory{
 		Logger: logger,
+		// Need to enable deepcopy to add labels to the snippets,
+		// without each virtualgw overwriting every other vgw
+		DeepCopy: cfg.Apisix.EnableLabels,
 	}
-	if apisixCfg.UseSchema {
+	if cfg.StandaloneValidator.UseSchema {
 		schemaFetcher, err = factory.NewSchemaFetcher(fetcherInstance, logger)
 		if err != nil {
 			logger.Error("schema fetcher init failed", "error", err)
@@ -136,7 +202,7 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 
 	// Build plugin pipelines.
 	scheduler := factory.NewScheduler()
-	serFactory, err := factory.NewSerializer(logger, pluginCfg, sslSetup, scheduler)
+	serFactory, err := factory.NewSerializer(logger, cfg.Plugins, cfg.Apisix, sslSetup, scheduler)
 	if err != nil {
 		logger.Error("serializer factory failed", "error", err)
 		return err
@@ -169,9 +235,9 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 			group.Wait()
 		}()
 		// Build the fetcher. This might block early, but since we
-		// are running in comnpile mode, we don't mind
+		// are running in compile mode, we don't mind
 		if schemaFetcher != nil {
-			if err := schemaFetcher.LoadSchema(groupCtx, logger, apiControlCfg); err != nil {
+			if err := schemaFetcher.LoadSchema(groupCtx, logger, cfg.APIControl); err != nil {
 				logger.Error("schema fetcher failed", "error", err)
 				return err
 			}
@@ -180,21 +246,21 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		snippets := make([]compiler.Snippet, 0, 16)
 		for snippet, err := range fetcherInstance.Fetch(fses...) {
 			if err != nil {
-				logger.Error("fetcher failed", "error", err, "path", snippet.Path)
+				logger.Error("fetcher failed", "error", err, "source", snippet.Ref.Key())
 				return err
 			}
 			snippets = append(snippets, snippet)
 		}
 		// Simulate a dispatcher run: create the instances,
 		// merge, and serialize.
-		compilerInstance := compFactory.Instance()
+		compilerInstance := compFactory.Instance(cfg.Apisix.Virtualgw)
 		compilerInstance.Reset()
 		merged, err := compilerInstance.Merge(slices.Values(snippets))
 		if err != nil {
 			logger.Error("compile failed", "error", err)
 			return err
 		}
-		pluginInstance := serFactory.Instance()
+		pluginInstance := serFactory.Instance(cfg.Apisix.Virtualgw)
 		pluginInstance.Reset()
 		output, err := pluginInstance.Serialize(merged)
 		if err != nil {
@@ -213,105 +279,124 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 		return nil
 	}
 
-	// APISIX validation and mirror setup.
-	validator, err := apisixCfg.BuildValidator(logger)
-	if err != nil {
-		logger.Error("build apisix validator failed", "error", err)
-		return err
-	}
-	defer func() {
-		if err := validator.Cleanup(); err != nil {
-			logger.Error("validator cleanup failed", "error", err, "mirrorDir", validator.MirrorDir())
+	// APISIX validation and recorder setup.
+	var validatorInstance factory.SingletonValidator
+	if cfg.Reload.DryRun || cfg.APIControl.DeploymentMode != config.StandaloneMode {
+		validatorInstance = config.DryRunValidator{}
+	} else {
+		realValidator, err := cfg.StandaloneValidator.BuildValidator(logger, cfg.Apisix.Home)
+		if err != nil {
+			logger.Error("build apisix validator failed", "error", err)
+			return err
 		}
-	}()
-	valFactory := factory.ValidatorFactory{
-		Validator: validator,
+		defer func() {
+			if err := realValidator.Cleanup(); err != nil {
+				logger.Error("validator cleanup failed", "error", err, "mirrorDir", realValidator.MirrorDir())
+			}
+		}()
+		validatorInstance = realValidator
 	}
+	validatorFactory := factory.NewHierarchicalValidatorFactory(
+		cfg.StandaloneValidator.MaxGatewayDepth,
+		factory.NewSingletonValidatorFactory(validatorInstance),
+	)
+	dataRecorder := recorder.NewRecorder(logger, sourceEnumerator, validatorFactory)
 
 	// Reload action
-	reloadTarget, err := reloadCfg.BuildReloader(logger, apisixCfg, pluginCfg)
+	reloadTarget, err := cfg.Reload.BuildReloader(logger, cfg.Apisix.Virtualgw, validator.BuildConfigPath(cfg.Apisix.Home, cfg.Apisix.OutputYAML))
 	if err != nil {
 		logger.Error("failed to build reloader", "error", err)
 		return err
 	}
 
+	// Capture reloads if SSE plugin is enabled
+	var sseReloader *sse.Reloader
+	if cfg.ServerSideEvents.KeepAlive > 0 {
+		sseReloader = sse.New(logger, reloadTarget)
+		reloadTarget = sseReloader
+	}
+
 	// Ready manager: intercepts dispatch calls to
 	// register successful executions
-	readyManager := newReadyManager(reloadTarget, scheduler)
+	maxGatewayDepth := cfg.StandaloneValidator.MaxGatewayDepth
+	readyManager := control.NewReadyManager(reloadTarget, scheduler, maxGatewayDepth)
 
 	// Dispatcher wiring.
 	disp, err := dispatcher.New(logger, dispatcher.Config{
-		Fetcher: fetcherInstance,
-		MergerFactory: func() dispatcher.Merger {
-			return compFactory.Instance()
-		},
-		SerializerFactory: func() dispatcher.Serializer {
-			return serFactory.Instance()
-		},
-		ValidatorFactory: func() dispatcher.Validator {
-			return valFactory.Instance()
-		},
-		Reloader:    readyManager,
-		Scheduler:   scheduler.Must,
-		Filesystems: fses,
-		OutputYAML:  pluginCfg.EnableYAML,
-		Cooldown:    inputCfg.Cooldown,
+		Fetcher:           fetcherInstance,
+		MergerFactory:     compFactory,
+		SerializerFactory: &serFactory,
+		ValidatorFactory:  dataRecorder,
+		Reloader:          readyManager,
+		Scheduler:         scheduler.Must,
+		Filesystems:       fses,
+		OutputYAML:        cfg.Apisix.OutputYAML,
+		Cooldown:          cfg.Input.Cooldown,
 	})
 	if err != nil {
 		logger.Error("dispatcher init failed", "error", err)
 		return err
 	}
-	readyManager.realDispatcher = disp
+	readyManager.SetDispatcher(disp)
 
 	// Buffer notifications. They will be queued until the dispatcher
 	// actually starts, but we allow any sidecar to succeed early.
 	// It also starts /live and /ready endpoints
-	handler, err := listener.NewHandler(readyManager)
-	srvTimeouts := serverCfg.Timeouts()
+	controlMux, err := listener.NewHandler(readyManager, readyManager)
+	srvTimeouts := cfg.HTTPServer.Timeouts()
 	if err != nil {
 		logger.Error("listener init failed", "error", err)
 		return err
 	}
-	server := buildServer(serverCfg.ListenAddr, handler, srvTimeouts)
+	if cfg.ServerSideEvents.KeepAlive > 0 && sseReloader != nil {
+		// Add default and per-gateway SSE routes if enabled
+		controlMux.Handle("GET /final/full", http.RedirectHandler(fmt.Sprintf("/final/full/%s", cfg.Apisix.Virtualgw), http.StatusTemporaryRedirect))
+		controlMux.Handle("GET /final/full/{virtualgw}", sseReloader.HandleFull())
+		controlMux.Handle("GET /final/sse", http.RedirectHandler(fmt.Sprintf("/final/sse/%s", cfg.Apisix.Virtualgw), http.StatusTemporaryRedirect))
+		controlMux.Handle("GET /final/sse/{virtualgw}", sseReloader.HandleSSE(cfg.ServerSideEvents.KeepAlive))
+	}
+	server := control.BuildServer(cfg.HTTPServer.ListenAddr, controlMux, srvTimeouts)
 	group.Go(func() error {
-		logger.Info("starting compile server", "addr", serverCfg.ListenAddr)
+		logger.Info("starting compile server", "addr", cfg.HTTPServer.ListenAddr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 		return nil
 	})
-	group.Go(serverShutdown(groupCtx, server, serverCfg.ShutdownTimeout))
+	group.Go(control.ServerShutdown(groupCtx, server, cfg.HTTPServer.ShutdownTimeout))
 
 	// Start other local endpoints
 	var metricsServer *http.Server
-	if strings.TrimSpace(serverCfg.MetricsAddr) != "" {
-		schemaClient := &http.Client{Timeout: apiControlCfg.Timeout}
-		validationHandler := app.NewValidationHandler(logger, apiControlCfg.URL, apiControlCfg.APIKey, schemaClient, apiControlCfg.Timeout, false, sourceEnumerator, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3))
+	if strings.TrimSpace(cfg.Server.MetricsAddr) != "" {
+		schemaClient := &http.Client{Timeout: cfg.APIControl.Timeout}
+		validationHandler := schema.NewManager(logger, cfg.APIControl.ControlURL, cfg.APIControl.APIKey, schemaClient, cfg.APIControl.Timeout, false, backoff.WithMaxRetries(cfg.APIControl.BuildBackoff(true), 3))
 		metricsMux := http.NewServeMux()
-		control.RegisterAPI(metricsMux, validationHandler)
+		control.RegisterAPI(metricsMux, dataRecorder, validationHandler)
+		metricsMux.Handle("GET /schema/virtualgw", readyManager.GatewaysHandler())
 		metricsMux.Handle("GET /metrics", promhttp.Handler())
-		metricsServer = buildServer(serverCfg.MetricsAddr, metricsMux, srvTimeouts)
+		metricsServer = control.BuildServer(cfg.Server.MetricsAddr, metricsMux, srvTimeouts)
 		group.Go(func() error {
-			logger.Info("starting metrics server", "addr", serverCfg.MetricsAddr)
+			logger.Info("starting metrics server", "addr", cfg.Server.MetricsAddr)
 			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
 			return nil
 		})
-		group.Go(serverShutdown(groupCtx, metricsServer, serverCfg.ShutdownTimeout))
+		group.Go(control.ServerShutdown(groupCtx, metricsServer, cfg.HTTPServer.ShutdownTimeout))
 	}
 
 	// With local endpoints running, but dispatcher still pending,
 	// we check if we are using schema, and block further process
 	// until we get the schema.
 	if schemaFetcher != nil {
-		if err := schemaFetcher.LoadSchema(groupCtx, logger, apiControlCfg); err != nil {
+		if err := schemaFetcher.LoadSchema(groupCtx, logger, cfg.APIControl); err != nil {
 			logger.Warn("failed to parse schema!", "error", err)
 		}
 	}
 
 	// Finally, ready the dispatcher
 	group.Go(func() error {
+		logger.Info("starting dispatcher loop")
 		for {
 			if err := disp.Run(groupCtx); err != nil {
 				if errors.Is(err, context.Canceled) {
@@ -326,25 +411,78 @@ func run(logger *slog.Logger, inputCfg config.Input, serverCfg config.Server, ap
 	// Ready the cleanup loops
 	if sslSetup.Enabled {
 		group.Go(func() error {
-			serFactory.CommitLoop(groupCtx, logger, certmagicCfg.CleanupInterval, certmagicCfg.UntrackedGrace)
+			logger.Info("starting ssl cleanup loop")
+			serFactory.CommitLoop(groupCtx, logger, cfg.Certmagic.CleanupInterval, cfg.Certmagic.UntrackedGrace)
 			return nil
 		})
 		group.Go(func() error {
-			serFactory.ExpireLoop(groupCtx, logger, certmagicCfg.CleanupInterval, certmagicCfg.ExpiredGrace)
+			logger.Info("starting ssl expiration loop")
+			serFactory.ExpireLoop(groupCtx, logger, cfg.Certmagic.CleanupInterval, cfg.Certmagic.ExpiredGrace)
 			return nil
 		})
 	}
 
 	// If configured to auto-trigger, go ahead
-	if serverCfg.AutoTrigger {
+	if cfg.Server.AutoTrigger {
 		disp.Notify()
 	}
+	return group.Wait()
+}
+
+func runClient(logger *slog.Logger, cfg fullConfig) error {
+	reloadTarget, err := cfg.Reload.BuildReloader(logger, cfg.Apisix.Virtualgw, validator.BuildConfigPath(cfg.Apisix.Home, cfg.Apisix.OutputYAML))
+	if err != nil {
+		return err
+	}
+	// We are only interested in the readiness of the virtualgw we are subscribed too,
+	// we have to make sure to use the proper nesting depth
+	maxGatewayDepth := strings.Count(cfg.Apisix.Virtualgw, compiler.VIRTUALGW_SEP)
+	readyReloader := control.NewReadyReloader(reloadTarget, maxGatewayDepth)
+	reloader := &readyReloader
+	httpClient, err := sse.NewHttpClient(cfg.Client.ConnectTimeout, cfg.Client.ReadTimeout)
+	sseClient, err := sse.NewClient(
+		logger,
+		reloader,
+		cfg.Apisix.Virtualgw,
+		cfg.Client.BaseURL,
+		httpClient,
+		cfg.Client.ReadTimeout,
+		cfg.Client.BuildBackoffFactory(),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Capture signals
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	group, groupCtx := errgroup.WithContext(ctx)
+
+	// Launch a mini-server with /live and /ready endpoints
+	controlMux, err := listener.NewHandler(nil, reloader)
+	readyServer := control.BuildServer(cfg.HTTPServer.ListenAddr, controlMux, cfg.HTTPServer.Timeouts())
+	group.Go(func() error {
+		logger.Info("starting client ready server", "addr", cfg.HTTPServer.ListenAddr)
+		if err := readyServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
+	group.Go(control.ServerShutdown(groupCtx, readyServer, cfg.HTTPServer.ShutdownTimeout))
+
+	// Launch the SSE client loop
+	group.Go(func() error {
+		logger.Info("starting sse client", "url", cfg.Client.BaseURL)
+		sseClient.Loop(groupCtx, nil)
+		return nil
+	})
 	return group.Wait()
 }
 
 type flagConfig interface {
 	Flags() []cli.Flag
 	Apply(ctx *cli.Command)
+	Validate() error
 }
 
 func joinFlags(cfgs ...flagConfig) []cli.Flag {
@@ -359,4 +497,17 @@ func applyFlags(cmd *cli.Command, cfgs ...flagConfig) {
 	for _, cfg := range cfgs {
 		cfg.Apply(cmd)
 	}
+}
+
+func validateFlags(cfgs ...flagConfig) error {
+	errs := make([]error, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		if err := cfg.Validate(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }

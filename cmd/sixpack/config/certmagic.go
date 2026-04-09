@@ -20,6 +20,7 @@ type Certmagic struct {
 	Providers       []string
 }
 
+// Flags returns Certmagic-related command-line flags.
 func (c *Certmagic) Flags() []cli.Flag {
 	return []cli.Flag{
 		&cli.BoolFlag{
@@ -91,6 +92,7 @@ func (c *Certmagic) Flags() []cli.Flag {
 	}
 }
 
+// Apply loads Certmagic settings from parsed CLI flags.
 func (c *Certmagic) Apply(ctx *cli.Command) {
 	c.Enabled = ctx.Bool("certmagic")
 	c.DefaultProvider = ctx.String("certmagic-default-provider")
@@ -104,6 +106,7 @@ func (c *Certmagic) Apply(ctx *cli.Command) {
 	c.Providers = ctx.StringSlice("certmagic-provider")
 }
 
+// Validate checks Certmagic configuration constraints.
 func (c *Certmagic) Validate() error {
 	if c.Enabled && c.WatchInterval <= 0 {
 		return errors.New("certmagic watch interval must be positive")

@@ -1,21 +1,18 @@
 package factory
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"io/fs"
 	"iter"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/dispatcher"
-	"github.com/warpcomdev/sixpack/internal/schema"
+	"github.com/warpcondev/cuesix/cmd/sixpack/config"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcondev/cuesix/internal/schema"
 )
 
 // SchemaFetcher wraps a base fetcher and validates each snippet against a JSON schema.
@@ -26,21 +23,22 @@ type SchemaFetcher struct {
 	Logger  *slog.Logger
 }
 
-func (f *SchemaFetcher) Fetch(fses ...fs.FS) iter.Seq2[compiler.Snippet, error] {
+// Fetch delegates fetching and logs schema-validation failures per snippet.
+func (f *SchemaFetcher) Fetch(roots ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error] {
 	logger := f.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if f.schema == nil {
 		logger.Warn("schema fetcher missing schema, falling back to default fetch")
-		return f.Fetcher.Fetch(fses...)
+		return f.Fetcher.Fetch(roots...)
 	}
 	return func(yield func(compiler.Snippet, error) bool) {
 		if f.Fetcher == nil {
 			yield(compiler.Snippet{}, errors.New("schema fetcher missing wrapped fetcher"))
 			return
 		}
-		for snippet, err := range f.Fetcher.Fetch(fses...) {
+		for snippet, err := range f.Fetcher.Fetch(roots...) {
 			if err != nil {
 				if !yield(snippet, err) {
 					return
@@ -58,7 +56,7 @@ func (f *SchemaFetcher) Fetch(fses ...fs.FS) iter.Seq2[compiler.Snippet, error] 
 			schema.ApplyDefaults(f.parsed, data)
 			if resp := schema.Validate(f.schema, data); !resp.Valid {
 				// Schema error is not deemed a fatal flaw, just flagged
-				logger.Warn("schema validation failed", "path", snippet.Path, "error", resp.Error)
+				logger.Warn("schema validation failed", "source", snippet.Ref.Key(), "error", resp.Error)
 				if !yield(snippet, nil) {
 					return
 				}
@@ -71,6 +69,7 @@ func (f *SchemaFetcher) Fetch(fses ...fs.FS) iter.Seq2[compiler.Snippet, error] 
 	}
 }
 
+// NewSchemaFetcher wraps a base fetcher with schema-aware behavior.
 func NewSchemaFetcher(fetcher dispatcher.Fetcher, logger *slog.Logger) (*SchemaFetcher, error) {
 	if fetcher == nil {
 		return nil, errors.New("schema fetcher requires a base fetcher")
@@ -78,11 +77,12 @@ func NewSchemaFetcher(fetcher dispatcher.Fetcher, logger *slog.Logger) (*SchemaF
 	return &SchemaFetcher{Fetcher: fetcher, Logger: logger}, nil
 }
 
+// LoadSchema downloads, normalizes, and compiles the APISIX schema.
 func (f *SchemaFetcher) LoadSchema(ctx context.Context, logger *slog.Logger, apiControlCfg config.APIControl) error {
 	if f == nil {
 		return errors.New("schema fetcher is nil")
 	}
-	baseURL := strings.TrimSpace(apiControlCfg.URL)
+	baseURL := strings.TrimSpace(apiControlCfg.ControlURL)
 	if baseURL == "" {
 		return errors.New("apisix-use-schema requires --apisix-control-url")
 	}
@@ -104,18 +104,31 @@ func (f *SchemaFetcher) LoadSchema(ctx context.Context, logger *slog.Logger, api
 	return nil
 }
 
-// Does a deep copy of an object by serializing to json
-// and then deserializing again
+// Does a deep copy of a YAML/JSON-like object graph made of maps, lists, and
+// scalar values.
 func deepcopy(in any) (any, error) {
-	buffer := bytes.NewBuffer(make([]byte, 0, 4096))
-	encoder := json.NewEncoder(buffer)
-	if err := encoder.Encode(in); err != nil {
-		return nil, err
+	switch typed := in.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, value := range typed {
+			copied, err := deepcopy(value)
+			if err != nil {
+				return nil, err
+			}
+			out[key] = copied
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(typed))
+		for i, value := range typed {
+			copied, err := deepcopy(value)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = copied
+		}
+		return out, nil
+	default:
+		return typed, nil
 	}
-	var result any
-	decoder := json.NewDecoder(buffer)
-	if err := decoder.Decode(&result); err != nil {
-		return nil, err
-	}
-	return result, nil
 }

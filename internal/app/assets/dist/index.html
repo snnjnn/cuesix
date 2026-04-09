@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Schema Studio</title>
+  <title>API Studio</title>
   <link rel="stylesheet" href="index.css">
   <style>
     [x-cloak] {
@@ -19,7 +19,7 @@
 
     <nav class="navbar" role="navigation" aria-label="Primary" x-data="{ navbarOpen: false }">
       <div class="navbar-brand">
-        <div class="navbar-item has-text-weight-semibold">Schema Studio</div>
+        <div class="navbar-item has-text-weight-semibold">API Studio</div>
         <a role="button" class="navbar-burger" aria-label="menu" :aria-expanded="navbarOpen.toString()"
           :class="{ 'is-active': navbarOpen }" @click="navbarOpen = !navbarOpen">
           <span aria-hidden="true"></span>
@@ -31,8 +31,10 @@
 
       <div class="navbar-menu" :class="{ 'is-active': navbarOpen }">
         <div class="navbar-start">
+          <a href="#" class="navbar-item" :class="{ 'is-active': mode === 'index' }"
+            @click.prevent="setMode('index'); navbarOpen = false">Index</a>
           <a href="#" class="navbar-item" :class="{ 'is-active': mode === 'browse' }"
-            @click.prevent="setMode('browse'); navbarOpen = false">Browse</a>
+            @click.prevent="setMode('browse'); navbarOpen = false">Sources</a>
           <a href="#" class="navbar-item" :class="{ 'is-active': mode === 'playground' }"
             @click.prevent="setMode('playground'); navbarOpen = false">Playground</a>
         </div>
@@ -47,13 +49,14 @@
 
     <section class="section">
       <div class="container is-widescreen">
-        <div class="columns">
+
+        <div class="columns" x-show="mode !== 'index'">
           <div class="column is-two-thirds">
             <div class="block">
               <div x-show="mode === 'browse'">
-                <div class="field has-addons mb-1">
+                <div class="field is-grouped mb-1">
                   <div class="control">
-                    <div class="select is-small">
+                    <div class="select">
                       <select x-model="selectedSource">
                         <option value="">Select a source file...</option>
                         <template x-for="sourcePath in sources" :key="sourcePath">
@@ -64,7 +67,7 @@
                     </div>
                   </div>
                   <div class="control">
-                    <button type="button" class="button is-link is-small" :disabled="!selectedSource"
+                    <button type="button" class="button is-link" :disabled="!selectedSource"
                       @click="loadSelectedSource()">Load</button>
                   </div>
                 </div>
@@ -79,7 +82,11 @@
                 </ul>
               </div>
               <div x-show="activeTab === 'yaml'">
-                <div x-ref="yamlEditor"></div>
+                <div class="mb-2" x-show="mode !== 'playground' && currentPath">
+                  <p class="is-size-7 has-text-weight-semibold"
+                    x-text="`${currentDocType === 'config' ? 'Config' : 'Source'} ${currentPath}`"></p>
+                </div>
+                <div x-ref="yamlEditorStandard"></div>
                 <p class="help">Ctrl + Enter in the editor to validate</p>
               </div>
               <div x-show="activeTab === 'env'">
@@ -131,8 +138,107 @@
             </div>
           </div>
         </div>
+
+        <div class="container" x-show="mode === 'index'">
+          <div class="block">
+            <div class="field is-grouped is-grouped-multiline mb-4">
+              <div class="control">
+                <div class="field has-addons mb-0">
+                  <div class="control">
+                    <button type="button" class="button is-static">Gateway</button>
+                  </div>
+                  <div class="control">
+                    <div class="select">
+                      <select x-model="selectedVirtualGateway" @change="refreshIndex()">
+                        <option value="" x-show="virtualGatewayNames.length === 0">None</option>
+                        <template x-for="gateway in virtualGatewayNames" :key="gateway">
+                          <option :value="gateway" x-text="gateway"></option>
+                        </template>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="control">
+                    <button type="button" class="button schema-vgw-indicator" :class="selectedVirtualGatewayIndicatorButtonClass" disabled :title="selectedVirtualGatewayReady === null ? 'Unknown readiness' : (selectedVirtualGatewayReady ? 'Gateway ready' : 'Gateway not ready')">
+                      <span class="icon is-small"><i class="fa-solid" :class="[selectedVirtualGatewayIndicatorIcon, selectedVirtualGatewayIndicatorIconClass]"></i></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="control">
+                <div class="field has-addons mb-0">
+                  <div class="control">
+                    <button type="button" class="button is-static">Kind</button>
+                  </div>
+                  <div class="control">
+                    <div class="select">
+                      <select x-model="selectedIndexKind" @change="applyIndexKindFilter()">
+                        <option value="">All</option>
+                        <template x-for="kind in indexKinds" :key="kind">
+                          <option :value="kind" x-text="kind"></option>
+                        </template>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="control">
+                <button type="button" class="button is-link" @click="reloadIndex()">Reload</button>
+              </div>
+              <div class="control">
+                <button
+                  type="button"
+                  class="button is-light"
+                  :class="{ 'is-static': !hasActiveIndexFilters() }"
+                  :disabled="!hasActiveIndexFilters()"
+                  @click="clearAllIndexFilters()"
+                >Remove all filters</button>
+              </div>
+            </div>
+            <div class="notification is-danger is-size-7" x-show="indexError" x-text="indexError"></div>
+            <div class="mb-3" x-show="activeTagFilters.length > 0">
+              <div class="is-flex is-align-items-center is-flex-wrap-wrap">
+                <template x-for="(filter, idx) in activeTagFilters" :key="`${filter.key}:${filter.value}`">
+                  <span class="tag is-medium mr-2 mb-2">
+                    <span x-text="filter.value ? `${filter.key}=${filter.value}` : filter.key"></span>
+                    <button type="button" class="delete is-small ml-1" @click="removeTagFilter(idx)"></button>
+                  </span>
+                </template>
+              </div>
+            </div>
+              <table x-ref="indexTable" class="table is-striped stripe is-hoverable is-fullwidth">
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>ID</th>
+                    <th>Details</th>
+                    <th>Sources</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            <p class="help" x-show="indexRows.length === 0">No indexed resources found.</p>
+          </div>
+        </div>
+
       </div>
     </section>
+
+    <div class="modal" :class="{ 'is-active': indexEditorModalOpen }" @keydown.escape.window="closeIndexEditorModal()"
+      @contextmenu.prevent="closeIndexEditorModal()">
+      <div class="modal-background" @click="closeIndexEditorModal()"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title is-size-6">
+            <span x-text="indexSelectionType === 'source' ? `Source ${currentPath || ''}` : `Config ${currentPath || ''}`"></span>
+            <span class="is-size-7 has-text-grey ml-2">Left click or Escape to exit</span>
+          </p>
+          <button type="button" class="delete" aria-label="close" @click="closeIndexEditorModal()"></button>
+        </header>
+        <section class="modal-card-body">
+          <div x-ref="yamlEditorIndex"></div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="index.js"></script>

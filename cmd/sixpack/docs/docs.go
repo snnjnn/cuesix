@@ -15,7 +15,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/json/": {
+        "/json": {
             "get": {
                 "description": "\u003cp\u003eReturns the cached normalized schema document that backs all validation endpoints.\u003c/p\u003e",
                 "produces": [
@@ -31,18 +31,24 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "502": {
+                        "description": "Schema backend unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
         },
         "/sources": {
             "get": {
-                "description": "\u003cp\u003eReturns the list of discovered fragment paths.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
+                "description": "\u003cp\u003eReturns discovered source fragments as a map of source key to leaf virtual gateway.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Schema"
+                    "Source"
                 ],
                 "summary": "List known source fragments",
                 "parameters": [
@@ -61,18 +67,12 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of available source paths",
+                        "description": "Map of source key to leaf virtual gateway",
                         "schema": {
-                            "type": "array",
-                            "items": {
+                            "type": "object",
+                            "additionalProperties": {
                                 "type": "string"
                             }
-                        }
-                    },
-                    "404": {
-                        "description": "No sources found",
-                        "schema": {
-                            "type": "string"
                         }
                     }
                 }
@@ -80,20 +80,21 @@ const docTemplate = `{
         },
         "/sources/{path}": {
             "get": {
-                "description": "\u003cp\u003eReturns the raw YAML payload for a given path.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
+                "description": "\u003cp\u003eReturns the raw YAML payload for a given source key.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
                 "produces": [
                     "application/yaml"
                 ],
                 "tags": [
-                    "Schema"
+                    "Source"
                 ],
                 "summary": "Fetch a single fragment",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Relative fragment path (e.g., ` + "`" + `routes/example.yaml` + "`" + `); omit to list paths.",
+                        "description": "Opaque source key returned by ` + "`" + `GET /sources` + "`" + `",
                         "name": "path",
-                        "in": "path"
+                        "in": "path",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -126,9 +127,12 @@ const docTemplate = `{
         },
         "/validate": {
             "post": {
-                "description": "\u003cp\u003ePosts JSON or YAML content along with optional query params used as environment overrides.\u003c/p\u003e\n\u003cp\u003eAny number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as ` + "`" + `?DOMAIN=apisix.org` + "`" + ` or ` + "`" + `?consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eExample URLs: ` + "`" + `/schema/validate/routes/example.yaml?DOMAIN=apisix.org\u0026consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
+                "description": "\u003cp\u003ePosts JSON or YAML content along with optional query params used as environment overrides.\u003c/p\u003e\n\u003cp\u003eAny number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as ` + "`" + `?DOMAIN=apisix.org` + "`" + ` or ` + "`" + `?consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eExample request: ` + "`" + `POST /schema/validate?DOMAIN=apisix.org\u0026consumer=bob` + "`" + ` with the candidate payload in the request body.\u003c/p\u003e",
                 "consumes": [
-                    "application/json"
+                    "application/json",
+                    "text/plain",
+                    "application/yaml",
+                    "text/yaml"
                 ],
                 "produces": [
                     "application/json"
@@ -160,13 +164,19 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/schema.ValidationResponse"
                         }
+                    },
+                    "500": {
+                        "description": "Schema backend unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
         },
         "/validate/{path}": {
             "get": {
-                "description": "\u003cp\u003eValidates the fragment referenced by the request path while treating every query parameter as an environment override.\u003c/p\u003e\n\u003cp\u003eAny number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as ` + "`" + `?DOMAIN=apisix.org` + "`" + ` or ` + "`" + `?consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eExample URLs: ` + "`" + `/schema/validate/routes/example.yaml?DOMAIN=apisix.org\u0026consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
+                "description": "\u003cp\u003eValidates the fragment referenced by the request path while treating every query parameter as an environment override.\u003c/p\u003e\n\u003cp\u003eAny number of query keys/values is allowed; they are applied to the snippet before validation, so clients can push substitutions such as ` + "`" + `?DOMAIN=apisix.org` + "`" + ` or ` + "`" + `?consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eExample URLs: ` + "`" + `/schema/validate/\u0026lt;source-key\u0026gt;?DOMAIN=apisix.org\u0026consumer=bob` + "`" + `.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
                 "produces": [
                     "application/json"
                 ],
@@ -177,7 +187,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Relative fragment path to validate",
+                        "description": "Opaque source key to validate",
                         "name": "path",
                         "in": "path",
                         "required": true
@@ -210,9 +220,167 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/virtualgw": {
+            "get": {
+                "description": "\u003cp\u003eReturns a JSON object mapping each known virtual gateway to its current readiness state.\u003c/p\u003e",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Ready"
+                ],
+                "summary": "List virtual gateway readiness",
+                "responses": {
+                    "200": {
+                        "description": "Virtual gateway readiness map",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/virtualgw/{virtualgw}": {
+            "get": {
+                "description": "\u003cp\u003eReturns an index of (object kind, id) =\u003e list of sources that contain the object\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Fetch index of (object kind, id) =\u003e list of paths",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Previously returned ETag used to skip unnecessary downloads",
+                        "name": "If-None-Match",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC1123 timestamp to compare against the ` + "`" + `Last-Modified` + "`" + ` header",
+                        "name": "If-Modified-Since",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Virtual gateway name",
+                        "name": "virtualgw",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Index of (kind id) to list of paths",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "$ref": "#/definitions/recorder.Descriptor"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No virtual gateway specified",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "417": {
+                        "description": "No config committed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/virtualgw/{virtualgw}/{path}": {
+            "get": {
+                "description": "\u003cp\u003eReturns the raw YAML payload for a given config object.\u003c/p\u003e\n\u003cp\u003eEvery response includes ` + "`" + `ETag` + "`" + `, ` + "`" + `Last-Modified` + "`" + `, and ` + "`" + `Cache-Control: public, max-age=0, must-revalidate` + "`" + `, so clients should reuse those values and revalidate with ` + "`" + `If-None-Match` + "`" + ` or ` + "`" + `If-Modified-Since` + "`" + ` to bump into ` + "`" + `304 Not Modified` + "`" + ` when nothing changed.\u003c/p\u003e",
+                "produces": [
+                    "application/yaml"
+                ],
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Fetch a single config object",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Virtual gateway name",
+                        "name": "virtualgw",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Object path in the format {kind}/{id} (e.g., ` + "`" + `routes/123` + "`" + `)",
+                        "name": "path",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Previously returned ETag used to skip unnecessary downloads",
+                        "name": "If-None-Match",
+                        "in": "header"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC1123 timestamp to compare against the ` + "`" + `Last-Modified` + "`" + ` header",
+                        "name": "If-Modified-Since",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "YAML fragment content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Fragment not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "recorder.Descriptor": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "description": "Source keys that contribute to this object",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tags": {
+                    "description": "Tags associated to the object",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "schema.ValidationIssue": {
             "type": "object",
             "properties": {

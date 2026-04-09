@@ -1,23 +1,27 @@
-This project builds a web frontend for the operation of a configuration management service.
+This frontend is a static UI for the sixpack schema/control API.
 
-The API of the configuration management service is described in document /cmd/sixpack/docs/swagger.yaml of theis repository.
+The API contract is generated from annotations and exposed via OpenAPI at `/schema/openapi/doc.json` (source in `cmd/sixpack/control/api.go`).
 
-The application uses alpine.js for interactivity, session storage for shared state, and bulma css for layout and styling. The application favors builtin bulma styles and components and tries to keep the html structure clear and semantic, and the css customization to a minimum.
+Tech stack:
+- Alpine.js for application state and interactions.
+- Bulma for layout/styling plus DataTables Bulma integration for index browsing.
+- CodeMirror 6 for YAML viewing/editing and keyboard-driven validation.
+- esbuild for bundling static assets.
 
-The application consists of static web assets (html, css, js). There is no server side in the application (no node, deno, bun , etc). For packaging module-based dependencies, the application uses esbuild.
+Runtime model:
+- Static assets only (no server-side runtime in this package).
+- UI is served under `/schema/app/*` by the sixpack process.
+- Keep UI practical and operations-focused for DevOps users.
 
-The application and all of its components support dark mode automatically, based on the user preferences.
+Modes:
+1. Browse: list and open source snippets from `GET /schema/sources` and `GET /schema/sources/{path}` in a read-only YAML editor.
+2. Index: browse config objects by APISIX kind/id from `GET /schema/virtualgw/{virtualgw}`, then open merged YAML for an object via `GET /schema/virtualgw/{virtualgw}/{kind}/{id}.3. Playground: edit YAML freely in the editor.
 
-For displaying or editing highlighted yaml text, the application uses codemirror v6, with syntax highlighting and folding support.
+Validation behavior:
+- Browse mode validates by source path using `GET /schema/validate/{path}`.
+- Playground validates inline payload using `POST /schema/validate`.
+- Query parameters are treated as environment overrides in both modes and must be shared across mode switches.
 
-The target user of the application is a devops engineer. So the application must be functional and straighforward, without unnecessary branding, embellishment or noise. Keep it straight to the point.
-
-The application has two main modes:
-
-1. Browse, where the user can select any of the configuration fragments listed by the /schema/sources api, and view the contents of the fragment in a read-only, syntax highlighted editor window.
-
-2. Playground, where the user can write yaml into an editor window.
-
-In both modes, the user must be able to validate the yaml it is seeing or editing, respectively, by using the corresponding validate endpoints of the API (GET /validate/path for sources, POST validate for playground).
-
-Validation accepts an arbirtrary number of URL query parameters, so both modes would need a form to enter key / value pairs toi be submitted in the validation request. These parameters must be shared across the two modes.
+Implementation notes:
+- Endpoint base paths are defined in `src/constants.js` and are intentionally relative (`../validate`, `../sources`, `../virtualgw/default`) because the app is mounted under `/schema/app/`.
+- Keep HTML semantic and CSS overrides minimal; prefer built-in Bulma components.

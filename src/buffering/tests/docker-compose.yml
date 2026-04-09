@@ -1,0 +1,54 @@
+services:
+  log-volume-init:
+    image: docker.io/busybox:1.36
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /tmp/apisix-logs && chown -R 636:636 /tmp/apisix-logs"]
+    volumes:
+      - apisix-logs:/tmp/apisix-logs
+
+  upstream:
+    image: docker.io/python:3.12-alpine
+    user: "636:636"
+    command: ["python", "/app.py"]
+    depends_on:
+      log-volume-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./upstream/app.py:/app.py:ro
+
+  apisix:
+    image: ${IMAGE_TAG:-apisix-buffering-e2e:local}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    depends_on:
+      upstream:
+        condition: service_started
+      log-volume-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - apisix-logs:/tmp/apisix-logs
+
+  tests:
+    build:
+      context: ./test-runner
+      dockerfile: Dockerfile
+    user: "636:636"
+    depends_on:
+      apisix:
+        condition: service_started
+      log-volume-init:
+        condition: service_completed_successfully
+    environment:
+      APISIX_HOST: apisix
+      APISIX_PORT: 9080
+      APISIX_LOG_FILE: /tmp/apisix-logs/error.log
+      TESTS_TIMEOUT_SECONDS: ${TESTS_TIMEOUT_SECONDS:-300}
+    volumes:
+      - ./t:/tests/t:ro
+      - apisix-logs:/tmp/apisix-logs
+
+volumes:
+  apisix-logs:

@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,8 +23,12 @@ import (
 
 const schemaVersion = "https://json-schema.org/draft/2020-12/schema"
 const schemaRetryDelay = time.Second
+
+// SchemaMaxBytes is the maximum schema payload size read from APISIX.
 const SchemaMaxBytes = 16 << 20
 
+// ResourceKind identifies whether a top-level resource is represented as
+// an object map or a list.
 type ResourceKind string
 
 const (
@@ -47,19 +53,22 @@ var DefaultResourceSpecs = []ResourceSpec{
 	{Key: "consumer_groups", MainKey: "consumer_group", IDField: "id", Kind: KindList},
 	{Key: "plugin_configs", MainKey: "plugin_config", IDField: "id", Kind: KindList},
 	{Key: "global_rules", MainKey: "global_rule", IDField: "id", Kind: KindList},
-	{Key: "plugin_metadata", MainKey: "plugin_metadata", IDField: "plugin_name", Kind: KindList},
+	{Key: "plugin_metadata", MainKey: "plugin_metadata", IDField: "id", Kind: KindList},
 	{Key: "ssls", MainKey: "ssl", IDField: "id", Kind: KindList},
 	{Key: "stream_routes", MainKey: "stream_route", IDField: "id", Kind: KindList},
 }
 
+// RawSchema contains the unmodified payload returned by APISIX /v1/schema.
 type RawSchema struct {
 	Raw []byte
 }
 
+// NormalizedSchema contains the normalized JSON Schema payload.
 type NormalizedSchema struct {
 	Normalized []byte
 }
 
+// ParsedSchema contains the decoded JSON schema document used for defaults.
 type ParsedSchema struct {
 	Parsed any
 }
@@ -132,6 +141,7 @@ func NormalizeSchema(raw RawSchema, strict bool) (NormalizedSchema, error) {
 	return NormalizedSchema{Normalized: payload}, nil
 }
 
+// Compile parses and compiles a normalized schema for validation/defaulting.
 func Compile(payload NormalizedSchema) (ParsedSchema, *jsonschema.Schema, error) {
 	if len(payload.Normalized) == 0 {
 		return ParsedSchema{}, nil, errors.New("schema payload is empty")
@@ -270,9 +280,7 @@ func buildDefsSchema(defs map[string]any) map[string]any {
 		return map[string]any{"type": "object"}
 	}
 	properties := map[string]any{}
-	for name, schema := range defs {
-		properties[name] = schema
-	}
+	maps.Copy(properties, defs)
 	return map[string]any{
 		"type":                 "object",
 		"properties":           properties,
@@ -289,31 +297,36 @@ func buildPluginMetadataSchema(defs map[string]any, strict bool) map[string]any 
 	sort.Strings(names)
 	for _, name := range names {
 		schema := defs[name]
-		properties := map[string]any{
-			"plugin_name": map[string]any{
-				"const": name,
-			},
-		}
 		if schemaMap, ok := schema.(map[string]any); ok {
+			properties := map[string]any{
+				"id": map[string]any{
+					"const": name,
+				},
+			}
 			if props, ok := schemaMap["properties"].(map[string]any); ok {
-				for key, value := range props {
-					properties[key] = value
-				}
+				maps.Copy(properties, props)
 			}
 			if required, ok := schemaMap["required"].([]any); ok {
 				options = append(options, map[string]any{
 					"type":                 "object",
 					"properties":           properties,
-					"required":             append([]any{"plugin_name"}, required...),
+					"required":             append([]any{"id"}, required...),
 					"additionalProperties": false,
 				})
 				continue
 			}
+			options = append(options, map[string]any{
+				"type":                 "object",
+				"properties":           properties,
+				"required":             []any{"id"},
+				"additionalProperties": false,
+			})
+			continue
 		}
 		options = append(options, map[string]any{
 			"type":                 "object",
-			"properties":           properties,
-			"required":             []any{"plugin_name"},
+			"properties":           map[string]any{"id": map[string]any{"const": name}},
+			"required":             []any{"id"},
 			"additionalProperties": false,
 		})
 	}
@@ -377,9 +390,7 @@ func enforceIDSchema(resource map[string]any, idField string, strict bool) {
 	}
 	idSchema := map[string]any{}
 	if current, ok := properties[idField].(map[string]any); ok {
-		for key, value := range current {
-			idSchema[key] = value
-		}
+		maps.Copy(idSchema, current)
 	}
 	if strict {
 		idSchema["type"] = "string"
@@ -431,8 +442,8 @@ func ensureRequired(raw any, field string) []any {
 	return append(required, field)
 }
 
-// Fix para algunas partes del schema de apisix, como el plugin JWT,
-// usando tipos incorrectos para algunos atributos del schema
+// APISIX schema payloads may use non-metaschema-conformant types for these
+// numeric keywords (for example in some plugin definitions). We coerce them.
 var schemaIntegerKeywords = map[string]struct{}{
 	"minLength":     {},
 	"maxLength":     {},
@@ -452,9 +463,34 @@ var schemaNumberKeywords = map[string]struct{}{
 	"exclusiveMaximum": {},
 }
 
+var schemaMapKeywords = map[string]struct{}{
+	"$defs":             {},
+	"definitions":       {},
+	"dependentSchemas":  {},
+	"patternProperties": {},
+	"properties":        {},
+}
+
+var primitiveJSONSchemaTypes = map[string]struct{}{
+	"array":   {},
+	"boolean": {},
+	"integer": {},
+	"null":    {},
+	"number":  {},
+	"object":  {},
+	"string":  {},
+}
+
 // sanitizeJSONSchema coerces common APISIX schema deviations into metaschema-valid JSON Schema.
-// In particular, it fixes known cases where numeric JSON Schema keywords are returned as strings.
+// In particular, it fixes known cases where numeric JSON Schema keywords are returned as strings,
+// drops regex patterns unsupported by Go's regexp engine, removes invalid
+// additionalProperties values, and coerces malformed entries under schema-valued
+// maps such as "properties".
 func sanitizeJSONSchema(node any) {
+	sanitizeJSONSchemaNode(node)
+}
+
+func sanitizeJSONSchemaNode(node any) {
 	switch typed := node.(type) {
 	case map[string]any:
 		for key, value := range typed {
@@ -475,12 +511,45 @@ func sanitizeJSONSchema(node any) {
 						}
 					}
 				}
+			} else if key == "pattern" {
+				if asString, ok := value.(string); ok {
+					if _, err := regexp.Compile(asString); err != nil {
+						delete(typed, key)
+						continue
+					}
+				}
+			} else if key == "additionalProperties" {
+				switch value.(type) {
+				case bool, map[string]any:
+				default:
+					delete(typed, key)
+					continue
+				}
+			} else if _, ok := schemaMapKeywords[key]; ok {
+				if asMap, ok := value.(map[string]any); ok {
+					for childKey, childValue := range asMap {
+						asMap[childKey] = coerceSchemaMapEntry(childValue)
+					}
+					value = asMap
+					typed[key] = asMap
+				}
 			}
-			sanitizeJSONSchema(value)
+			sanitizeJSONSchemaNode(value)
 		}
 	case []any:
 		for i := range typed {
-			sanitizeJSONSchema(typed[i])
+			typed[i] = coerceSchemaMapEntry(typed[i])
+			sanitizeJSONSchemaNode(typed[i])
 		}
 	}
+}
+
+func coerceSchemaMapEntry(value any) any {
+	switch typed := value.(type) {
+	case string:
+		if _, ok := primitiveJSONSchemaTypes[typed]; ok {
+			return map[string]any{"type": typed}
+		}
+	}
+	return value
 }

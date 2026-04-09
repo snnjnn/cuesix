@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/warpcomdev/sixpack/internal/schema"
+	"github.com/warpcondev/cuesix/internal/schema"
 )
 
 func TestNormalizeSchemaStrictMatchesFixture(t *testing.T) {
@@ -72,6 +72,176 @@ func TestNormalizeSchemaLooseMatchesFixture(t *testing.T) {
 			t.Fatalf("processed loose schema does not match fixture at %s: got=%v want=%v", path, left, right)
 		}
 		t.Fatalf("processed loose schema does not match fixture")
+	}
+}
+
+func TestNormalizeSchemaDropsUnsupportedPatternsAndCoercesSchemaMapEntries(t *testing.T) {
+	raw := []byte(`{
+		"main": {
+			"route": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"plugins": {
+						"type": "object"
+					}
+				}
+			}
+		},
+		"plugins": {
+			"ai-rag": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"type": "object"
+					}
+				}
+			},
+			"datadog": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"constant_tags": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"pattern": "^[\\\\p{L}][\\\\p{L}\\\\p{N}_.:/-]*(?<!:)$"
+							}
+						}
+					}
+				},
+				"metadata_schema": {
+					"type": "object",
+					"properties": {
+						"constant_tags": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"pattern": "^[\\\\p{L}][\\\\p{L}\\\\p{N}_.:/-]*(?<!:)$"
+							}
+						}
+					}
+				}
+			},
+			"loggly": {
+				"schema": {
+					"type": "object",
+					"properties": {
+						"tags": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"pattern": "^(?!tag=)[ -~]*"
+							}
+						}
+					}
+				}
+			},
+			"opentelemetry": {
+				"metadata_schema": {
+					"type": "object",
+					"properties": {
+						"resource": {
+							"type": "object",
+							"additionalProperties": [
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "string"
+								}
+							]
+						}
+					}
+				}
+			}
+		}
+	}`)
+
+	output, err := schema.NormalizeSchema(schema.RawSchema{Raw: raw}, true)
+	if err != nil {
+		t.Fatalf("NormalizeSchema() error = %v", err)
+	}
+	parsed, compiled, err := schema.Compile(output)
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if compiled == nil {
+		t.Fatal("Compile() returned nil schema")
+	}
+
+	doc, err := decodeJSON(output.Normalized)
+	if err != nil {
+		t.Fatalf("decode normalized schema: %v", err)
+	}
+	root := doc.(map[string]any)
+	plugins := root["$defs"].(map[string]any)["plugins"].(map[string]any)["properties"].(map[string]any)
+
+	aiRagType := plugins["ai-rag"].(map[string]any)["properties"].(map[string]any)["type"]
+	aiRagTypeSchema, ok := aiRagType.(map[string]any)
+	if !ok || aiRagTypeSchema["type"] != "object" {
+		t.Fatalf("ai-rag type property not coerced into schema object: %#v", aiRagType)
+	}
+
+	datadogItems := plugins["datadog"].(map[string]any)["properties"].(map[string]any)["constant_tags"].(map[string]any)["items"].(map[string]any)
+	if _, ok := datadogItems["pattern"]; ok {
+		t.Fatalf("datadog constant_tags pattern was not removed: %#v", datadogItems["pattern"])
+	}
+
+	logglyItems := plugins["loggly"].(map[string]any)["properties"].(map[string]any)["tags"].(map[string]any)["items"].(map[string]any)
+	if _, ok := logglyItems["pattern"]; ok {
+		t.Fatalf("loggly tags pattern was not removed: %#v", logglyItems["pattern"])
+	}
+
+	pluginMetadata := root["properties"].(map[string]any)["plugin_metadata"].(map[string]any)
+	if pluginMetadata["type"] != "array" {
+		t.Fatalf("plugin_metadata should be modeled as array, got %#v", pluginMetadata["type"])
+	}
+	pluginMetadataItems := pluginMetadata["items"].(map[string]any)["oneOf"].([]any)
+
+	foundDatadog := false
+	for _, entry := range pluginMetadataItems {
+		option := entry.(map[string]any)
+		properties := option["properties"].(map[string]any)
+		id, ok := properties["id"].(map[string]any)
+		if !ok || id["const"] != "datadog" {
+			continue
+		}
+		foundDatadog = true
+		items := properties["constant_tags"].(map[string]any)["items"].(map[string]any)
+		if _, ok := items["pattern"]; ok {
+			t.Fatalf("plugin_metadata datadog constant_tags pattern was not removed: %#v", items["pattern"])
+		}
+	}
+	if !foundDatadog {
+		t.Fatal("datadog plugin_metadata schema not found")
+	}
+
+	foundOpenTelemetry := false
+	for _, entry := range pluginMetadataItems {
+		option := entry.(map[string]any)
+		properties := option["properties"].(map[string]any)
+		id, ok := properties["id"].(map[string]any)
+		if !ok || id["const"] != "opentelemetry" {
+			continue
+		}
+		foundOpenTelemetry = true
+		resource := properties["resource"].(map[string]any)
+		if _, ok := resource["additionalProperties"]; ok {
+			t.Fatalf("plugin_metadata opentelemetry resource additionalProperties was not removed: %#v", resource["additionalProperties"])
+		}
+	}
+	if !foundOpenTelemetry {
+		t.Fatal("opentelemetry plugin_metadata schema not found")
+	}
+
+	if parsed.Parsed == nil {
+		t.Fatal("parsed schema must not be nil")
 	}
 }
 

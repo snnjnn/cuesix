@@ -26,10 +26,12 @@ type Certificate interface {
 	PEM() (PEMCertificate, error)
 }
 
+// PEM returns the PEM-encoded certificate.
 func (c PEMCertificate) PEM() (PEMCertificate, error) {
 	return c, nil
 }
 
+// NotAfterTime returns the certificate expiration time.
 func (c PEMCertificate) NotAfterTime() time.Time {
 	return c.NotAfter
 }
@@ -111,6 +113,7 @@ const (
 	FallbackPrefix   = "fallback://"
 )
 
+// Update replaces SSL cert/key targets with live or fallback certificate material.
 func (p *SSLPlugin) Update(ctx context.Context, value map[string]any, record map[Tracking]time.Time) (map[string]any, error) {
 	if p == nil {
 		return nil, errors.New("ssl plugin is nil")
@@ -343,6 +346,7 @@ func (p *SSLPlugin) entrySNIs(entry map[string]any) []string {
 	return slices.Collect(maps.Keys(snis))
 }
 
+// LoadFallbackCertificate reads and validates the fallback cert/key pair from disk.
 func LoadFallbackCertificate(certPath string, keyPath string) (PEMCertificate, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {

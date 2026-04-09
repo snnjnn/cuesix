@@ -11,6 +11,7 @@ type ProviderRouter struct {
 	FallbackManager Manager
 }
 
+// ResolveProvider routes provider names to ACME, file, or fallback managers.
 func (r ProviderRouter) ResolveProvider(name string) (Provider, error) {
 	switch {
 	case strings.HasPrefix(name, ACMEPrefix):

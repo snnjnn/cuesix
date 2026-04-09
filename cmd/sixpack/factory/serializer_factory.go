@@ -3,17 +3,19 @@ package factory
 import (
 	"context"
 	"hash/fnv"
-	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/warpcomdev/sixpack/cmd/sixpack/config"
-	"github.com/warpcomdev/sixpack/internal/cursor"
-	"github.com/warpcomdev/sixpack/internal/plugin"
-	"github.com/warpcomdev/sixpack/internal/plugin/ssl"
-	"github.com/warpcomdev/sixpack/internal/serializer"
+	"github.com/warpcondev/cuesix/cmd/sixpack/config"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcondev/cuesix/internal/plugin"
+	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcondev/cuesix/internal/serializer"
 )
 
 type SerializerFactory struct {
@@ -21,51 +23,97 @@ type SerializerFactory struct {
 	sslPlugin *ssl.SSLPlugin
 	preCache  plugin.PreRender
 	postCache plugin.PostRender
+	rules     compiler.MergingRule
+	addLabels bool
 	logger    *slog.Logger
 	// Setup references
 	sslSetup  SSLSetup
 	scheduler *Scheduler
-	// Global record of the last committed config
-	commitHash uint64
-	hasCommit  bool
-	// Global records of last committed certs
-	CommittedCerts map[ssl.Tracking]time.Time
+	// serializer instances
+	instances map[string]*SerializerInstance
 }
 
-func NewSerializer(logger *slog.Logger, cfg config.Plugins, sslSetup SSLSetup, scheduler *Scheduler) (SerializerFactory, error) {
+// NewSerializer builds a SerializerFactory with pre/post-render pipelines
+// configured from plugin flags.
+func NewSerializer(logger *slog.Logger, pluginCfg config.Plugins, apisixConfig config.Apisix, sslSetup SSLSetup, scheduler *Scheduler) (SerializerFactory, error) {
 	sf := SerializerFactory{
 		sslSetup:  sslSetup,
 		scheduler: scheduler,
 		logger:    logger,
+		instances: make(map[string]*SerializerInstance),
+		rules:     compiler.DefaultMergingRules(),
 	}
-	if err := sf.buildPreRender(cfg); err != nil {
+	if err := sf.buildPreRender(pluginCfg, apisixConfig); err != nil {
 		return sf, err
 	}
-	if err := sf.buildPostRender(cfg); err != nil {
+	if err := sf.buildPostRender(apisixConfig); err != nil {
 		return sf, err
 	}
 	return sf, nil
 }
 
-// Instance spawns a new instance of plugin factory
-func (p *SerializerFactory) Instance() *SerializerInstance {
-	return &SerializerInstance{
-		SerializerFactory: p,
+func (sf *SerializerFactory) allCommittedCerts() map[ssl.Tracking]time.Time {
+	allCommittedCerts := make(map[ssl.Tracking]time.Time)
+	for _, instance := range sf.instances {
+		for tracking, committedAt := range instance.CommittedCerts {
+			existing, ok := allCommittedCerts[tracking]
+			if !ok || committedAt.After(existing) {
+				allCommittedCerts[tracking] = committedAt
+			}
+		}
 	}
+	return allCommittedCerts
 }
 
+// Single serializer instance for a particular virtual gateway
 type SerializerInstance struct {
-	*SerializerFactory
-	record map[ssl.Tracking]time.Time
-	hash   uint64
+	logger    *slog.Logger
+	virtualgw string
+	// Prebuilt plugin instances
+	sslPlugin *ssl.SSLPlugin
+	preCache  plugin.PreRender
+	postCache plugin.PostRender
+	// Global record of the last committed config
+	commitHash uint64
+	hasCommit  bool
+	// Global records of last committed certs
+	CommittedCerts map[ssl.Tracking]time.Time
+	record         map[ssl.Tracking]time.Time
+	hash           uint64
 }
 
+// Instance creates a per-run serializer instance with isolated state tracking.
+func (p *SerializerFactory) Instance(virtualgw string) dispatcher.Serializer {
+	instance := &SerializerInstance{
+		logger:    p.logger,
+		virtualgw: virtualgw,
+		sslPlugin: p.sslPlugin,
+		preCache:  p.preCache,
+		postCache: p.postCache,
+	}
+	// Plugins that cannot be prevbuilt, because they depend
+	// on the virtual gateway instance we are rendering.
+	if p.addLabels {
+		instance.preCache = plugin.PreRenderChain{
+			&plugin.ManagedLabelsPlugin{
+				VirtualGateway: virtualgw,
+				Rules:          p.rules,
+			},
+			p.preCache,
+		}
+	}
+	p.instances[virtualgw] = instance
+	return instance
+}
+
+// Reset clears per-run state before processing a new dispatch cycle.
 func (p *SerializerInstance) Reset() {
 	// Start a new recording track
 	p.record = make(map[ssl.Tracking]time.Time)
 	p.hash = 0
 }
 
+// Commit stores the last successful hash and certificate tracking snapshot.
 func (p *SerializerInstance) Commit() {
 	// Record the winning hash
 	p.commitHash = p.hash
@@ -74,7 +122,8 @@ func (p *SerializerInstance) Commit() {
 	p.CommittedCerts = p.record
 }
 
-// Changed runs pre-render plugins, cache normalization, and post-render plugins.
+// Serialize runs SSL/pre-render plugins, serializes the config, applies
+// post-render plugins, and returns nil when output is unchanged (cache hit).
 func (p *SerializerInstance) Serialize(value map[string]any) ([]byte, error) {
 	var err error
 	logger := p.logger
@@ -117,7 +166,7 @@ func hashBytes(payload []byte) uint64 {
 }
 
 // buildPreRender constructs the pre-render plugin chain.
-func (p *SerializerFactory) buildPreRender(cfg config.Plugins) error {
+func (p *SerializerFactory) buildPreRender(cfg config.Plugins, apisixCfg config.Apisix) error {
 	// SSL Plugin is handled differently because so far, is the only
 	// plugin with state (records requested certs)
 	if cfg.EnableSSL {
@@ -132,17 +181,15 @@ func (p *SerializerFactory) buildPreRender(cfg config.Plugins) error {
 	}
 	// Other pre-cache plugins with the standard interface
 	var preCache plugin.PreRenderChain
+	p.addLabels = apisixCfg.EnableLabels
 	p.preCache = preCache
 	return nil
 }
 
 // buildPostRender constructs the post-render plugin chain.
-func (p *SerializerFactory) buildPostRender(cfg config.Plugins) error {
+func (p *SerializerFactory) buildPostRender(cfg config.Apisix) error {
 	var plugins plugin.PostRenderChain
-	if cfg.EnableJQ {
-		plugins = append(plugins, &plugin.JQPlugin{Timeout: cfg.JQTimeout})
-	}
-	if cfg.EnableYAML {
+	if cfg.OutputYAML {
 		// YAMLPlugin must always be the last plugin.
 		plugins = append(plugins, &plugin.YAMLPlugin{})
 	}
@@ -151,8 +198,8 @@ func (p *SerializerFactory) buildPostRender(cfg config.Plugins) error {
 }
 
 // BuildFilesystems creates read-only filesystems for the input paths.
-func BuildFilesystems(paths []string) ([]fs.FS, error) {
-	fses := make([]fs.FS, 0, len(paths))
+func BuildFilesystems(paths []string) ([]compiler.InputRoot, error) {
+	roots := make([]compiler.InputRoot, 0, len(paths))
 	for _, path := range paths {
 		if path == "" {
 			continue
@@ -161,12 +208,15 @@ func BuildFilesystems(paths []string) ([]fs.FS, error) {
 		if _, err := os.Stat(clean); err != nil {
 			return nil, err
 		}
-		fses = append(fses, os.DirFS(clean))
+		roots = append(roots, compiler.InputRoot{
+			Name: clean,
+			FS:   os.DirFS(clean),
+		})
 	}
-	return fses, nil
+	return roots, nil
 }
 
-// Expires certificates no longer used
+// loop runs a periodic task using the factory scheduler.
 func (s SerializerFactory) loop(groupCtx context.Context, cleanupInterval time.Duration, task func()) {
 	timer := time.NewTicker(cleanupInterval)
 	defer timer.Stop()
@@ -175,7 +225,7 @@ func (s SerializerFactory) loop(groupCtx context.Context, cleanupInterval time.D
 	}
 }
 
-// Expires certificates no longer used
+// ExpireLoop periodically removes expired certificates from storage.
 func (s SerializerFactory) ExpireLoop(groupCtx context.Context, logger *slog.Logger, cleanupInterval, expiredGrace time.Duration) {
 	s.loop(groupCtx, cleanupInterval, func() {
 		if err := s.sslSetup.AcmeManager.RemoveExpired(groupCtx, cleanupInterval, expiredGrace); err != nil {
@@ -187,9 +237,15 @@ func (s SerializerFactory) ExpireLoop(groupCtx context.Context, logger *slog.Log
 // Updates certificates recently renewed
 func (s SerializerFactory) CommitLoop(groupCtx context.Context, logger *slog.Logger, cleanupInterval, untrackedGrace time.Duration) {
 	s.loop(groupCtx, cleanupInterval, func() {
-		if len(s.CommittedCerts) == 0 {
+		allCommittedCerts := make(map[ssl.Tracking]time.Time)
+		for _, instance := range s.instances {
+			if len(instance.CommittedCerts) > 0 {
+				maps.Copy(allCommittedCerts, instance.CommittedCerts)
+			}
+		}
+		if len(allCommittedCerts) == 0 {
 			return
 		}
-		s.sslSetup.AcmeTracker.Commit(groupCtx, logger, s.CommittedCerts, untrackedGrace)
+		s.sslSetup.AcmeTracker.Commit(groupCtx, logger, allCommittedCerts, untrackedGrace)
 	})
 }

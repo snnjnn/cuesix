@@ -1,11 +1,15 @@
-name: plugin metadata distinct
+name: plugin metadata distinct keys
 left:
   plugin_metadata:
-    - plugin_name: p1
+    - id: p1
+      foo: bar
 right:
   plugin_metadata:
-    - plugin_name: p2
+    - id: p2
+      enabled: true
 expected:
   plugin_metadata:
-    - plugin_name: p1
-    - plugin_name: p2
+    - id: p1
+      foo: bar
+    - id: p2
+      enabled: true

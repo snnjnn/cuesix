@@ -3,6 +3,137 @@
     "plugins": {
       "additionalProperties": false,
       "properties": {
+        "api-breaker": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "break_response_body": {
+              "type": "string"
+            },
+            "break_response_code": {
+              "maximum": 599,
+              "minimum": 200,
+              "type": "integer"
+            },
+            "break_response_headers": {
+              "items": {
+                "properties": {
+                  "key": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "value": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "key",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "healthy": {
+              "default": {
+                "http_statuses": [
+                  200
+                ],
+                "successes": 3
+              },
+              "properties": {
+                "http_statuses": {
+                  "default": [
+                    200
+                  ],
+                  "items": {
+                    "maximum": 499,
+                    "minimum": 200,
+                    "type": "integer"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "successes": {
+                  "default": 3,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "max_breaker_sec": {
+              "default": 300,
+              "minimum": 3,
+              "type": "integer"
+            },
+            "unhealthy": {
+              "default": {
+                "failures": 3,
+                "http_statuses": [
+                  500
+                ]
+              },
+              "properties": {
+                "failures": {
+                  "default": 3,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "http_statuses": {
+                  "default": [
+                    500
+                  ],
+                  "items": {
+                    "maximum": 599,
+                    "minimum": 500,
+                    "type": "integer"
+                  },
+                  "minItems": 1,
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "break_response_code"
+          ],
+          "type": "object"
+        },
         "authz-keycloak": {
           "$comment": "this is a mark for our injected plugin schema",
           "allOf": [
@@ -255,9 +386,280 @@
             "hide_credentials": {
               "default": false,
               "type": "boolean"
+            },
+            "realm": {
+              "default": "basic",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[ -!#-[\\]-~]+$",
+              "type": "string"
             }
           },
           "title": "work with route or service object",
+          "type": "object"
+        },
+        "body-transformer": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "anyOf": [
+            {
+              "required": [
+                "request"
+              ]
+            },
+            {
+              "required": [
+                "response"
+              ]
+            },
+            {
+              "required": [
+                "request",
+                "response"
+              ]
+            }
+          ],
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "request": {
+              "properties": {
+                "input_format": {
+                  "enum": [
+                    "xml",
+                    "json",
+                    "encoded",
+                    "args",
+                    "plain",
+                    "multipart"
+                  ],
+                  "type": "string"
+                },
+                "template": {
+                  "type": "string"
+                },
+                "template_is_base64": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "template"
+              ],
+              "type": "object"
+            },
+            "response": {
+              "properties": {
+                "input_format": {
+                  "enum": [
+                    "xml",
+                    "json",
+                    "encoded",
+                    "args",
+                    "plain",
+                    "multipart"
+                  ],
+                  "type": "string"
+                },
+                "template": {
+                  "type": "string"
+                },
+                "template_is_base64": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "template"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "client-control": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "max_body_size": {
+              "description": "Maximum message body size in bytes. No restriction when set to 0.",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "consumer-restriction": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "anyOf": [
+            {
+              "required": [
+                "blacklist"
+              ]
+            },
+            {
+              "required": [
+                "whitelist"
+              ]
+            },
+            {
+              "required": [
+                "allowed_by_methods"
+              ]
+            }
+          ],
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "allowed_by_methods": {
+              "items": {
+                "properties": {
+                  "methods": {
+                    "items": {
+                      "description": "HTTP method",
+                      "enum": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "PATCH",
+                        "HEAD",
+                        "OPTIONS",
+                        "CONNECT",
+                        "TRACE",
+                        "PURGE"
+                      ],
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "user": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "blacklist": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "rejected_code": {
+              "default": 403,
+              "minimum": 200,
+              "type": "integer"
+            },
+            "rejected_msg": {
+              "type": "string"
+            },
+            "type": {
+              "default": "consumer_name",
+              "enum": [
+                "consumer_name",
+                "service_id",
+                "route_id",
+                "consumer_group_id"
+              ],
+              "type": "string"
+            },
+            "whitelist": {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "cors": {
@@ -422,6 +824,225 @@
           ],
           "type": "object"
         },
+        "forward-auth": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "allow_degradation": {
+              "default": false,
+              "type": "boolean"
+            },
+            "client_headers": {
+              "default": {},
+              "description": "authorization response header that will be sent tothe client when authorizing failed",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "extra_headers": {
+              "description": "extra headers sent to the authorization service; values must be strings and can include variableslike $remote_addr, $request_uri.",
+              "minProperties": 1,
+              "patternProperties": {
+                "^[^:]+$": {
+                  "description": "header value as a string; may contain variableslike $remote_addr, $request_uri",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "keepalive": {
+              "default": true,
+              "type": "boolean"
+            },
+            "keepalive_pool": {
+              "default": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "keepalive_timeout": {
+              "default": 60000,
+              "minimum": 1000,
+              "type": "integer"
+            },
+            "request_headers": {
+              "default": {},
+              "description": "client request header that will be sent to the authorization service",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "request_method": {
+              "default": "GET",
+              "description": "the method for client to request the authorization service",
+              "enum": [
+                "GET",
+                "POST"
+              ],
+              "type": "string"
+            },
+            "ssl_verify": {
+              "default": true,
+              "type": "boolean"
+            },
+            "status_on_error": {
+              "default": 403,
+              "maximum": 599,
+              "minimum": 200,
+              "type": "integer"
+            },
+            "timeout": {
+              "default": 3000,
+              "description": "timeout in milliseconds",
+              "maximum": 60000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "upstream_headers": {
+              "default": {},
+              "description": "authorization response header that will be sent to the upstream",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "uri": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "uri"
+          ],
+          "type": "object"
+        },
+        "gzip": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "buffers": {
+              "default": {
+                "number": 32,
+                "size": 4096
+              },
+              "properties": {
+                "number": {
+                  "default": 32,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "size": {
+                  "default": 4096,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "comp_level": {
+              "default": 1,
+              "maximum": 9,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "http_version": {
+              "default": 1.1,
+              "enum": [
+                1.1,
+                1
+              ]
+            },
+            "min_length": {
+              "default": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "types": {
+              "anyOf": [
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                {
+                  "enum": [
+                    "*"
+                  ]
+                }
+              ],
+              "default": [
+                "text/html"
+              ]
+            },
+            "vary": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
         "ip-restriction": {
           "$comment": "this is a mark for our injected plugin schema",
           "oneOf": [
@@ -539,6 +1160,59 @@
           },
           "type": "object"
         },
+        "jwe-decrypt": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "forward_header": {
+              "default": "Authorization",
+              "type": "string"
+            },
+            "header": {
+              "default": "Authorization",
+              "type": "string"
+            },
+            "strict": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "header",
+            "forward_header"
+          ],
+          "type": "object"
+        },
         "jwt-auth": {
           "$comment": "this is a mark for our injected plugin schema",
           "properties": {
@@ -598,6 +1272,13 @@
               "default": "jwt",
               "type": "string"
             },
+            "realm": {
+              "default": "jwt",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[ -!#-[\\]-~]+$",
+              "type": "string"
+            },
             "store_in_ctx": {
               "default": false,
               "type": "boolean"
@@ -654,8 +1335,516 @@
             "query": {
               "default": "apikey",
               "type": "string"
+            },
+            "realm": {
+              "default": "key",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[ -!#-[\\]-~]+$",
+              "type": "string"
             }
           },
+          "type": "object"
+        },
+        "keycloak-authz": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "additionalProperties": false,
+          "encrypt_fields": {},
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "access_token_bearer": {
+              "default": true,
+              "description": "Whether access token header uses Bearer format",
+              "type": "boolean"
+            },
+            "access_token_header": {
+              "default": "Authorization",
+              "description": "Header name with the access token",
+              "type": "string"
+            },
+            "cache_size": {
+              "default": 1024,
+              "description": "Max entries for the per-worker local artifacts cache",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "cache_ttl": {
+              "default": 300,
+              "description": "TTL in seconds for the positive authorization caches (shared raw permissions + local artifacts)",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "clients": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "client_id": {
+                    "description": "Keycloak resource server client id",
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "description": "Optional client secret for confidential clients",
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "ssl_verify": {
+                    "default": false,
+                    "description": "Verify TLS certificates",
+                    "type": "boolean"
+                  },
+                  "token_path": {
+                    "description": "Keycloak token endpoint URL, e.g. https://keycloak.example.internal/realms/myrealm/protocol/openid-connect/token",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token_path",
+                  "client_id"
+                ],
+                "type": "object"
+              },
+              "minProperties": 1,
+              "type": "object"
+            },
+            "clock_skew_seconds": {
+              "default": 30,
+              "description": "Allowed clock skew for temporal checks (exp/nbf/iat)",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "keepalive": {
+              "default": true,
+              "description": "Reuse upstream connections",
+              "type": "boolean"
+            },
+            "keepalive_pool": {
+              "default": 16,
+              "description": "Max keepalive connections per worker",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "keepalive_timeout_ms": {
+              "default": 120000,
+              "description": "Keepalive idle timeout in milliseconds",
+              "minimum": 1000,
+              "type": "integer"
+            },
+            "max_access_token_bytes": {
+              "default": 8192,
+              "description": "Maximum allowed access token length in bytes",
+              "minimum": 256,
+              "type": "integer"
+            },
+            "neg_cache_ttl": {
+              "default": 5,
+              "description": "TTL for negative cache entries in the shared raw-permissions cache and local artifacts cache",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "permissions_header": {
+              "default": "X-Permissions",
+              "description": "Header name used to store the permissions payload",
+              "type": "string"
+            },
+            "resource_provider_selector_header": {
+              "default": "Fiware-Service",
+              "description": "Header used to select resource provider mapping",
+              "minLength": 1,
+              "type": "string"
+            },
+            "resource_providers": {
+              "additionalProperties": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "description": "Mapping {resource_provider: client_key}.",
+              "minProperties": 1,
+              "type": "object"
+            },
+            "retry_delay_ms": {
+              "default": 250,
+              "description": "Initial backoff delay (ms) for retryable Keycloak errors",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "retry_max": {
+              "default": 3,
+              "description": "Number of retries for retryable Keycloak errors",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "roles_claim": {
+              "default": "roles",
+              "description": "Claim name used for normalized permissions in X-Userinfo",
+              "type": "string"
+            },
+            "set_permissions_header": {
+              "default": false,
+              "description": "Whether to set the header with the obtained permissions payload",
+              "type": "boolean"
+            },
+            "set_userinfo_header": {
+              "default": false,
+              "description": "Whether to set the X-Userinfo header",
+              "type": "boolean"
+            },
+            "shared_cache_dict": {
+              "default": "smc-auth-cache",
+              "description": "Name of the ngx.shared dict used for server-wide raw UMA permissions cache",
+              "minLength": 1,
+              "type": "string"
+            },
+            "subject_claim": {
+              "default": "sub",
+              "description": "Claim name used for subject identity in X-Userinfo",
+              "type": "string"
+            },
+            "timeout_ms": {
+              "default": 3000,
+              "description": "Timeout in milliseconds for Keycloak calls",
+              "minimum": 100,
+              "type": "integer"
+            },
+            "userinfo_header": {
+              "default": "X-Userinfo",
+              "description": "Header name used to store the base64 userinfo payload",
+              "type": "string"
+            },
+            "validate_access_token_unverified": {
+              "default": false,
+              "description": "Enable local unverified JWT temporal checks (exp/nbf/iat) before UMA permissions request",
+              "type": "boolean"
+            },
+            "warn_cache_miss": {
+              "default": false,
+              "description": "Log cache misses as warnings instead of info",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "clients",
+            "resource_providers"
+          ],
+          "type": "object"
+        },
+        "keystone-auth": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "additionalProperties": false,
+          "encrypt_fields": [
+            "pep_password"
+          ],
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "access_disable": {
+              "default": false,
+              "description": "Skip role lookups and emit empty roles list",
+              "type": "boolean"
+            },
+            "auth_path": {
+              "default": "/v3/auth/tokens",
+              "description": "Keystone auth tokens endpoint path",
+              "minLength": 1,
+              "type": "string"
+            },
+            "base_url": {
+              "description": "Keystone base URL, e.g. https://keystone.example.internal:5000",
+              "minLength": 1,
+              "type": "string"
+            },
+            "cache_size": {
+              "additionalProperties": false,
+              "description": "Per-cache sizes (entry count)",
+              "properties": {
+                "pep_token": {
+                  "default": 8,
+                  "description": "Max entries for the PEP token cache",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "roles": {
+                  "default": 1024,
+                  "description": "Max entries for the per-worker local artifact cache",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "cache_ttl": {
+              "additionalProperties": false,
+              "description": "Per-cache TTLs in seconds",
+              "properties": {
+                "pep_token": {
+                  "default": 300,
+                  "description": "TTL for the PEP token cache",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "roles": {
+                  "default": 90,
+                  "description": "TTL for the shared raw roles cache and local artifact cache",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "user": {
+                  "default": 900,
+                  "description": "TTL for the shared raw user-token validation cache",
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "keepalive": {
+              "default": true,
+              "description": "Reuse upstream connections",
+              "type": "boolean"
+            },
+            "keepalive_pool": {
+              "default": 16,
+              "description": "Max keepalive connections per worker",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "keepalive_timeout_ms": {
+              "default": 120000,
+              "description": "Keepalive idle timeout in milliseconds",
+              "minimum": 1000,
+              "type": "integer"
+            },
+            "max_user_token_bytes": {
+              "default": 8192,
+              "description": "Maximum allowed user token length in bytes",
+              "minimum": 256,
+              "type": "integer"
+            },
+            "neg_cache_ttl": {
+              "default": 5,
+              "description": "TTL for negative cache entries (any loader error)",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "opentelemetry_vars": {
+              "default": true,
+              "description": "Whether OpenTelemetry helper vars should be published into ctx.var",
+              "type": "boolean"
+            },
+            "pep_domain_name": {
+              "description": "PEP proxy domain name",
+              "minLength": 1,
+              "type": "string"
+            },
+            "pep_password": {
+              "description": "PEP proxy password (secret)",
+              "minLength": 1,
+              "type": "string"
+            },
+            "pep_user": {
+              "description": "PEP proxy username",
+              "minLength": 1,
+              "type": "string"
+            },
+            "retry_delay_ms": {
+              "default": 250,
+              "description": "Initial backoff delay (ms) for retryable Keystone errors",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "retry_max": {
+              "default": 3,
+              "description": "Number of retries for retryable Keystone errors",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "roles_claim": {
+              "default": "roles",
+              "description": "Claim name used for roles in X-Userinfo",
+              "type": "string"
+            },
+            "roles_path": {
+              "default": "/v3/role_assignments?include_names",
+              "description": "Keystone role assignments endpoint path (include_names recommended)",
+              "minLength": 1,
+              "type": "string"
+            },
+            "set_userinfo_header": {
+              "default": false,
+              "description": "Whether to set the X-Userinfo header",
+              "type": "boolean"
+            },
+            "shared_cache_dict": {
+              "default": "smc-auth-cache",
+              "description": "Name of the ngx.shared dict used for server-wide raw Keystone caches",
+              "minLength": 1,
+              "type": "string"
+            },
+            "ssl_verify": {
+              "default": false,
+              "description": "Verify TLS certificates",
+              "type": "boolean"
+            },
+            "subject_claim": {
+              "default": "sub",
+              "description": "Claim name used for subject identity in X-Userinfo",
+              "type": "string"
+            },
+            "timeout_ms": {
+              "default": 3000,
+              "description": "Timeout in milliseconds for Keystone calls",
+              "minimum": 100,
+              "type": "integer"
+            },
+            "user_token_header": {
+              "default": "X-Auth-Token",
+              "description": "Header name with the user token",
+              "type": "string"
+            },
+            "userinfo_header": {
+              "default": "X-Userinfo",
+              "description": "Header name used to store the base64 userinfo payload",
+              "type": "string"
+            },
+            "warn_cache_miss": {
+              "default": false,
+              "description": "Log cache misses as warnings instead of info",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "base_url",
+            "pep_user",
+            "pep_password",
+            "pep_domain_name"
+          ],
+          "type": "object"
+        },
+        "ldap-auth": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "base_dn": {
+              "type": "string"
+            },
+            "ldap_uri": {
+              "type": "string"
+            },
+            "realm": {
+              "default": "ldap",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[ -!#-[\\]-~]+$",
+              "type": "string"
+            },
+            "tls_verify": {
+              "default": false,
+              "type": "boolean"
+            },
+            "uid": {
+              "default": "cn",
+              "type": "string"
+            },
+            "use_tls": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "base_dn",
+            "ldap_uri"
+          ],
+          "title": "work with route or service object",
           "type": "object"
         },
         "limit-conn": {
@@ -672,6 +1861,10 @@
             },
             "then": {
               "properties": {
+                "key_ttl": {
+                  "default": 3600,
+                  "type": "integer"
+                },
                 "redis_cluster_name": {
                   "type": "string"
                 },
@@ -691,6 +1884,16 @@
                 "redis_cluster_ssl_verify": {
                   "default": false,
                   "type": "boolean"
+                },
+                "redis_keepalive_pool": {
+                  "default": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "redis_keepalive_timeout": {
+                  "default": 10000,
+                  "minimum": 1000,
+                  "type": "integer"
                 },
                 "redis_password": {
                   "minLength": 0,
@@ -808,6 +2011,10 @@
           ],
           "then": {
             "properties": {
+              "key_ttl": {
+                "default": 3600,
+                "type": "integer"
+              },
               "redis_database": {
                 "default": 0,
                 "minimum": 0,
@@ -816,6 +2023,16 @@
               "redis_host": {
                 "minLength": 2,
                 "type": "string"
+              },
+              "redis_keepalive_pool": {
+                "default": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "redis_keepalive_timeout": {
+                "default": 10000,
+                "minimum": 1000,
+                "type": "integer"
               },
               "redis_password": {
                 "minLength": 0,
@@ -864,6 +2081,10 @@
             },
             "then": {
               "properties": {
+                "key_ttl": {
+                  "default": 3600,
+                  "type": "integer"
+                },
                 "redis_cluster_name": {
                   "type": "string"
                 },
@@ -883,6 +2104,16 @@
                 "redis_cluster_ssl_verify": {
                   "default": false,
                   "type": "boolean"
+                },
+                "redis_keepalive_pool": {
+                  "default": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "redis_keepalive_timeout": {
+                  "default": 10000,
+                  "minimum": 1000,
+                  "type": "integer"
                 },
                 "redis_password": {
                   "minLength": 0,
@@ -999,6 +2230,10 @@
           ],
           "then": {
             "properties": {
+              "key_ttl": {
+                "default": 3600,
+                "type": "integer"
+              },
               "redis_database": {
                 "default": 0,
                 "minimum": 0,
@@ -1007,6 +2242,16 @@
               "redis_host": {
                 "minLength": 2,
                 "type": "string"
+              },
+              "redis_keepalive_pool": {
+                "default": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "redis_keepalive_timeout": {
+                "default": 10000,
+                "minimum": 1000,
+                "type": "integer"
               },
               "redis_password": {
                 "minLength": 0,
@@ -1055,6 +2300,10 @@
             },
             "then": {
               "properties": {
+                "key_ttl": {
+                  "default": 3600,
+                  "type": "integer"
+                },
                 "redis_cluster_name": {
                   "type": "string"
                 },
@@ -1074,6 +2323,16 @@
                 "redis_cluster_ssl_verify": {
                   "default": false,
                   "type": "boolean"
+                },
+                "redis_keepalive_pool": {
+                  "default": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "redis_keepalive_timeout": {
+                  "default": 10000,
+                  "minimum": 1000,
+                  "type": "integer"
                 },
                 "redis_password": {
                   "minLength": 0,
@@ -1186,6 +2445,10 @@
           ],
           "then": {
             "properties": {
+              "key_ttl": {
+                "default": 3600,
+                "type": "integer"
+              },
               "redis_database": {
                 "default": 0,
                 "minimum": 0,
@@ -1194,6 +2457,16 @@
               "redis_host": {
                 "minLength": 2,
                 "type": "string"
+              },
+              "redis_keepalive_pool": {
+                "default": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "redis_keepalive_timeout": {
+                "default": 10000,
+                "minimum": 1000,
+                "type": "integer"
               },
               "redis_password": {
                 "minLength": 0,
@@ -1226,6 +2499,164 @@
               "redis_host"
             ]
           },
+          "type": "object"
+        },
+        "loki-logger": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "batch_max_size": {
+              "default": 1000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "buffer_duration": {
+              "default": 60,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "endpoint_addrs": {
+              "items": {
+                "pattern": "^[^\\/]+:\\/\\/([\\da-zA-Z.-]+|\\[[\\da-fA-F:]+\\])(:\\d+)?",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "endpoint_uri": {
+              "default": "/loki/api/v1/push",
+              "minLength": 1,
+              "type": "string"
+            },
+            "headers": {
+              "patternProperties": {
+                ".*": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "inactive_timeout": {
+              "default": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "include_req_body": {
+              "default": false,
+              "type": "boolean"
+            },
+            "include_req_body_expr": {
+              "items": {
+                "type": "array"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "include_resp_body": {
+              "default": false,
+              "type": "boolean"
+            },
+            "include_resp_body_expr": {
+              "items": {
+                "type": "array"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "keepalive": {
+              "default": true,
+              "type": "boolean"
+            },
+            "keepalive_pool": {
+              "default": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "keepalive_timeout": {
+              "default": 60000,
+              "description": "keepalive timeout in milliseconds",
+              "minimum": 1000,
+              "type": "integer"
+            },
+            "log_format": {
+              "type": "object"
+            },
+            "log_labels": {
+              "default": {
+                "job": "apisix"
+              },
+              "patternProperties": {
+                ".*": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "max_retry_count": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "name": {
+              "default": "loki logger",
+              "type": "string"
+            },
+            "retry_delay": {
+              "default": 1,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ssl_verify": {
+              "default": false,
+              "type": "boolean"
+            },
+            "tenant_id": {
+              "default": "fake",
+              "type": "string"
+            },
+            "timeout": {
+              "default": 3000,
+              "description": "timeout in milliseconds",
+              "maximum": 60000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "endpoint_addrs"
+          ],
           "type": "object"
         },
         "multi-auth": {
@@ -1271,6 +2702,175 @@
             "auth_plugins"
           ],
           "title": "work with route or service object",
+          "type": "object"
+        },
+        "node-status": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "ocsp-stapling": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "openid-casbin": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "oneOf": [
+            {
+              "required": [
+                "model",
+                "policy"
+              ]
+            }
+          ],
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "access_token_in_authorization_header": {
+              "default": false,
+              "description": "When true, read the access token from the Authorization header (Bearer token). When false (default), read it from X-Access-Token (as set by openid-connect).",
+              "type": "boolean"
+            },
+            "claims_source": {
+              "default": "access_token",
+              "description": "Source of identity/roles claims: 'access_token' for JWT access token, or 'userinfo' for X-Userinfo base64 JSON.",
+              "enum": [
+                "access_token",
+                "userinfo"
+              ],
+              "type": "string"
+            },
+            "headers": {
+              "description": "Optional list of request header names to pass into Casbin as the 'headers' argument (keys are normalized to lowercase).",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "identity_claim": {
+              "default": "sub",
+              "description": "JWT claim name containing the requestor identity. Defaults to 'sub'. The claim must exist and be non-empty.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "model": {
+              "description": "Inline Casbin model text used to build the enforcer.",
+              "type": "string"
+            },
+            "policy": {
+              "description": "Inline Casbin policy text used to build the enforcer.",
+              "type": "string"
+            },
+            "roles_claim": {
+              "default": "roles",
+              "description": "JWT claim name containing roles (string or array). Defaults to 'roles'. Supports dotted paths like 'realm_access.roles'. The claim must exist and be non-empty.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "strip_headers": {
+              "description": "Optional list of request header to strip before forwarding the request.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "openid-connect": {
@@ -1614,6 +3214,384 @@
           ],
           "type": "object"
         },
+        "openid-connect-multi": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "additionalProperties": false,
+          "encrypt_fields": {},
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "accept_none_alg": {
+              "default": false,
+              "description": "Set to true if the OpenID provider does not sign its ID token.",
+              "type": "boolean"
+            },
+            "accept_unsupported_alg": {
+              "default": true,
+              "description": "Ignore ID token signature to accept unsupported signature algorithm.",
+              "type": "boolean"
+            },
+            "access_token_in_authorization_header": {
+              "default": false,
+              "description": "Whether the access token should be added in the Authorization header as opposed to the X-Access-Token header.",
+              "type": "boolean"
+            },
+            "bearer_only": {
+              "default": true,
+              "enum": [
+                true
+              ],
+              "type": "boolean"
+            },
+            "cache_segment": {
+              "description": "Name of a cache segment to differentiate caches.",
+              "type": "string"
+            },
+            "claim_schema": {
+              "description": "JSON schema of OIDC response claim",
+              "type": "object"
+            },
+            "claim_validator": {
+              "properties": {
+                "audience": {
+                  "description": "audience claim value to validate",
+                  "properties": {
+                    "claim": {
+                      "default": "aud",
+                      "description": "custom claim name",
+                      "type": "string"
+                    },
+                    "match_with_client_id": {
+                      "default": false,
+                      "description": "audience must euqal to or includes client_id",
+                      "type": "boolean"
+                    },
+                    "required": {
+                      "default": false,
+                      "description": "audience claim is required",
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "issuer": {
+                  "description": "Whitelist the vetted issuers of the jwt.\n                    Issuer is validated only when this list is explicitly configured.",
+                  "properties": {
+                    "valid_issuers": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "clients": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "authorization_params": {
+                    "description": "Extra authorization params to the authorize endpoint",
+                    "type": "object"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "client_jwt_assertion_expires_in": {
+                    "default": 60,
+                    "description": "Life duration of the signed JWT in seconds.",
+                    "type": "integer"
+                  },
+                  "client_rsa_private_key": {
+                    "description": "Client RSA private key used to sign JWT.",
+                    "type": "string"
+                  },
+                  "client_rsa_private_key_id": {
+                    "description": "Client RSA private key ID used to compute a signed JWT.",
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "type": "string"
+                  },
+                  "discovery": {
+                    "type": "string"
+                  },
+                  "public_key": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "default": "openid",
+                    "type": "string"
+                  },
+                  "ssl_verify": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "timeout": {
+                    "default": 3,
+                    "description": "timeout in seconds",
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "token_signing_alg_values_expected": {
+                    "type": "string"
+                  },
+                  "use_jwks": {
+                    "default": false,
+                    "description": "If true and if `public_key` is not set, use the JWKS to verify JWT signature and skip token introspection in client credentials flow. The JWKS endpoint is parsed from the discovery document.",
+                    "type": "boolean"
+                  },
+                  "use_pkce": {
+                    "default": false,
+                    "description": "when set to true the PKCE(Proof Key for Code Exchange) will be used.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "client_id",
+                  "client_secret",
+                  "discovery"
+                ],
+                "type": "object"
+              },
+              "description": "OIDC client definitions indexed by \u003cclient_key\u003e. Each entry overrides common top-level settings.",
+              "minProperties": 1,
+              "type": "object"
+            },
+            "iat_slack": {
+              "default": 120,
+              "description": "Tolerance of clock skew in seconds with the iat claim in an ID token.",
+              "type": "integer"
+            },
+            "jwk_expires_in": {
+              "default": 86400,
+              "description": "Expiration time for JWK cache in seconds.",
+              "type": "integer"
+            },
+            "jwt_verification_cache_ignore": {
+              "default": false,
+              "description": "Whether to ignore cached verification and re-verify.",
+              "type": "boolean"
+            },
+            "opentelemetry_vars": {
+              "default": true,
+              "description": "Whether OpenTelemetry helper vars should be published into ctx.var for downstream observability plugins.",
+              "type": "boolean"
+            },
+            "proxy_opts": {
+              "description": "HTTP proxy server be used to access identity server.",
+              "properties": {
+                "http_proxy": {
+                  "description": "HTTP proxy like: http://proxy-server:80.",
+                  "type": "string"
+                },
+                "http_proxy_authorization": {
+                  "description": "Basic [base64 username:password].",
+                  "type": "string"
+                },
+                "https_proxy": {
+                  "description": "HTTPS proxy like: http://proxy-server:80.",
+                  "type": "string"
+                },
+                "https_proxy_authorization": {
+                  "description": "Basic [base64 username:password].",
+                  "type": "string"
+                },
+                "no_proxy": {
+                  "description": "Comma separated list of hosts that should not be proxied.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "realm": {
+              "default": "apisix",
+              "type": "string"
+            },
+            "resource_providers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Mapping { \u003cfiware_service\u003e: \u003cclient_key\u003e }. Fiware-Service header values are resolved through this table.",
+              "minProperties": 1,
+              "type": "object"
+            },
+            "set_access_token_header": {
+              "default": false,
+              "description": "Whether the access token should be added as a header to the request for downstream",
+              "type": "boolean"
+            },
+            "set_userinfo_header": {
+              "default": false,
+              "description": "Whether the user info token should be added in the X-Userinfo header to the request for downstream.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "clients",
+            "resource_providers"
+          ],
+          "type": "object"
+        },
+        "opentelemetry": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "additional_attributes": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "additional_header_prefix_attributes": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "sampler": {
+              "default": {
+                "name": "always_off",
+                "options": {
+                  "fraction": 0,
+                  "root": {
+                    "name": "always_off"
+                  }
+                }
+              },
+              "properties": {
+                "name": {
+                  "default": "always_off",
+                  "enum": [
+                    "always_on",
+                    "always_off",
+                    "trace_id_ratio",
+                    "parent_base"
+                  ],
+                  "title": "sampling strategy",
+                  "type": "string"
+                },
+                "options": {
+                  "default": {
+                    "fraction": 0,
+                    "root": {
+                      "name": "always_off"
+                    }
+                  },
+                  "properties": {
+                    "fraction": {
+                      "default": 0,
+                      "title": "trace_id_ratio fraction",
+                      "type": "number"
+                    },
+                    "root": {
+                      "default": {
+                        "name": "always_off",
+                        "options": {
+                          "fraction": 0
+                        }
+                      },
+                      "properties": {
+                        "name": {
+                          "default": "always_off",
+                          "enum": [
+                            "always_on",
+                            "always_off",
+                            "trace_id_ratio"
+                          ],
+                          "title": "sampling strategy",
+                          "type": "string"
+                        },
+                        "options": {
+                          "default": {
+                            "fraction": 0
+                          },
+                          "properties": {
+                            "fraction": {
+                              "default": 0,
+                              "title": "trace_id_ratio fraction parameter",
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "title": "parent_base root sampler",
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
         "prometheus": {
           "$comment": "this is a mark for our injected plugin schema",
           "properties": {
@@ -1651,6 +3629,472 @@
             "prefer_name": {
               "default": false,
               "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "proxy-buffering-control": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "additionalProperties": false,
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "proxy_buffering": {
+              "default": true,
+              "description": "Enable or disable upstream response buffering",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "proxy-cache": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "cache_bypass": {
+              "items": {
+                "pattern": "(^[^\\$].+$|^\\$[0-9a-zA-Z_]+$)",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "cache_control": {
+              "default": false,
+              "type": "boolean"
+            },
+            "cache_http_status": {
+              "default": [
+                200,
+                301,
+                404
+              ],
+              "items": {
+                "description": "http response status",
+                "maximum": 599,
+                "minimum": 200,
+                "type": "integer"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "cache_key": {
+              "default": [
+                "$host",
+                "$request_uri"
+              ],
+              "items": {
+                "description": "a key for caching",
+                "pattern": "(^[^\\$].+$|^\\$[0-9a-zA-Z_]+$)",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "cache_method": {
+              "default": [
+                "GET",
+                "HEAD"
+              ],
+              "items": {
+                "description": "supported http method",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "HEAD"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "cache_strategy": {
+              "default": "disk",
+              "enum": [
+                "disk",
+                "memory"
+              ],
+              "type": "string"
+            },
+            "cache_ttl": {
+              "default": 300,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "cache_zone": {
+              "default": "disk_cache_one",
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "hide_cache_headers": {
+              "default": false,
+              "type": "boolean"
+            },
+            "no_cache": {
+              "items": {
+                "pattern": "(^[^\\$].+$|^\\$[0-9a-zA-Z_]+$)",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "proxy-control": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "request_buffering": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "proxy-mirror": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "host": {
+              "pattern": "^(http(s)?|grpc(s)?):\\/\\/([\\da-zA-Z.-]+|\\[[\\da-fA-F:]+\\])(:\\d+)?$",
+              "type": "string"
+            },
+            "path": {
+              "pattern": "^/[^?\u0026]+$",
+              "type": "string"
+            },
+            "path_concat_mode": {
+              "default": "replace",
+              "description": "the concatenation mode for custom path",
+              "enum": [
+                "replace",
+                "prefix"
+              ],
+              "type": "string"
+            },
+            "sample_ratio": {
+              "default": 1,
+              "maximum": 1,
+              "minimum": 1e-05,
+              "type": "number"
+            }
+          },
+          "required": [
+            "host"
+          ],
+          "type": "object"
+        },
+        "proxy-rewrite": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "minProperties": 1,
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "headers": {
+              "description": "new headers for request",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "add": {
+                      "minProperties": 1,
+                      "patternProperties": {
+                        "^[^:]+$": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "remove": {
+                      "items": {
+                        "pattern": "^[^:]+$",
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "set": {
+                      "minProperties": 1,
+                      "patternProperties": {
+                        "^[^:]+$": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "minProperties": 1,
+                  "patternProperties": {
+                    "^[^:]+$": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                }
+              ]
+            },
+            "host": {
+              "description": "new host for upstream",
+              "pattern": "^[0-9a-zA-Z-.]+(:\\d{1,5})?$",
+              "type": "string"
+            },
+            "method": {
+              "description": "proxy route method",
+              "enum": [
+                "MKCOL",
+                "COPY",
+                "MOVE",
+                "OPTIONS",
+                "PROPFIND",
+                "LOCK",
+                "UNLOCK",
+                "PATCH",
+                "TRACE",
+                "GET",
+                "HEAD",
+                "POST",
+                "PUT",
+                "DELETE"
+              ],
+              "type": "string"
+            },
+            "regex_uri": {
+              "description": "new uri that substitute from client uri for upstream, lower priority than uri property",
+              "items": {
+                "description": "regex uri",
+                "type": "string"
+              },
+              "minItems": 2,
+              "type": "array"
+            },
+            "uri": {
+              "description": "new uri for upstream",
+              "maxLength": 4096,
+              "minLength": 1,
+              "pattern": "^\\/.*",
+              "type": "string"
+            },
+            "use_real_request_uri_unsafe": {
+              "default": false,
+              "description": "use real_request_uri instead, THIS IS VERY UNSAFE.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "public-api": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "uri": {
+              "type": "string"
             }
           },
           "type": "object"
@@ -1816,6 +4260,81 @@
           },
           "type": "object"
         },
+        "referer-restriction": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "oneOf": [
+            {
+              "required": [
+                "whitelist"
+              ]
+            },
+            {
+              "required": [
+                "blacklist"
+              ]
+            }
+          ],
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "blacklist": {
+              "items": {
+                "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "bypass_missing": {
+              "default": false,
+              "type": "boolean"
+            },
+            "message": {
+              "default": "Your referer host is not allowed",
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            "whitelist": {
+              "items": {
+                "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
         "request-id": {
           "$comment": "this is a mark for our injected plugin schema",
           "properties": {
@@ -1886,6 +4405,238 @@
                 }
               },
               "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "request-validation": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "anyOf": [
+            {
+              "required": [
+                "header_schema"
+              ]
+            },
+            {
+              "required": [
+                "body_schema"
+              ]
+            }
+          ],
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "body_schema": {
+              "type": "object"
+            },
+            "header_schema": {
+              "type": "object"
+            },
+            "rejected_code": {
+              "default": 400,
+              "maximum": 599,
+              "minimum": 200,
+              "type": "integer"
+            },
+            "rejected_msg": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "response-rewrite": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "dependencies": {
+            "body": {
+              "not": {
+                "required": [
+                  "filters"
+                ]
+              }
+            },
+            "filters": {
+              "not": {
+                "required": [
+                  "body"
+                ]
+              }
+            }
+          },
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "body": {
+              "description": "new body for response",
+              "type": "string"
+            },
+            "body_base64": {
+              "default": false,
+              "description": "whether new body for response need base64 decode before return",
+              "type": "boolean"
+            },
+            "filters": {
+              "description": "a group of filters that modify response bodyby replacing one specified string by another",
+              "items": {
+                "description": "filter that modifies response body",
+                "properties": {
+                  "options": {
+                    "default": "jo",
+                    "description": "regex options",
+                    "type": "string"
+                  },
+                  "regex": {
+                    "description": "match pattern on response body",
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "replace": {
+                    "description": "regex substitution content",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "default": "once",
+                    "description": "regex substitution range",
+                    "enum": [
+                      "once",
+                      "global"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "regex",
+                  "replace"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "headers": {
+              "anyOf": [
+                {
+                  "minProperties": 1,
+                  "patternProperties": {
+                    "^[^:]+$": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "add": {
+                      "items": {
+                        "pattern": "^[^:]+:[^:]*[^/]$",
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "remove": {
+                      "items": {
+                        "pattern": "^[^:]+$",
+                        "type": "string"
+                      },
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "set": {
+                      "minProperties": 1,
+                      "patternProperties": {
+                        "^[^:]+$": {
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      },
+                      "type": "object"
+                    }
+                  }
+                }
+              ],
+              "description": "new headers for response"
+            },
+            "status_code": {
+              "description": "new status code for response",
+              "maximum": 598,
+              "minimum": 200,
+              "type": "integer"
+            },
+            "vars": {
+              "type": "array"
             }
           },
           "type": "object"
@@ -2006,6 +4757,619 @@
           "required": [
             "functions"
           ],
+          "type": "object"
+        },
+        "traffic-split": {
+          "$comment": "this is a mark for our injected plugin schema",
+          "properties": {
+            "_meta": {
+              "additionalProperties": false,
+              "properties": {
+                "disable": {
+                  "type": "boolean"
+                },
+                "error_response": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                },
+                "filter": {
+                  "description": "filter determines whether the plugin needs to be executed at runtime",
+                  "type": "array"
+                },
+                "pre_function": {
+                  "description": "function to be executed in each phase before execution of plugins. The pre_function will have access to two arguments: `conf` and `ctx`.",
+                  "type": "string"
+                },
+                "priority": {
+                  "description": "priority of plugins by customized order",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "rules": {
+              "items": {
+                "properties": {
+                  "match": {
+                    "items": {
+                      "properties": {
+                        "vars": {
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "weighted_upstreams": {
+                    "default": [
+                      {
+                        "weight": 1
+                      }
+                    ],
+                    "items": {
+                      "properties": {
+                        "upstream": {
+                          "additionalProperties": false,
+                          "oneOf": [
+                            {
+                              "required": [
+                                "nodes"
+                              ]
+                            },
+                            {
+                              "required": [
+                                "service_name",
+                                "discovery_type"
+                              ]
+                            }
+                          ],
+                          "properties": {
+                            "checks": {
+                              "anyOf": [
+                                {
+                                  "required": [
+                                    "active"
+                                  ]
+                                },
+                                {
+                                  "required": [
+                                    "active",
+                                    "passive"
+                                  ]
+                                }
+                              ],
+                              "properties": {
+                                "active": {
+                                  "properties": {
+                                    "concurrency": {
+                                      "default": 10,
+                                      "type": "integer"
+                                    },
+                                    "healthy": {
+                                      "properties": {
+                                        "http_statuses": {
+                                          "default": [
+                                            200,
+                                            302
+                                          ],
+                                          "items": {
+                                            "maximum": 599,
+                                            "minimum": 200,
+                                            "type": "integer"
+                                          },
+                                          "minItems": 1,
+                                          "type": "array",
+                                          "uniqueItems": true
+                                        },
+                                        "interval": {
+                                          "default": 1,
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        },
+                                        "successes": {
+                                          "default": 2,
+                                          "maximum": 254,
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "type": "object"
+                                    },
+                                    "host": {
+                                      "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                                      "type": "string"
+                                    },
+                                    "http_path": {
+                                      "default": "/",
+                                      "type": "string"
+                                    },
+                                    "https_verify_certificate": {
+                                      "default": true,
+                                      "type": "boolean"
+                                    },
+                                    "port": {
+                                      "maximum": 65535,
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "req_headers": {
+                                      "items": {
+                                        "type": "string",
+                                        "uniqueItems": true
+                                      },
+                                      "minItems": 1,
+                                      "type": "array"
+                                    },
+                                    "timeout": {
+                                      "default": 1,
+                                      "type": "number"
+                                    },
+                                    "type": {
+                                      "default": "http",
+                                      "enum": [
+                                        "http",
+                                        "https",
+                                        "tcp"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "unhealthy": {
+                                      "properties": {
+                                        "http_failures": {
+                                          "default": 5,
+                                          "maximum": 254,
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        },
+                                        "http_statuses": {
+                                          "default": [
+                                            429,
+                                            404,
+                                            500,
+                                            501,
+                                            502,
+                                            503,
+                                            504,
+                                            505
+                                          ],
+                                          "items": {
+                                            "maximum": 599,
+                                            "minimum": 200,
+                                            "type": "integer"
+                                          },
+                                          "minItems": 1,
+                                          "type": "array",
+                                          "uniqueItems": true
+                                        },
+                                        "interval": {
+                                          "default": 1,
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        },
+                                        "tcp_failures": {
+                                          "default": 2,
+                                          "maximum": 254,
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        },
+                                        "timeouts": {
+                                          "default": 3,
+                                          "maximum": 254,
+                                          "minimum": 1,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "type": "object"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                "passive": {
+                                  "properties": {
+                                    "healthy": {
+                                      "properties": {
+                                        "http_statuses": {
+                                          "default": [
+                                            200,
+                                            201,
+                                            202,
+                                            203,
+                                            204,
+                                            205,
+                                            206,
+                                            207,
+                                            208,
+                                            226,
+                                            300,
+                                            301,
+                                            302,
+                                            303,
+                                            304,
+                                            305,
+                                            306,
+                                            307,
+                                            308
+                                          ],
+                                          "items": {
+                                            "maximum": 599,
+                                            "minimum": 200,
+                                            "type": "integer"
+                                          },
+                                          "minItems": 1,
+                                          "type": "array",
+                                          "uniqueItems": true
+                                        },
+                                        "successes": {
+                                          "default": 5,
+                                          "maximum": 254,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "type": "object"
+                                    },
+                                    "type": {
+                                      "default": "http",
+                                      "enum": [
+                                        "http",
+                                        "https",
+                                        "tcp"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "unhealthy": {
+                                      "properties": {
+                                        "http_failures": {
+                                          "default": 5,
+                                          "maximum": 254,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "http_statuses": {
+                                          "default": [
+                                            429,
+                                            500,
+                                            503
+                                          ],
+                                          "items": {
+                                            "maximum": 599,
+                                            "minimum": 200,
+                                            "type": "integer"
+                                          },
+                                          "minItems": 1,
+                                          "type": "array",
+                                          "uniqueItems": true
+                                        },
+                                        "tcp_failures": {
+                                          "default": 2,
+                                          "maximum": 254,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        },
+                                        "timeouts": {
+                                          "default": 7,
+                                          "maximum": 254,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "type": "object"
+                                    }
+                                  },
+                                  "type": "object"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "create_time": {
+                              "type": "integer"
+                            },
+                            "desc": {
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "discovery_args": {
+                              "properties": {
+                                "group_name": {
+                                  "description": "group name",
+                                  "type": "string"
+                                },
+                                "namespace_id": {
+                                  "description": "namespace id",
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "discovery_type": {
+                              "description": "discovery type",
+                              "type": "string"
+                            },
+                            "hash_on": {
+                              "default": "vars",
+                              "enum": [
+                                "vars",
+                                "header",
+                                "cookie",
+                                "consumer",
+                                "vars_combinations"
+                              ],
+                              "type": "string"
+                            },
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "pattern": "^[a-zA-Z0-9-_.]+$",
+                                  "type": "string"
+                                },
+                                {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              ]
+                            },
+                            "keepalive_pool": {
+                              "properties": {
+                                "idle_timeout": {
+                                  "default": 60,
+                                  "minimum": 0,
+                                  "type": "number"
+                                },
+                                "requests": {
+                                  "default": 1000,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "size": {
+                                  "default": 320,
+                                  "minimum": 1,
+                                  "type": "integer"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "key": {
+                              "description": "the key of chash for dynamic load balancing",
+                              "type": "string"
+                            },
+                            "labels": {
+                              "description": "key/value pairs to specify attributes",
+                              "patternProperties": {
+                                ".*": {
+                                  "description": "value of label",
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "pattern": "^\\S+$",
+                                  "type": "string"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "name": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "nodes": {
+                              "anyOf": [
+                                {
+                                  "patternProperties": {
+                                    ".*": {
+                                      "description": "weight of node",
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                {
+                                  "items": {
+                                    "properties": {
+                                      "host": {
+                                        "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                                        "type": "string"
+                                      },
+                                      "metadata": {
+                                        "description": "metadata of node",
+                                        "type": "object"
+                                      },
+                                      "port": {
+                                        "description": "port of node",
+                                        "maximum": 65535,
+                                        "minimum": 1,
+                                        "type": "integer"
+                                      },
+                                      "priority": {
+                                        "default": 0,
+                                        "description": "priority of node",
+                                        "type": "integer"
+                                      },
+                                      "weight": {
+                                        "description": "weight of node",
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "host",
+                                      "weight"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                }
+                              ]
+                            },
+                            "pass_host": {
+                              "default": "pass",
+                              "description": "mod of host passing",
+                              "enum": [
+                                "pass",
+                                "node",
+                                "rewrite"
+                              ],
+                              "type": "string"
+                            },
+                            "retries": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "retry_timeout": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "scheme": {
+                              "default": "http",
+                              "description": "The scheme of the upstream. For L7 proxy, it can be one of grpc/grpcs/http/https. For L4 proxy, it can be one of tcp/tls/udp. For specific protocols, it can be kafka.",
+                              "enum": [
+                                "grpc",
+                                "grpcs",
+                                "http",
+                                "https",
+                                "tcp",
+                                "tls",
+                                "udp",
+                                "kafka"
+                              ]
+                            },
+                            "service_name": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "timeout": {
+                              "properties": {
+                                "connect": {
+                                  "exclusiveMinimum": 0,
+                                  "type": "number"
+                                },
+                                "read": {
+                                  "exclusiveMinimum": 0,
+                                  "type": "number"
+                                },
+                                "send": {
+                                  "exclusiveMinimum": 0,
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "connect",
+                                "send",
+                                "read"
+                              ],
+                              "type": "object"
+                            },
+                            "tls": {
+                              "dependencies": {
+                                "client_cert": {
+                                  "required": [
+                                    "client_key"
+                                  ]
+                                },
+                                "client_cert_id": {
+                                  "not": {
+                                    "required": [
+                                      "client_cert",
+                                      "client_key"
+                                    ]
+                                  }
+                                },
+                                "client_key": {
+                                  "required": [
+                                    "client_cert"
+                                  ]
+                                }
+                              },
+                              "properties": {
+                                "client_cert": {
+                                  "maxLength": 65536,
+                                  "minLength": 128,
+                                  "type": "string"
+                                },
+                                "client_cert_id": {
+                                  "anyOf": [
+                                    {
+                                      "maxLength": 64,
+                                      "minLength": 1,
+                                      "pattern": "^[a-zA-Z0-9-_.]+$",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    }
+                                  ]
+                                },
+                                "client_key": {
+                                  "maxLength": 65536,
+                                  "minLength": 128,
+                                  "type": "string"
+                                },
+                                "verify": {
+                                  "default": false,
+                                  "description": "Turn on server certificate verification, currently only kafka upstream is supported",
+                                  "type": "boolean"
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "type": {
+                              "default": "roundrobin",
+                              "description": "algorithms of load balancing",
+                              "type": "string"
+                            },
+                            "update_time": {
+                              "type": "integer"
+                            },
+                            "upstream_host": {
+                              "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                              "type": "string"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "upstream_id": {
+                          "anyOf": [
+                            {
+                              "maxLength": 64,
+                              "minLength": 1,
+                              "pattern": "^[a-zA-Z0-9-_.]+$",
+                              "type": "string"
+                            },
+                            {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "weight": {
+                          "default": 1,
+                          "description": "used to split traffic between differentupstreams for plugin configuration",
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 20,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "uri-blocker": {
@@ -2301,11 +5665,11 @@
               "type": "integer"
             },
             "protocol_name": {
+              "default": "MQTT",
               "type": "string"
             }
           },
           "required": [
-            "protocol_name",
             "protocol_level"
           ],
           "type": "object"
@@ -2544,7 +5908,7 @@
                                       "type": "object"
                                     },
                                     "host": {
-                                      "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                                      "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                                       "type": "string"
                                     },
                                     "http_path": {
@@ -2816,7 +6180,7 @@
                               "type": "object"
                             },
                             "name": {
-                              "maxLength": 100,
+                              "maxLength": 256,
                               "minLength": 1,
                               "type": "string"
                             },
@@ -2836,7 +6200,7 @@
                                   "items": {
                                     "properties": {
                                       "host": {
-                                        "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                                        "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                                         "type": "string"
                                       },
                                       "metadata": {
@@ -2992,7 +6356,7 @@
                               "type": "integer"
                             },
                             "upstream_host": {
-                              "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                              "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                               "type": "string"
                             }
                           },
@@ -3079,7 +6443,7 @@
             "type": "object"
           },
           "name": {
-            "maxLength": 100,
+            "maxLength": 256,
             "minLength": 1,
             "type": "string"
           },
@@ -3143,7 +6507,7 @@
             "type": "integer"
           },
           "username": {
-            "maxLength": 100,
+            "maxLength": 256,
             "minLength": 1,
             "pattern": "^[a-zA-Z0-9_\\-]+$",
             "type": "string"
@@ -3180,11 +6544,23 @@
           "plugins": {
             "additionalProperties": false,
             "properties": {
+              "api-breaker": {
+                "$ref": "#/$defs/plugins/properties/api-breaker"
+              },
               "authz-keycloak": {
                 "$ref": "#/$defs/plugins/properties/authz-keycloak"
               },
               "basic-auth": {
                 "$ref": "#/$defs/plugins/properties/basic-auth"
+              },
+              "body-transformer": {
+                "$ref": "#/$defs/plugins/properties/body-transformer"
+              },
+              "client-control": {
+                "$ref": "#/$defs/plugins/properties/client-control"
+              },
+              "consumer-restriction": {
+                "$ref": "#/$defs/plugins/properties/consumer-restriction"
               },
               "cors": {
                 "$ref": "#/$defs/plugins/properties/cors"
@@ -3192,14 +6568,32 @@
               "csrf": {
                 "$ref": "#/$defs/plugins/properties/csrf"
               },
+              "forward-auth": {
+                "$ref": "#/$defs/plugins/properties/forward-auth"
+              },
+              "gzip": {
+                "$ref": "#/$defs/plugins/properties/gzip"
+              },
               "ip-restriction": {
                 "$ref": "#/$defs/plugins/properties/ip-restriction"
+              },
+              "jwe-decrypt": {
+                "$ref": "#/$defs/plugins/properties/jwe-decrypt"
               },
               "jwt-auth": {
                 "$ref": "#/$defs/plugins/properties/jwt-auth"
               },
               "key-auth": {
                 "$ref": "#/$defs/plugins/properties/key-auth"
+              },
+              "keycloak-authz": {
+                "$ref": "#/$defs/plugins/properties/keycloak-authz"
+              },
+              "keystone-auth": {
+                "$ref": "#/$defs/plugins/properties/keystone-auth"
+              },
+              "ldap-auth": {
+                "$ref": "#/$defs/plugins/properties/ldap-auth"
               },
               "limit-conn": {
                 "$ref": "#/$defs/plugins/properties/limit-conn"
@@ -3210,14 +6604,50 @@
               "limit-req": {
                 "$ref": "#/$defs/plugins/properties/limit-req"
               },
+              "loki-logger": {
+                "$ref": "#/$defs/plugins/properties/loki-logger"
+              },
               "multi-auth": {
                 "$ref": "#/$defs/plugins/properties/multi-auth"
+              },
+              "node-status": {
+                "$ref": "#/$defs/plugins/properties/node-status"
+              },
+              "ocsp-stapling": {
+                "$ref": "#/$defs/plugins/properties/ocsp-stapling"
+              },
+              "openid-casbin": {
+                "$ref": "#/$defs/plugins/properties/openid-casbin"
               },
               "openid-connect": {
                 "$ref": "#/$defs/plugins/properties/openid-connect"
               },
+              "openid-connect-multi": {
+                "$ref": "#/$defs/plugins/properties/openid-connect-multi"
+              },
+              "opentelemetry": {
+                "$ref": "#/$defs/plugins/properties/opentelemetry"
+              },
               "prometheus": {
                 "$ref": "#/$defs/plugins/properties/prometheus"
+              },
+              "proxy-buffering-control": {
+                "$ref": "#/$defs/plugins/properties/proxy-buffering-control"
+              },
+              "proxy-cache": {
+                "$ref": "#/$defs/plugins/properties/proxy-cache"
+              },
+              "proxy-control": {
+                "$ref": "#/$defs/plugins/properties/proxy-control"
+              },
+              "proxy-mirror": {
+                "$ref": "#/$defs/plugins/properties/proxy-mirror"
+              },
+              "proxy-rewrite": {
+                "$ref": "#/$defs/plugins/properties/proxy-rewrite"
+              },
+              "public-api": {
+                "$ref": "#/$defs/plugins/properties/public-api"
               },
               "real-ip": {
                 "$ref": "#/$defs/plugins/properties/real-ip"
@@ -3225,14 +6655,26 @@
               "redirect": {
                 "$ref": "#/$defs/plugins/properties/redirect"
               },
+              "referer-restriction": {
+                "$ref": "#/$defs/plugins/properties/referer-restriction"
+              },
               "request-id": {
                 "$ref": "#/$defs/plugins/properties/request-id"
+              },
+              "request-validation": {
+                "$ref": "#/$defs/plugins/properties/request-validation"
+              },
+              "response-rewrite": {
+                "$ref": "#/$defs/plugins/properties/response-rewrite"
               },
               "serverless-post-function": {
                 "$ref": "#/$defs/plugins/properties/serverless-post-function"
               },
               "serverless-pre-function": {
                 "$ref": "#/$defs/plugins/properties/serverless-pre-function"
+              },
+              "traffic-split": {
+                "$ref": "#/$defs/plugins/properties/traffic-split"
               },
               "uri-blocker": {
                 "$ref": "#/$defs/plugins/properties/uri-blocker"
@@ -3296,11 +6738,23 @@
           "plugins": {
             "additionalProperties": false,
             "properties": {
+              "api-breaker": {
+                "$ref": "#/$defs/plugins/properties/api-breaker"
+              },
               "authz-keycloak": {
                 "$ref": "#/$defs/plugins/properties/authz-keycloak"
               },
               "basic-auth": {
                 "$ref": "#/$defs/plugins/properties/basic-auth"
+              },
+              "body-transformer": {
+                "$ref": "#/$defs/plugins/properties/body-transformer"
+              },
+              "client-control": {
+                "$ref": "#/$defs/plugins/properties/client-control"
+              },
+              "consumer-restriction": {
+                "$ref": "#/$defs/plugins/properties/consumer-restriction"
               },
               "cors": {
                 "$ref": "#/$defs/plugins/properties/cors"
@@ -3308,14 +6762,32 @@
               "csrf": {
                 "$ref": "#/$defs/plugins/properties/csrf"
               },
+              "forward-auth": {
+                "$ref": "#/$defs/plugins/properties/forward-auth"
+              },
+              "gzip": {
+                "$ref": "#/$defs/plugins/properties/gzip"
+              },
               "ip-restriction": {
                 "$ref": "#/$defs/plugins/properties/ip-restriction"
+              },
+              "jwe-decrypt": {
+                "$ref": "#/$defs/plugins/properties/jwe-decrypt"
               },
               "jwt-auth": {
                 "$ref": "#/$defs/plugins/properties/jwt-auth"
               },
               "key-auth": {
                 "$ref": "#/$defs/plugins/properties/key-auth"
+              },
+              "keycloak-authz": {
+                "$ref": "#/$defs/plugins/properties/keycloak-authz"
+              },
+              "keystone-auth": {
+                "$ref": "#/$defs/plugins/properties/keystone-auth"
+              },
+              "ldap-auth": {
+                "$ref": "#/$defs/plugins/properties/ldap-auth"
               },
               "limit-conn": {
                 "$ref": "#/$defs/plugins/properties/limit-conn"
@@ -3326,14 +6798,50 @@
               "limit-req": {
                 "$ref": "#/$defs/plugins/properties/limit-req"
               },
+              "loki-logger": {
+                "$ref": "#/$defs/plugins/properties/loki-logger"
+              },
               "multi-auth": {
                 "$ref": "#/$defs/plugins/properties/multi-auth"
+              },
+              "node-status": {
+                "$ref": "#/$defs/plugins/properties/node-status"
+              },
+              "ocsp-stapling": {
+                "$ref": "#/$defs/plugins/properties/ocsp-stapling"
+              },
+              "openid-casbin": {
+                "$ref": "#/$defs/plugins/properties/openid-casbin"
               },
               "openid-connect": {
                 "$ref": "#/$defs/plugins/properties/openid-connect"
               },
+              "openid-connect-multi": {
+                "$ref": "#/$defs/plugins/properties/openid-connect-multi"
+              },
+              "opentelemetry": {
+                "$ref": "#/$defs/plugins/properties/opentelemetry"
+              },
               "prometheus": {
                 "$ref": "#/$defs/plugins/properties/prometheus"
+              },
+              "proxy-buffering-control": {
+                "$ref": "#/$defs/plugins/properties/proxy-buffering-control"
+              },
+              "proxy-cache": {
+                "$ref": "#/$defs/plugins/properties/proxy-cache"
+              },
+              "proxy-control": {
+                "$ref": "#/$defs/plugins/properties/proxy-control"
+              },
+              "proxy-mirror": {
+                "$ref": "#/$defs/plugins/properties/proxy-mirror"
+              },
+              "proxy-rewrite": {
+                "$ref": "#/$defs/plugins/properties/proxy-rewrite"
+              },
+              "public-api": {
+                "$ref": "#/$defs/plugins/properties/public-api"
               },
               "real-ip": {
                 "$ref": "#/$defs/plugins/properties/real-ip"
@@ -3341,14 +6849,26 @@
               "redirect": {
                 "$ref": "#/$defs/plugins/properties/redirect"
               },
+              "referer-restriction": {
+                "$ref": "#/$defs/plugins/properties/referer-restriction"
+              },
               "request-id": {
                 "$ref": "#/$defs/plugins/properties/request-id"
+              },
+              "request-validation": {
+                "$ref": "#/$defs/plugins/properties/request-validation"
+              },
+              "response-rewrite": {
+                "$ref": "#/$defs/plugins/properties/response-rewrite"
               },
               "serverless-post-function": {
                 "$ref": "#/$defs/plugins/properties/serverless-post-function"
               },
               "serverless-pre-function": {
                 "$ref": "#/$defs/plugins/properties/serverless-pre-function"
+              },
+              "traffic-split": {
+                "$ref": "#/$defs/plugins/properties/traffic-split"
               },
               "uri-blocker": {
                 "$ref": "#/$defs/plugins/properties/uri-blocker"
@@ -3381,24 +6901,24 @@
                 },
                 "type": "object"
               },
-              "plugin_name": {
+              "id": {
                 "const": "cors"
               }
             },
             "required": [
-              "plugin_name"
+              "id"
             ],
             "type": "object"
           },
           {
             "additionalProperties": false,
             "properties": {
+              "id": {
+                "const": "limit-count"
+              },
               "limit_header": {
                 "default": "X-RateLimit-Limit",
                 "type": "string"
-              },
-              "plugin_name": {
-                "const": "limit-count"
               },
               "remaining_header": {
                 "default": "X-RateLimit-Remaining",
@@ -3410,22 +6930,136 @@
               }
             },
             "required": [
-              "plugin_name"
+              "id"
             ],
             "type": "object"
           },
           {
             "additionalProperties": false,
             "properties": {
+              "id": {
+                "const": "loki-logger"
+              },
               "log_format": {
                 "type": "object"
               },
-              "plugin_name": {
-                "const": "syslog"
+              "max_pending_entries": {
+                "description": "maximum number of pending entries in the batch processor",
+                "minimum": 1,
+                "type": "integer"
               }
             },
             "required": [
-              "plugin_name"
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "batch_span_processor": {
+                "default": {},
+                "description": "batch span processor",
+                "properties": {
+                  "batch_timeout": {
+                    "description": "maximum duration for constructing a batch",
+                    "type": "number"
+                  },
+                  "drop_on_queue_full": {
+                    "description": "if true, drop span when queue is full, otherwise force process batches",
+                    "type": "boolean"
+                  },
+                  "inactive_timeout": {
+                    "description": "maximum duration for processing batches",
+                    "type": "number"
+                  },
+                  "max_export_batch_size": {
+                    "description": "maximum number of spans to process in a single batch",
+                    "type": "integer"
+                  },
+                  "max_queue_size": {
+                    "description": "maximum queue size to buffer spans for delayed processing",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "collector": {
+                "default": {
+                  "address": "127.0.0.1:4318",
+                  "request_timeout": 3
+                },
+                "description": "opentelemetry collector",
+                "properties": {
+                  "address": {
+                    "default": "127.0.0.1:4318",
+                    "description": "host:port",
+                    "type": "string"
+                  },
+                  "request_headers": {
+                    "additionalProperties": {
+                      "one_of": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "description": "http headers",
+                    "type": "object"
+                  },
+                  "request_timeout": {
+                    "default": 3,
+                    "description": "second uint",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "id": {
+                "const": "opentelemetry"
+              },
+              "resource": {
+                "description": "additional resource",
+                "type": "object"
+              },
+              "set_ngx_var": {
+                "default": false,
+                "description": "set nginx variables",
+                "type": "boolean"
+              },
+              "trace_id_source": {
+                "default": "random",
+                "description": "the source of trace id",
+                "enum": [
+                  "x-request-id",
+                  "random"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "const": "syslog"
+              },
+              "log_format": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "id"
             ],
             "type": "object"
           }
@@ -3608,12 +7242,12 @@
             "type": "string"
           },
           "host": {
-            "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+            "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
             "type": "string"
           },
           "hosts": {
             "items": {
-              "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+              "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
               "type": "string"
             },
             "minItems": 1,
@@ -3668,7 +7302,7 @@
             "uniqueItems": true
           },
           "name": {
-            "maxLength": 100,
+            "maxLength": 256,
             "minLength": 1,
             "type": "string"
           },
@@ -3689,11 +7323,23 @@
           "plugins": {
             "additionalProperties": false,
             "properties": {
+              "api-breaker": {
+                "$ref": "#/$defs/plugins/properties/api-breaker"
+              },
               "authz-keycloak": {
                 "$ref": "#/$defs/plugins/properties/authz-keycloak"
               },
               "basic-auth": {
                 "$ref": "#/$defs/plugins/properties/basic-auth"
+              },
+              "body-transformer": {
+                "$ref": "#/$defs/plugins/properties/body-transformer"
+              },
+              "client-control": {
+                "$ref": "#/$defs/plugins/properties/client-control"
+              },
+              "consumer-restriction": {
+                "$ref": "#/$defs/plugins/properties/consumer-restriction"
               },
               "cors": {
                 "$ref": "#/$defs/plugins/properties/cors"
@@ -3701,14 +7347,32 @@
               "csrf": {
                 "$ref": "#/$defs/plugins/properties/csrf"
               },
+              "forward-auth": {
+                "$ref": "#/$defs/plugins/properties/forward-auth"
+              },
+              "gzip": {
+                "$ref": "#/$defs/plugins/properties/gzip"
+              },
               "ip-restriction": {
                 "$ref": "#/$defs/plugins/properties/ip-restriction"
+              },
+              "jwe-decrypt": {
+                "$ref": "#/$defs/plugins/properties/jwe-decrypt"
               },
               "jwt-auth": {
                 "$ref": "#/$defs/plugins/properties/jwt-auth"
               },
               "key-auth": {
                 "$ref": "#/$defs/plugins/properties/key-auth"
+              },
+              "keycloak-authz": {
+                "$ref": "#/$defs/plugins/properties/keycloak-authz"
+              },
+              "keystone-auth": {
+                "$ref": "#/$defs/plugins/properties/keystone-auth"
+              },
+              "ldap-auth": {
+                "$ref": "#/$defs/plugins/properties/ldap-auth"
               },
               "limit-conn": {
                 "$ref": "#/$defs/plugins/properties/limit-conn"
@@ -3719,14 +7383,50 @@
               "limit-req": {
                 "$ref": "#/$defs/plugins/properties/limit-req"
               },
+              "loki-logger": {
+                "$ref": "#/$defs/plugins/properties/loki-logger"
+              },
               "multi-auth": {
                 "$ref": "#/$defs/plugins/properties/multi-auth"
+              },
+              "node-status": {
+                "$ref": "#/$defs/plugins/properties/node-status"
+              },
+              "ocsp-stapling": {
+                "$ref": "#/$defs/plugins/properties/ocsp-stapling"
+              },
+              "openid-casbin": {
+                "$ref": "#/$defs/plugins/properties/openid-casbin"
               },
               "openid-connect": {
                 "$ref": "#/$defs/plugins/properties/openid-connect"
               },
+              "openid-connect-multi": {
+                "$ref": "#/$defs/plugins/properties/openid-connect-multi"
+              },
+              "opentelemetry": {
+                "$ref": "#/$defs/plugins/properties/opentelemetry"
+              },
               "prometheus": {
                 "$ref": "#/$defs/plugins/properties/prometheus"
+              },
+              "proxy-buffering-control": {
+                "$ref": "#/$defs/plugins/properties/proxy-buffering-control"
+              },
+              "proxy-cache": {
+                "$ref": "#/$defs/plugins/properties/proxy-cache"
+              },
+              "proxy-control": {
+                "$ref": "#/$defs/plugins/properties/proxy-control"
+              },
+              "proxy-mirror": {
+                "$ref": "#/$defs/plugins/properties/proxy-mirror"
+              },
+              "proxy-rewrite": {
+                "$ref": "#/$defs/plugins/properties/proxy-rewrite"
+              },
+              "public-api": {
+                "$ref": "#/$defs/plugins/properties/public-api"
               },
               "real-ip": {
                 "$ref": "#/$defs/plugins/properties/real-ip"
@@ -3734,14 +7434,26 @@
               "redirect": {
                 "$ref": "#/$defs/plugins/properties/redirect"
               },
+              "referer-restriction": {
+                "$ref": "#/$defs/plugins/properties/referer-restriction"
+              },
               "request-id": {
                 "$ref": "#/$defs/plugins/properties/request-id"
+              },
+              "request-validation": {
+                "$ref": "#/$defs/plugins/properties/request-validation"
+              },
+              "response-rewrite": {
+                "$ref": "#/$defs/plugins/properties/response-rewrite"
               },
               "serverless-post-function": {
                 "$ref": "#/$defs/plugins/properties/serverless-post-function"
               },
               "serverless-pre-function": {
                 "$ref": "#/$defs/plugins/properties/serverless-pre-function"
+              },
+              "traffic-split": {
+                "$ref": "#/$defs/plugins/properties/traffic-split"
               },
               "uri-blocker": {
                 "$ref": "#/$defs/plugins/properties/uri-blocker"
@@ -3945,7 +7657,7 @@
                         "type": "object"
                       },
                       "host": {
-                        "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                        "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                         "type": "string"
                       },
                       "http_path": {
@@ -4217,7 +7929,7 @@
                 "type": "object"
               },
               "name": {
-                "maxLength": 100,
+                "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
               },
@@ -4237,7 +7949,7 @@
                     "items": {
                       "properties": {
                         "host": {
-                          "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                          "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                           "type": "string"
                         },
                         "metadata": {
@@ -4393,7 +8105,7 @@
                 "type": "integer"
               },
               "upstream_host": {
-                "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                 "type": "string"
               }
             },
@@ -4452,7 +8164,7 @@
           },
           "hosts": {
             "items": {
-              "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+              "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
               "type": "string"
             },
             "minItems": 1,
@@ -4487,7 +8199,7 @@
             "type": "object"
           },
           "name": {
-            "maxLength": 100,
+            "maxLength": 256,
             "minLength": 1,
             "type": "string"
           },
@@ -4570,7 +8282,7 @@
                         "type": "object"
                       },
                       "host": {
-                        "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                        "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                         "type": "string"
                       },
                       "http_path": {
@@ -4842,7 +8554,7 @@
                 "type": "object"
               },
               "name": {
-                "maxLength": 100,
+                "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
               },
@@ -4862,7 +8574,7 @@
                     "items": {
                       "properties": {
                         "host": {
-                          "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                          "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                           "type": "string"
                         },
                         "metadata": {
@@ -5018,7 +8730,7 @@
                 "type": "integer"
               },
               "upstream_host": {
-                "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                 "type": "string"
               }
             },
@@ -5181,13 +8893,31 @@
             },
             "type": "object"
           },
+          "ocsp_stapling": {
+            "properties": {
+              "cache_ttl": {
+                "default": 3600,
+                "minimum": 60,
+                "type": "integer"
+              },
+              "enabled": {
+                "default": false,
+                "type": "boolean"
+              },
+              "skip_verify": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
           "sni": {
-            "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+            "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
             "type": "string"
           },
           "snis": {
             "items": {
-              "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+              "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
               "type": "string"
             },
             "minItems": 1,
@@ -5289,7 +9019,7 @@
             "type": "object"
           },
           "name": {
-            "maxLength": 100,
+            "maxLength": 256,
             "minLength": 1,
             "type": "string"
           },
@@ -5441,7 +9171,7 @@
           },
           "sni": {
             "description": "server name indication",
-            "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+            "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
             "type": "string"
           },
           "update_time": {
@@ -5515,7 +9245,7 @@
                         "type": "object"
                       },
                       "host": {
-                        "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                        "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                         "type": "string"
                       },
                       "http_path": {
@@ -5787,7 +9517,7 @@
                 "type": "object"
               },
               "name": {
-                "maxLength": 100,
+                "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
               },
@@ -5807,7 +9537,7 @@
                     "items": {
                       "properties": {
                         "host": {
-                          "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                          "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                           "type": "string"
                         },
                         "metadata": {
@@ -5963,7 +9693,7 @@
                 "type": "integer"
               },
               "upstream_host": {
-                "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                 "type": "string"
               }
             },
@@ -6057,7 +9787,7 @@
                     "type": "object"
                   },
                   "host": {
-                    "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                    "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                     "type": "string"
                   },
                   "http_path": {
@@ -6329,7 +10059,7 @@
             "type": "object"
           },
           "name": {
-            "maxLength": 100,
+            "maxLength": 256,
             "minLength": 1,
             "type": "string"
           },
@@ -6349,7 +10079,7 @@
                 "items": {
                   "properties": {
                     "host": {
-                      "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+                      "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
                       "type": "string"
                     },
                     "metadata": {
@@ -6505,7 +10235,7 @@
             "type": "integer"
           },
           "upstream_host": {
-            "pattern": "^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
+            "pattern": "^\\*$|^\\*?[0-9a-zA-Z-._\\[\\]:]+$",
             "type": "string"
           }
         },

@@ -4,21 +4,39 @@ import (
 	"iter"
 	"log/slog"
 
-	"github.com/warpcomdev/sixpack/internal/compiler"
-	"github.com/warpcomdev/sixpack/internal/dispatcher"
+	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcondev/cuesix/internal/dispatcher"
 )
 
 // CompilerFactory wires the compiler into dispatcher config.
 type CompilerFactory struct {
-	Logger *slog.Logger
+	Logger   *slog.Logger
+	DeepCopy bool
 }
 
-func (c CompilerFactory) Instance() dispatcher.Merger {
+// Instance returns the merger implementation used by the dispatcher run.
+func (c CompilerFactory) Instance(virtualgw string) dispatcher.Merger {
 	return c
 }
 
+// Merge delegates snippet merging to compiler.Merge.
 func (c CompilerFactory) Merge(snippets iter.Seq[compiler.Snippet]) (map[string]any, error) {
-	return compiler.Merge(c.Logger, snippets)
+	result, err := compiler.Merge(c.Logger, snippets)
+	if err != nil {
+		return nil, err
+	}
+	if c.DeepCopy {
+		copied, err := deepcopy(result)
+		if err != nil {
+			return nil, err
+		}
+		asMap, ok := copied.(map[string]any)
+		if !ok {
+			return nil, compiler.ErrWrongFormat
+		}
+		return asMap, nil
+	}
+	return result, nil
 }
 
 // Reset the compiler for a new iteration. Currently it is a noop
