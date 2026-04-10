@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
 // Dispatcher is the expected API of the process that performs the actual work.

@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
 )
 
 type lifecycleValidator struct {

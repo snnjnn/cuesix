@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
 )
 
 // Custom errors of this module

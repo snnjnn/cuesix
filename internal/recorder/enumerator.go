@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -40,14 +40,14 @@ func NewSourcesEnumerator(logger *slog.Logger, enumerator compiler.Enumerator) (
 }
 
 // Enumerate forwards enumeration while caching source contents and refresh timestamp.
-func (se *SourcesEnumerator) Enumerate(roots ...compiler.InputRoot) iter.Seq2[compiler.Source, error] {
+func (se *SourcesEnumerator) Enumerate() iter.Seq2[compiler.Source, error] {
 	return func(yield func(compiler.Source, error) bool) {
 		defer func() {
 			se.WithLock(func() {
 				se.timestamp = time.Now()
 			})
 		}()
-		for source, err := range se.enumerator.Enumerate(roots...) {
+		for source, err := range se.enumerator.Enumerate() {
 			if err != nil {
 				if !yield(source, err) {
 					return

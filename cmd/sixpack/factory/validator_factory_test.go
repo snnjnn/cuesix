@@ -3,9 +3,9 @@ package factory_test
 import (
 	"testing"
 
-	"github.com/warpcondev/cuesix/cmd/sixpack/factory"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/factory"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
 )
 
 type spyValidator struct {

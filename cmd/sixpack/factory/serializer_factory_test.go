@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 // mockTracker only implements the methods used by serializer_factory loops.

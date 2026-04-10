@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/warpcondev/cuesix/internal/app"
+	"github.com/warpcomdev/cuesix/internal/app"
 )
 
 type errReadCloser struct {

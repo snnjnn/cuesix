@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/warpcondev/cuesix/internal/dispatcher"
-	"github.com/warpcondev/cuesix/internal/reloader"
 	"github.com/urfave/cli/v3"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/reloader"
 )
 
 type Reload struct {

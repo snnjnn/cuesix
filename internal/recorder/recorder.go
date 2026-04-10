@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/cursor"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
 	"go.yaml.in/yaml/v4"
 )
 

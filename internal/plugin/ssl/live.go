@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
 type LiveTracker interface {

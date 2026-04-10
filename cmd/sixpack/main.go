@@ -17,20 +17,20 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
-	"github.com/warpcondev/cuesix/cmd/sixpack/control"
-	"github.com/warpcondev/cuesix/cmd/sixpack/factory"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/cursor"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
-	"github.com/warpcondev/cuesix/internal/listener"
-	"github.com/warpcondev/cuesix/internal/plugin"
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
-	"github.com/warpcondev/cuesix/internal/recorder"
-	"github.com/warpcondev/cuesix/internal/schema"
-	"github.com/warpcondev/cuesix/internal/sse"
-	"github.com/warpcondev/cuesix/internal/validator"
 	"github.com/urfave/cli/v3"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/control"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/factory"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/listener"
+	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/recorder"
+	"github.com/warpcomdev/cuesix/internal/schema"
+	"github.com/warpcomdev/cuesix/internal/sse"
+	"github.com/warpcomdev/cuesix/internal/validator"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -145,7 +145,11 @@ func main() {
 
 func run(logger *slog.Logger, cfg fullConfig, serve bool) error {
 	// Build input filesystem views.
-	fses, err := factory.BuildFilesystems(cfg.Input.InputDirs)
+	var (
+		fses compiler.Input
+		err  error
+	)
+	fses, err = compiler.InputFromPaths(cfg.Input.InputDirs)
 	if err != nil {
 		return fmt.Errorf("input dirs: %w", err)
 	}
@@ -157,7 +161,14 @@ func run(logger *slog.Logger, cfg fullConfig, serve bool) error {
 		return err
 	}
 
-	// Build resolver, enumerator, fetcher, and compiler factory
+	// Build input, resolver, enumerator, fetcher, and compiler factory
+	if cfg.Plugins.EnvFilename != "" {
+		fses, err = plugin.NewEnvInput(logger, fses, cfg.Plugins.EnvFilename)
+		if err != nil {
+			logger.Error("env input init failed", "error", err)
+			return err
+		}
+	}
 	var resolver compiler.Resolver = compiler.DefaultResolver{
 		VirtualGateway: compiler.FromKey(cfg.Apisix.Virtualgw),
 	}
@@ -168,19 +179,12 @@ func run(logger *slog.Logger, cfg fullConfig, serve bool) error {
 			Resolver: resolver,
 		}
 	}
-	sourceEnumerator, err := recorder.NewSourcesEnumerator(logger, compiler.NewEnumerator(logger, resolver))
+	sourceEnumerator, err := recorder.NewSourcesEnumerator(logger, compiler.NewEnumerator(logger, fses, resolver))
 	if err != nil {
 		logger.Error("enumerator init failed", "error", err)
 		return err
 	}
 	var enumerator compiler.Enumerator = sourceEnumerator
-	if cfg.Plugins.EnvFilename != "" {
-		enumerator, err = plugin.NewEnvEnumerator(logger, enumerator, cfg.Plugins.EnvFilename)
-		if err != nil {
-			logger.Error("env enumerator init failed", "error", err)
-			return err
-		}
-	}
 	var (
 		fetcherInstance dispatcher.Fetcher = compiler.NewFetcher(logger, enumerator)
 		schemaFetcher   *factory.SchemaFetcher
@@ -244,7 +248,7 @@ func run(logger *slog.Logger, cfg fullConfig, serve bool) error {
 		}
 		// Fetch the inputs
 		snippets := make([]compiler.Snippet, 0, 16)
-		for snippet, err := range fetcherInstance.Fetch(fses...) {
+		for snippet, err := range fetcherInstance.Fetch() {
 			if err != nil {
 				logger.Error("fetcher failed", "error", err, "source", snippet.Ref.Key())
 				return err

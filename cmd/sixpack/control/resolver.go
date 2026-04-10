@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/compiler"
 )
 
 type GatewayFromDots struct {
@@ -18,8 +18,8 @@ type GatewayFromDots struct {
 //     - ignore empty parts,
 //     Then  join the parts with ".", and that is the gateway.
 //  2. Otherwise, return the resolver value.
-func (resolver GatewayFromDots) Virtualgw(root compiler.InputRoot, path string) (compiler.VirtualGateway, error) {
-	dirName := filepath.Base(filepath.Dir(filepath.Clean(path)))
+func (resolver GatewayFromDots) Virtualgw(ref compiler.SourceRef) (compiler.VirtualGateway, error) {
+	dirName := filepath.Base(filepath.Dir(filepath.Clean(ref.Path)))
 	if dirName != "" {
 		parts := strings.Split(dirName, ".")
 		cleanParts := make([]string, 0, len(parts))
@@ -32,5 +32,5 @@ func (resolver GatewayFromDots) Virtualgw(root compiler.InputRoot, path string) 
 			return compiler.FromLeaf(cleanParts), nil
 		}
 	}
-	return resolver.Resolver.Virtualgw(root, path)
+	return resolver.Resolver.Virtualgw(ref)
 }

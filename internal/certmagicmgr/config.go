@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 const ProviderFieldSeparator = "|"

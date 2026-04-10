@@ -14,7 +14,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
-	"github.com/warpcondev/cuesix/internal/schema"
+	"github.com/warpcomdev/cuesix/internal/schema"
 )
 
 func main() {

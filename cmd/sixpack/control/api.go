@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	httpSwagger "github.com/swaggo/http-swagger/v2"
-	_ "github.com/warpcondev/cuesix/cmd/sixpack/docs"
-	"github.com/warpcondev/cuesix/internal/app"
-	"github.com/warpcondev/cuesix/internal/recorder"
-	"github.com/warpcondev/cuesix/internal/schema"
+	_ "github.com/warpcomdev/cuesix/cmd/sixpack/docs"
+	"github.com/warpcomdev/cuesix/internal/app"
+	"github.com/warpcomdev/cuesix/internal/recorder"
+	"github.com/warpcomdev/cuesix/internal/schema"
 )
 
 // @title Sixpack Schema Control API

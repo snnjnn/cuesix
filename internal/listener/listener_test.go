@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/warpcondev/cuesix/internal/listener"
+	"github.com/warpcomdev/cuesix/internal/listener"
 )
 
 type recordingNotifier struct {

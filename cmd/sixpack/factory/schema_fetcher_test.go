@@ -5,16 +5,16 @@ import (
 
 	"iter"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/schema"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/schema"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type stubFetcher struct {
 	snippets []compiler.Snippet
 }
 
-func (s stubFetcher) Fetch(_ ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error] {
+func (s stubFetcher) Fetch() iter.Seq2[compiler.Snippet, error] {
 	return func(yield func(compiler.Snippet, error) bool) {
 		for _, snippet := range s.snippets {
 			if !yield(snippet, nil) {
@@ -83,7 +83,7 @@ func TestSchemaFetcherFetchDoesNotMutateSnippetDataWhenApplyingDefaults(t *testi
 	fetcher := &SchemaFetcher{
 		Fetcher: stubFetcher{
 			snippets: []compiler.Snippet{{
-				Ref:       compiler.SourceRef{Root: "test", Path: "routes.yaml"},
+				Ref:       compiler.SourceRef{Namespace: "test", Path: "routes.yaml"},
 				Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
 				Data:      source,
 			}},

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/sse"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/sse"
 )
 
 func decodeEventReply(t *testing.T, line string) sse.Reply {

@@ -3,8 +3,8 @@ package factory
 import (
 	"strings"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
 )
 
 // nop-validator always returns true

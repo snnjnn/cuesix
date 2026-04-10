@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestNewManagerValidation(t *testing.T) {

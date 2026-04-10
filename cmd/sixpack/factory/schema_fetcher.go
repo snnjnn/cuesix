@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
-	"github.com/warpcondev/cuesix/internal/schema"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/schema"
 )
 
 // SchemaFetcher wraps a base fetcher and validates each snippet against a JSON schema.
@@ -24,21 +24,21 @@ type SchemaFetcher struct {
 }
 
 // Fetch delegates fetching and logs schema-validation failures per snippet.
-func (f *SchemaFetcher) Fetch(roots ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error] {
+func (f *SchemaFetcher) Fetch() iter.Seq2[compiler.Snippet, error] {
 	logger := f.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if f.schema == nil {
 		logger.Warn("schema fetcher missing schema, falling back to default fetch")
-		return f.Fetcher.Fetch(roots...)
+		return f.Fetcher.Fetch()
 	}
 	return func(yield func(compiler.Snippet, error) bool) {
 		if f.Fetcher == nil {
 			yield(compiler.Snippet{}, errors.New("schema fetcher missing wrapped fetcher"))
 			return
 		}
-		for snippet, err := range f.Fetcher.Fetch(roots...) {
+		for snippet, err := range f.Fetcher.Fetch() {
 			if err != nil {
 				if !yield(snippet, err) {
 					return

@@ -4,81 +4,96 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"iter"
 	"log/slog"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/compiler"
 )
 
-type envEnumerator struct {
+type envInput struct {
 	logger      *slog.Logger
-	enumerator  compiler.Enumerator
+	input       compiler.Input
 	envFilename string
+	baseEnv     map[string]string
+	envCache    map[string]map[string]envCacheEntry
 }
 
-// NewEnvEnumerator wraps enumeration with APISIX-style env substitution.
-func NewEnvEnumerator(logger *slog.Logger, enumerator compiler.Enumerator, envFilename string) (compiler.Enumerator, error) {
+// NewEnvInput wraps input with APISIX-style env substitution.
+func NewEnvInput(logger *slog.Logger, input compiler.Input, envFilename string) (compiler.Input, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if enumerator == nil {
-		return nil, errors.New("Enumerator cannot be nil")
+	if input == nil {
+		return nil, errors.New("input cannot be nil")
 	}
-	return envEnumerator{
+	return &envInput{
 		logger:      logger,
+		input:       input,
 		envFilename: envFilename,
-		enumerator:  enumerator,
+		baseEnv:     loadEnvironment(),
+		envCache:    make(map[string]map[string]envCacheEntry),
 	}, nil
 }
 
-// Enumerate delegates enumeration and applies environment substitution.
-func (e envEnumerator) Enumerate(roots ...compiler.InputRoot) iter.Seq2[compiler.Source, error] {
-	return EnvEnumerate(e.logger, e.envFilename, e.enumerator.Enumerate(roots...))
+// Namespaces implements compiler.Input.
+func (e *envInput) Namespaces() []string {
+	namespaces := e.input.Namespaces()
+	// Clear obsolete cache entries for namespaces that no longer exist in the input
+	for ns := range e.envCache {
+		if !slices.Contains(namespaces, ns) {
+			delete(e.envCache, ns)
+		}
+	}
+	return namespaces
 }
 
-// EnvEnumerate substitutes placeholders using process env and optional env files.
-func EnvEnumerate(logger *slog.Logger, envFilename string, sources iter.Seq2[compiler.Source, error]) iter.Seq2[compiler.Source, error] {
+// Enumerate implements compiler.Input.
+func (e *envInput) Enumerate(namespace string) iter.Seq2[compiler.SourceRef, error] {
+	e.envCache[namespace] = make(map[string]envCacheEntry) // reset cache on each enumeration
+	return e.input.Enumerate(namespace)
+}
+
+// Open implements compiler.Input
+func (e *envInput) Open(ref compiler.SourceRef) (io.ReadCloser, error) {
+	logger := e.logger
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return func(yield func(compiler.Source, error) bool) {
-		baseEnv := loadEnvironment()
-		envCache := map[string]envCacheEntry{}
-		for source, err := range sources {
-			if err != nil {
-				if !yield(source, err) {
-					return
-				}
-				continue
+	envVars := e.baseEnv
+	if e.envFilename != "" {
+		dir := ref.Dir()
+		cacheKey := dir.Key()
+		envCache, exists := e.envCache[ref.Namespace]
+		if exists {
+			entry, exists := envCache[cacheKey]
+			if !exists {
+				entry.vars, entry.err = loadEnvVars(e.input, ref.Sibling(e.envFilename), e.baseEnv)
+				envCache[cacheKey] = entry
 			}
-			envVars := baseEnv
-			if envFilename != "" {
-				dir := source.Ref.Dir()
-				cacheKey := dir.Key()
-				entry, exists := envCache[cacheKey]
-				if !exists {
-					entry.vars, entry.err = loadEnvVars(source.FS, source.Ref.Sibling(envFilename).Path, baseEnv)
-					envCache[cacheKey] = entry
-				}
-				if entry.err != nil {
-					if !yield(source, fmt.Errorf("env file %s: %w", source.Ref.Sibling(envFilename).Path, entry.err)) {
-						return
-					}
-					continue
-				}
-				envVars = entry.vars
+			if entry.err != nil {
+				return nil, fmt.Errorf("env file %s: %w", ref.Sibling(e.envFilename).Path, entry.err)
 			}
-			source.Data = []byte(compiler.SubstituteAPISIX(string(source.Data), envVars))
-			if !yield(source, nil) {
-				return
-			}
+			envVars = entry.vars
 		}
 	}
+	data, err := e.input.Open(ref)
+	if err != nil {
+		return nil, err
+	}
+	defer data.Close()
+	payload, err := io.ReadAll(data)
+	if err != nil {
+		return nil, err
+	}
+	replaced := compiler.SubstituteAPISIX(string(payload), envVars)
+	return io.NopCloser(strings.NewReader(replaced)), nil
 }
 
 type envCacheEntry struct {
@@ -98,12 +113,17 @@ func loadEnvironment() map[string]string {
 	return envVars
 }
 
-func loadEnvVars(filesystem fs.FS, envPath string, baseEnv map[string]string) (map[string]string, error) {
-	data, err := fs.ReadFile(filesystem, envPath)
+func loadEnvVars(input compiler.Input, envPath compiler.SourceRef, baseEnv map[string]string) (map[string]string, error) {
+	reader, err := input.Open(envPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return baseEnv, nil
 		}
+		return nil, err
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
 		return nil, err
 	}
 	fileVars, err := parseEnvFile(data)

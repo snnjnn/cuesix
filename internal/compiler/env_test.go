@@ -3,7 +3,7 @@ package compiler_test
 import (
 	"testing"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/compiler"
 )
 
 func TestSubstituteAPISIX(t *testing.T) {

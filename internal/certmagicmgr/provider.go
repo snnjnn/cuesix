@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcondev/cuesix/internal/cursor"
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 type Provider struct {

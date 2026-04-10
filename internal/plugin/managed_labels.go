@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/compiler"
 )
 
 const (

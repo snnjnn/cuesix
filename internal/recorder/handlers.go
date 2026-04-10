@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/warpcondev/cuesix/internal/cache"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/schema"
+	"github.com/warpcomdev/cuesix/internal/cache"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/schema"
 	"go.yaml.in/yaml/v4"
 )
 

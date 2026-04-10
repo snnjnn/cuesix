@@ -3,15 +3,17 @@ package dispatcher_test
 import (
 	"context"
 	"errors"
+	"io"
+	"io/fs"
 	"sync"
 	"testing"
 	"time"
 
 	"iter"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type mockFetcher struct {
@@ -19,7 +21,23 @@ type mockFetcher struct {
 	err      error
 }
 
-func (m mockFetcher) Fetch(roots ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error] {
+type stubInput struct {
+	namespaces []string
+}
+
+func (s stubInput) Namespaces() []string {
+	return s.namespaces
+}
+
+func (s stubInput) Enumerate(string) iter.Seq2[compiler.SourceRef, error] {
+	return func(yield func(compiler.SourceRef, error) bool) {}
+}
+
+func (s stubInput) Open(compiler.SourceRef) (io.ReadCloser, error) {
+	return nil, fs.ErrNotExist
+}
+
+func (m mockFetcher) Fetch() iter.Seq2[compiler.Snippet, error] {
 	return func(yield func(compiler.Snippet, error) bool) {
 		if m.err != nil {
 			yield(compiler.Snippet{}, m.err)
@@ -145,7 +163,7 @@ func newDispatcherSuite(fetcher mockFetcher, merger *mockMerger, serializer *moc
 			action()
 			done <- struct{}{}
 		},
-		Filesystems: []compiler.InputRoot{{Name: "test"}},
+		Filesystems: stubInput{namespaces: []string{"test"}},
 	}
 	d, err := dispatcher.New(testutil.Logger(), cfg)
 	if err != nil {
@@ -248,5 +266,22 @@ func TestCachingRetriesAfterFailure(t *testing.T) {
 	}
 	if merger.CommitCount != 2 || serializer.CommitCount != 2 || validator.CommitCount != 2 {
 		t.Fatalf("expected commits only on success, got merger=%d serializer=%d validator=%d", merger.CommitCount, serializer.CommitCount, validator.CommitCount)
+	}
+}
+
+func TestNewRejectsEmptyInput(t *testing.T) {
+	t.Parallel()
+
+	_, err := dispatcher.New(testutil.Logger(), dispatcher.Config{
+		Fetcher:           mockFetcher{},
+		MergerFactory:     mockMergerFactory{instance: &mockMerger{}},
+		SerializerFactory: mockSerializerFactory{instance: &mockSerializer{}},
+		ValidatorFactory:  mockValidatorFactory{instance: &mockValidator{}},
+		Reloader:          &mockReloader{},
+		Scheduler:         func(_ context.Context, action func()) { action() },
+		Filesystems:       compiler.DefaultInput{},
+	})
+	if err == nil || err.Error() != "filesystems are required" {
+		t.Fatalf("expected filesystems are required error, got %v", err)
 	}
 }

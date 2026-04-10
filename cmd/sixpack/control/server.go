@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
 )
 
 // BuildServer creates an HTTP server with standard timeouts.

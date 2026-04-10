@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/compiler"
 	"go.yaml.in/yaml/v4"
 )
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
 // handles calls to /validate

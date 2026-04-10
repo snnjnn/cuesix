@@ -3,146 +3,93 @@ package compiler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"iter"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
-const (
-	DEFAULT_VIRTUALGW = "default"
-	VIRTUALGW_SEP     = "."
-)
-
-// VirtualGateway represents a hierarchical virtual gateway name.
-type VirtualGateway struct {
-	hierarchy []string
+// Input manages namespaces and sources in those namespaces.
+type Input interface {
+	Namespaces() []string
+	Enumerate(namespace string) iter.Seq2[SourceRef, error]
+	Open(ref SourceRef) (io.ReadCloser, error)
 }
 
-// FromKey builds a hierarchical virtual gateway name from a key.
-// They key is considered to be a dot-separated list of nested gateways.
-func FromKey(name string) VirtualGateway {
-	parts := strings.Split(name, VIRTUALGW_SEP)
-	clean := make([]string, 0, len(parts))
-	for _, parts := range parts {
-		if c := strings.TrimSpace(parts); c != "" {
-			clean = append(clean, c)
-		}
-	}
-	if len(clean) == 0 {
-		clean = []string{DEFAULT_VIRTUALGW}
-	}
-	return FromLeaf(clean)
-}
-
-// FromKey builds a hierarchical virtual gateway name from a Leaf path.
-// The leaf path is the longest gateway list in the hierarchy.
-func FromLeaf(leaf []string) VirtualGateway {
-	hierarchy := make([]string, 0, len(leaf))
-	for i := len(leaf); i > 0; i-- {
-		hierarchy = append(hierarchy, strings.Join(leaf[:i], VIRTUALGW_SEP))
-	}
-	return VirtualGateway{
-		hierarchy: hierarchy,
-	}
-}
-
-// Key returns the leaf virtual gateway in the hierarchy
-func (vg VirtualGateway) Leaf() string {
-	return vg.hierarchy[0]
-}
-
-// Hierarchy returns the complete virtual gateway hierarchy.
-func (vg VirtualGateway) Hierarchy() []string {
-	return vg.hierarchy
-}
-
-// Source represents a source configuration content.
-type Source struct {
-	FS        fs.FS
-	Ref       SourceRef
-	Data      []byte
-	Virtualgw VirtualGateway
-}
-
-// Resolver resolves a path within a filesystem to a Virtualgw name
+// Resolver helps managing Sources
 type Resolver interface {
-	Virtualgw(root InputRoot, path string) (VirtualGateway, error)
-}
-
-// Enumerator enumerates source files from a set of filesystems.
-type Enumerator interface {
-	Enumerate(...InputRoot) iter.Seq2[Source, error]
+	Virtualgw(ref SourceRef) (VirtualGateway, error)
 }
 
 // NewEnumerator returns the default source enumerator.
-func NewEnumerator(logger *slog.Logger, resolver Resolver) DefaultEnumerator {
-	return DefaultEnumerator{
+func NewEnumerator(logger *slog.Logger, input Input, resolver Resolver) Enumerator {
+	return InputEnumerator{
 		Logger:   logger,
+		Input:    input,
 		Resolver: resolver,
 	}
 }
 
-type DefaultEnumerator struct {
+type InputEnumerator struct {
 	Logger   *slog.Logger
+	Input    Input
 	Resolver Resolver
 }
 
 // Enumerate lists YAML files from each filesystem and yields raw sources.
-func (be DefaultEnumerator) Enumerate(roots ...InputRoot) iter.Seq2[Source, error] {
-	return Enumerate(be.Logger, be.Resolver, roots...)
-}
-
-// DefaultResolver resolves all paths to the same default virtual gateway.
-type DefaultResolver struct {
-	VirtualGateway
-}
-
-func (dr DefaultResolver) Virtualgw(root InputRoot, path string) (VirtualGateway, error) {
-	return dr.VirtualGateway, nil
-}
-
-// Enumerate lists YAML files from each filesystem and yields raw sources.
-func Enumerate(logger *slog.Logger, resolver Resolver, roots ...InputRoot) iter.Seq2[Source, error] {
+func (be InputEnumerator) Enumerate() iter.Seq2[Source, error] {
+	logger := be.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return func(yield func(Source, error) bool) {
-		if resolver == nil {
+		if be.Input == nil {
+			yield(Source{}, errors.New("input cannot be nil"))
+			return
+		}
+		if be.Resolver == nil {
 			yield(Source{}, errors.New("resolver cannot be nil"))
 			return
 		}
-		for _, root := range roots {
-			paths, err := listYAMLFiles(root.FS)
-			if err != nil {
-				if !yield(Source{}, err) {
-					return
-				}
-				continue
-			}
-			for _, path := range paths {
-				ref := SourceRef{Root: root.Name, Path: path}
-				logger.Info("enumerator located file", "source", ref.Key())
-				virtualgw, err := resolver.Virtualgw(root, path)
+		for _, namespace := range be.Input.Namespaces() {
+			for ref, err := range be.Input.Enumerate(namespace) {
 				if err != nil {
-					if !yield(Source{}, fmt.Errorf("enumerator resolve virtualgw for %s: %w", path, err)) {
+					if !yield(Source{}, fmt.Errorf("enumerator enumerate namespace %s: %w", namespace, err)) {
 						return
 					}
 					continue
 				}
-				content, err := fs.ReadFile(root.FS, path)
+				data, err := func() ([]byte, error) {
+					reader, err := be.Input.Open(ref)
+					if err != nil {
+						return nil, fmt.Errorf("enumerator open %s: %w", ref.Key(), err)
+					}
+					defer reader.Close()
+					content, err := io.ReadAll(reader)
+					if err != nil {
+						return nil, fmt.Errorf("enumerator read %s: %w", ref.Key(), err)
+					}
+					return content, nil
+				}()
 				if err != nil {
-					if !yield(Source{}, fmt.Errorf("enumerator read %s: %w", path, err)) {
+					if !yield(Source{}, err) {
+						return
+					}
+					continue
+				}
+				virtualgw, err := be.Resolver.Virtualgw(ref)
+				if err != nil {
+					if !yield(Source{}, fmt.Errorf("enumerator resolve virtualgw for %s: %w", ref.Key(), err)) {
 						return
 					}
 					continue
 				}
 				source := Source{
-					FS:        root.FS,
 					Ref:       ref,
-					Data:      content,
+					Data:      data,
 					Virtualgw: virtualgw,
 				}
 				if !yield(source, nil) {
@@ -151,6 +98,119 @@ func Enumerate(logger *slog.Logger, resolver Resolver, roots ...InputRoot) iter.
 			}
 		}
 	}
+}
+
+// DefaultResolver resolves all paths to the same default virtual gateway.
+type DefaultResolver struct {
+	VirtualGateway
+}
+
+func (dr DefaultResolver) Virtualgw(ref SourceRef) (VirtualGateway, error) {
+	return dr.VirtualGateway, nil
+}
+
+// Input manages namespaces and sources in those namespaces.
+type DefaultInput struct {
+	roots map[string]fs.FS
+	order []string
+}
+
+// InputFromFS builds a DefaultInput from an existing filesystem map.
+// Filesystems missing from order are appended sorted by namespace.
+func InputFromFS(roots map[string]fs.FS, order []string) DefaultInput {
+	ownedRoots := make(map[string]fs.FS, len(roots))
+	for namespace, filesystem := range roots {
+		ownedRoots[namespace] = filesystem
+	}
+	finalOrder := make([]string, 0, len(ownedRoots))
+	seen := make(map[string]struct{}, len(ownedRoots))
+	for _, namespace := range order {
+		if _, ok := ownedRoots[namespace]; !ok {
+			continue
+		}
+		if _, ok := seen[namespace]; ok {
+			continue
+		}
+		finalOrder = append(finalOrder, namespace)
+		seen[namespace] = struct{}{}
+	}
+	var remaining []string
+	for namespace := range ownedRoots {
+		if _, ok := seen[namespace]; ok {
+			continue
+		}
+		remaining = append(remaining, namespace)
+	}
+	sort.Strings(remaining)
+	finalOrder = append(finalOrder, remaining...)
+	return DefaultInput{
+		roots: ownedRoots,
+		order: finalOrder,
+	}
+}
+
+// InputFromPaths builds a DefaultInput from local directory paths.
+func InputFromPaths(paths []string) (DefaultInput, error) {
+	roots := make(map[string]fs.FS)
+	order := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		clean := filepath.Clean(path)
+		if _, err := os.Stat(clean); err != nil {
+			return DefaultInput{}, err
+		}
+		order = append(order, clean)
+		roots[clean] = os.DirFS(clean)
+	}
+	return InputFromFS(roots, order), nil
+}
+
+// Namespaces implements Input
+func (fi DefaultInput) Namespaces() []string {
+	return fi.order
+}
+
+func (fi DefaultInput) Filesystems() []fs.FS {
+	fsys := make([]fs.FS, 0, len(fi.order))
+	for _, ns := range fi.order {
+		fsys = append(fsys, fi.roots[ns])
+	}
+	return fsys
+}
+
+func (fi DefaultInput) Enumerate(namespace string) iter.Seq2[SourceRef, error] {
+	return func(yield func(SourceRef, error) bool) {
+		fs, ok := fi.roots[namespace]
+		if !ok {
+			yield(SourceRef{}, fmt.Errorf("namespace %s not found", namespace))
+			return
+		}
+		paths, err := listYAMLFiles(fs)
+		if err != nil {
+			yield(SourceRef{}, fmt.Errorf("enumerate namespace %s: %w", namespace, err))
+			return
+		}
+		for _, path := range paths {
+			if !yield(SourceRef{Namespace: namespace, Path: path}, nil) {
+				return
+			}
+		}
+	}
+}
+
+// Open implements Input
+func (fi DefaultInput) Open(ref SourceRef) (io.ReadCloser, error) {
+	fs, ok := fi.roots[ref.Namespace]
+	if !ok {
+		return nil, fmt.Errorf("namespace %s not found", ref.Namespace)
+	}
+	file, err := fs.Open(ref.Path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", ref.Key(), err)
+	}
+	return file, nil
 }
 
 func listYAMLFiles(filesystem fs.FS) ([]string, error) {

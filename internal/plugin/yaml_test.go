@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/warpcondev/cuesix/internal/plugin"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func TestYAMLPluginUpdate(t *testing.T) {

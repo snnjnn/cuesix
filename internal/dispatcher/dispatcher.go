@@ -8,14 +8,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
 type Scheduler func(ctx context.Context, action func())
 
 type Fetcher interface {
-	Fetch(roots ...compiler.InputRoot) iter.Seq2[compiler.Snippet, error]
+	Fetch() iter.Seq2[compiler.Snippet, error]
 }
 
 type State interface {
@@ -66,7 +66,7 @@ type Config struct {
 	Reloader          Reloader
 	Scheduler         Scheduler
 	// Filesystems provide the input directories to read YAML fragments from.
-	Filesystems []compiler.InputRoot
+	Filesystems compiler.Input
 	// OutputYAML controls whether validation is performed against YAML instead of JSON.
 	OutputYAML bool
 	// Cooldown defines the minimum interval between dequeued runs.
@@ -112,7 +112,10 @@ func New(logger *slog.Logger, cfg Config) (*Dispatcher, error) {
 	if cfg.Reloader == nil {
 		return nil, errors.New("reloader is required")
 	}
-	if len(cfg.Filesystems) == 0 {
+	if cfg.Filesystems == nil {
+		return nil, errors.New("filesystems are required")
+	}
+	if len(cfg.Filesystems.Namespaces()) == 0 {
 		return nil, errors.New("filesystems are required")
 	}
 	gateways := make(map[string]*VirtualGateway)
@@ -175,7 +178,7 @@ func (d *Dispatcher) handle(ctx context.Context) error {
 	// TODO: Add snippets by label, and validate together?
 	logger.Info("fetch stage start")
 	snippets := make(map[string][]compiler.Snippet)
-	for snippet, err := range d.config.Fetcher.Fetch(d.config.Filesystems...) {
+	for snippet, err := range d.config.Fetcher.Fetch() {
 		if err != nil {
 			dispatcherErrors.WithLabelValues("fetch").Inc()
 			return err

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/validator"
 	"github.com/urfave/cli/v3"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/validator"
 )
 
 type Apisix struct {

@@ -18,11 +18,11 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/reloader"
-	"github.com/warpcondev/cuesix/internal/validator"
 	"github.com/urfave/cli/v3"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/reloader"
+	"github.com/warpcomdev/cuesix/internal/validator"
 )
 
 func logger() *slog.Logger {

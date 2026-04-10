@@ -3,13 +3,13 @@ package factory
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"strings"
 
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
-	"github.com/warpcondev/cuesix/internal/certmagicmgr"
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/internal/certmagicmgr"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
 )
 
 type SSLSetup struct {
@@ -34,15 +34,11 @@ func NewSSLSetup(logger *slog.Logger, pluginCfg config.Plugins, certmagicCfg con
 		setup.FallbackCert = cert
 	}
 	if pluginCfg.EnableSSL {
-		roots, err := BuildFilesystems(pluginCfg.SSLPaths)
+		roots, err := compiler.InputFromPaths(pluginCfg.SSLPaths)
 		if err != nil {
 			return setup, err
 		}
-		fses := make([]fs.FS, 0, len(roots))
-		for _, root := range roots {
-			fses = append(fses, root.FS)
-		}
-		setup.FileManager = ssl.FileManager{Filesystems: fses, Logger: logger}
+		setup.FileManager = ssl.FileManager{Filesystems: roots.Filesystems(), Logger: logger}
 	}
 	setup.FallbackMgr = ssl.FallbackManager{Certificate: setup.FallbackCert}
 

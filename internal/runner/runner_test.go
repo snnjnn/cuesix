@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/runner"
+	"github.com/warpcomdev/cuesix/internal/runner"
 )
 
 func TestRunCommandWithWorkdirAndInput(t *testing.T) {

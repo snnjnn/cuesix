@@ -1,87 +1,76 @@
 package plugin_test
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 	"testing/fstest"
 
-	"iter"
-
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/plugin"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
-type sourceItem struct {
-	source compiler.Source
-	err    error
-}
+func collectSources(t *testing.T, input compiler.Input) map[string]string {
+	t.Helper()
 
-func sourceSeq(items []sourceItem) iter.Seq2[compiler.Source, error] {
-	return func(yield func(compiler.Source, error) bool) {
-		for _, item := range items {
-			if !yield(item.source, item.err) {
-				return
-			}
+	enumerator := compiler.NewEnumerator(testutil.Logger(), input, compiler.DefaultResolver{
+		VirtualGateway: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+	})
+	got := make(map[string]string)
+	for source, err := range enumerator.Enumerate() {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
+		got[source.Ref.Path] = string(source.Data)
 	}
+	return got
 }
 
 func TestEnvSubstituteUsesEnvAndDefaults(t *testing.T) {
 	t.Setenv("API_HOST", "env.example")
 
-	source := compiler.Source{
-		FS:   fstest.MapFS{},
-		Ref:  compiler.SourceRef{Root: "test", Path: "config.yaml"},
-		Data: []byte("host: ${{ API_HOST }}\nmissing: ${{ MISSING := /default }}\nempty: ${{ MISSING }}\nblank: ${{ := /blank }}\n"),
+	input := compiler.InputFromFS(
+		map[string]fs.FS{
+			"test": fstest.MapFS{
+				"config.yaml": {Data: []byte("host: ${{ API_HOST }}\nmissing: ${{ MISSING := /default }}\nempty: ${{ MISSING }}\nblank: ${{ := /blank }}\n")},
+			},
+		},
+		[]string{"test"},
+	)
+
+	wrapped, err := plugin.NewEnvInput(testutil.Logger(), input, "")
+	if err != nil {
+		t.Fatalf("NewEnvInput() error = %v", err)
 	}
 
-	var got compiler.Source
-	for sourceOut, err := range plugin.EnvEnumerate(testutil.Logger(), "", sourceSeq([]sourceItem{
-		{source: source},
-	})) {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		got = sourceOut
-	}
-
+	got := collectSources(t, wrapped)
 	want := "host: env.example\nmissing: /default\nempty: \nblank: /blank\n"
-	if string(got.Data) != want {
-		t.Fatalf("unexpected substitution: %q", string(got.Data))
+	if got["config.yaml"] != want {
+		t.Fatalf("unexpected substitution: %q", got["config.yaml"])
 	}
 }
 
 func TestEnvSubstituteEnvFileOverridesAndMissing(t *testing.T) {
 	t.Setenv("API_HOST", "base.example")
 
-	fs := fstest.MapFS{
-		"configs/.env": {Data: []byte("API_HOST=file.example\nONLY_FILE=file-only\n")},
-	}
-
-	got := make(map[string]string)
-	for sourceOut, err := range plugin.EnvEnumerate(testutil.Logger(), ".env", sourceSeq([]sourceItem{
-		{
-			source: compiler.Source{
-				FS:   fs,
-				Ref:  compiler.SourceRef{Root: "test", Path: "configs/app.yaml"},
-				Data: []byte("host: ${{ API_HOST }}\nonly: ${{ ONLY_FILE }}\n"),
+	input := compiler.InputFromFS(
+		map[string]fs.FS{
+			"test": fstest.MapFS{
+				"configs/.env":     {Data: []byte("API_HOST=file.example\nONLY_FILE=file-only\n")},
+				"configs/app.yaml": {Data: []byte("host: ${{ API_HOST }}\nonly: ${{ ONLY_FILE }}\n")},
+				"other/app.yaml":   {Data: []byte("host: ${{ API_HOST }}\n")},
 			},
 		},
-		{
-			source: compiler.Source{
-				FS:   fs,
-				Ref:  compiler.SourceRef{Root: "test", Path: "other/app.yaml"},
-				Data: []byte("host: ${{ API_HOST }}\n"),
-			},
-		},
-	})) {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		got[sourceOut.Ref.Path] = string(sourceOut.Data)
+		[]string{"test"},
+	)
+
+	wrapped, err := plugin.NewEnvInput(testutil.Logger(), input, ".env")
+	if err != nil {
+		t.Fatalf("NewEnvInput() error = %v", err)
 	}
 
+	got := collectSources(t, wrapped)
 	if got["configs/app.yaml"] != "host: file.example\nonly: file-only\n" {
 		t.Fatalf("unexpected env file substitution: %q", got["configs/app.yaml"])
 	}
@@ -93,19 +82,26 @@ func TestEnvSubstituteEnvFileOverridesAndMissing(t *testing.T) {
 func TestEnvSubstituteEnvFileParseError(t *testing.T) {
 	t.Parallel()
 
-	fs := fstest.MapFS{
-		"bad/.env": {Data: []byte("BAD=\"")},
-	}
-	source := compiler.Source{
-		FS:   fs,
-		Ref:  compiler.SourceRef{Root: "test", Path: "bad/app.yaml"},
-		Data: []byte("host: ${{ API_HOST }}\n"),
+	input := compiler.InputFromFS(
+		map[string]fs.FS{
+			"test": fstest.MapFS{
+				"bad/.env":     {Data: []byte("BAD=\"")},
+				"bad/app.yaml": {Data: []byte("host: ${{ API_HOST }}\n")},
+			},
+		},
+		[]string{"test"},
+	)
+
+	wrapped, err := plugin.NewEnvInput(testutil.Logger(), input, ".env")
+	if err != nil {
+		t.Fatalf("NewEnvInput() error = %v", err)
 	}
 
+	enumerator := compiler.NewEnumerator(testutil.Logger(), wrapped, compiler.DefaultResolver{
+		VirtualGateway: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+	})
 	var gotErr error
-	for _, err := range plugin.EnvEnumerate(testutil.Logger(), ".env", sourceSeq([]sourceItem{
-		{source: source},
-	})) {
+	for _, err := range enumerator.Enumerate() {
 		gotErr = err
 		break
 	}

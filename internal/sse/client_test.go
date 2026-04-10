@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
-	"github.com/warpcondev/cuesix/internal/sse"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/sse"
 )
 
 type recordingObserver struct {

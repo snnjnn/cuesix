@@ -3,16 +3,13 @@ package factory_test
 import (
 	"context"
 	"io"
-	"io/fs"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
-	"github.com/warpcondev/cuesix/cmd/sixpack/factory"
-	"github.com/warpcondev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/factory"
+	"github.com/warpcomdev/cuesix/internal/compiler"
 )
 
 func testLogger() *slog.Logger {
@@ -41,58 +38,6 @@ func TestSchedulerMustAndMight(t *testing.T) {
 		t.Fatalf("expected Might to execute after unlock")
 	}
 	<-doneMight
-}
-
-func TestBuildFilesystems(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0o600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	fses, err := factory.BuildFilesystems([]string{dir})
-	if err != nil {
-		t.Fatalf("BuildFilesystems error: %v", err)
-	}
-	if len(fses) != 1 {
-		t.Fatalf("expected one filesystem, got %d", len(fses))
-	}
-	if _, err := factory.BuildFilesystems([]string{filepath.Join(dir, "missing")}); err == nil {
-		t.Fatalf("expected error for missing path")
-	}
-}
-
-func TestBuildFilesystemsSkipsEmptyPaths(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	fses, err := factory.BuildFilesystems([]string{"", dir, ""})
-	if err != nil {
-		t.Fatalf("BuildFilesystems() error = %v", err)
-	}
-	if len(fses) != 1 {
-		t.Fatalf("len(filesystems) = %d", len(fses))
-	}
-}
-
-func TestBuildFilesystemsProducesUsableFS(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0o600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-
-	fses, err := factory.BuildFilesystems([]string{dir})
-	if err != nil {
-		t.Fatalf("BuildFilesystems() error = %v", err)
-	}
-	data, err := fs.ReadFile(fses[0].FS, "file.txt")
-	if err != nil {
-		t.Fatalf("fs.ReadFile() error = %v", err)
-	}
-	if string(data) != "data" {
-		t.Fatalf("data = %q", string(data))
-	}
 }
 
 func TestSerializerInstanceSerializeCachesCommittedHash(t *testing.T) {
@@ -219,7 +164,7 @@ func TestCompilerFactoryMergeDeepCopy(t *testing.T) {
 	factoryWithCopy := factory.CompilerFactory{Logger: testLogger(), DeepCopy: true}
 	merged, err := factoryWithCopy.Merge(func(yield func(compiler.Snippet) bool) {
 		yield(compiler.Snippet{
-			Ref:       compiler.SourceRef{Root: "test", Path: "routes.yaml"},
+			Ref:       compiler.SourceRef{Namespace: "test", Path: "routes.yaml"},
 			Virtualgw: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
 			Data:      source,
 		})

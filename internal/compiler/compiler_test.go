@@ -1,6 +1,7 @@
 package compiler_test
 
 import (
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -8,12 +9,12 @@ import (
 
 	"iter"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 func snippetRef(path string) compiler.SourceRef {
-	return compiler.SourceRef{Root: "test", Path: path}
+	return compiler.SourceRef{Namespace: "test", Path: path}
 }
 
 func snippetSeq(snips []compiler.Snippet) iter.Seq[compiler.Snippet] {
@@ -413,8 +414,9 @@ func TestFetchReadsYAMLFiles(t *testing.T) {
 		VirtualGateway: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
 	}
 	logger := testutil.Logger()
-	root := compiler.InputRoot{Name: "fs1", FS: fs1}
-	for snippet, err := range compiler.Fetch(logger, compiler.Enumerate(logger, resolver, root)) {
+	input := compiler.InputFromFS(map[string]fs.FS{"fs1": fs1}, []string{"fs1"})
+	enumerator := compiler.NewEnumerator(logger, input, resolver)
+	for snippet, err := range compiler.NewFetcher(logger, enumerator).Fetch() {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -438,13 +440,37 @@ func TestFetchPropagatesErrors(t *testing.T) {
 		VirtualGateway: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
 	}
 	logger := testutil.Logger()
-	root := compiler.InputRoot{Name: "bad", FS: badFS}
-	for _, err := range compiler.Fetch(logger, compiler.Enumerate(logger, resolver, root)) {
+	input := compiler.InputFromFS(map[string]fs.FS{"bad": badFS}, []string{"bad"})
+	enumerator := compiler.NewEnumerator(logger, input, resolver)
+	for _, err := range compiler.NewFetcher(logger, enumerator).Fetch() {
 		gotErr = err
 		break
 	}
 	if gotErr == nil {
 		t.Fatalf("expected parse error")
+	}
+}
+
+func TestEnumeratorReturnsErrorWhenInputIsNil(t *testing.T) {
+	t.Parallel()
+
+	enumerator := compiler.NewEnumerator(testutil.Logger(), nil, compiler.DefaultResolver{
+		VirtualGateway: compiler.FromKey(compiler.DEFAULT_VIRTUALGW),
+	})
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("Enumerate() panicked with nil input: %v", recovered)
+		}
+	}()
+
+	var gotErr error
+	for _, err := range enumerator.Enumerate() {
+		gotErr = err
+		break
+	}
+	if gotErr == nil || gotErr.Error() != "input cannot be nil" {
+		t.Fatalf("expected input cannot be nil error, got %v", gotErr)
 	}
 }
 

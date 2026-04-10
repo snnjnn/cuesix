@@ -4,8 +4,8 @@ import (
 	"iter"
 	"log/slog"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
 )
 
 // CompilerFactory wires the compiler into dispatcher config.

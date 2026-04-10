@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type stubIssuer struct {

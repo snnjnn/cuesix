@@ -8,6 +8,11 @@ import (
 	"go.yaml.in/yaml/v4"
 )
 
+// Enumerate lists YAML files from each filesystem and yields raw sources.
+type Enumerator interface {
+	Enumerate() iter.Seq2[Source, error]
+}
+
 // NewFetcher returns the default snippet fetcher.
 func NewFetcher(logger *slog.Logger, enumerator Enumerator) DefaultFetcher {
 	return DefaultFetcher{
@@ -16,14 +21,15 @@ func NewFetcher(logger *slog.Logger, enumerator Enumerator) DefaultFetcher {
 	}
 }
 
+// DefaultFetcher decodes enumerated YAML sources into snippets.
 type DefaultFetcher struct {
 	Logger     *slog.Logger
 	Enumerator Enumerator
 }
 
 // Fetch decodes enumerated YAML sources into snippets.
-func (bf DefaultFetcher) Fetch(roots ...InputRoot) iter.Seq2[Snippet, error] {
-	return Fetch(bf.Logger, bf.Enumerator.Enumerate(roots...))
+func (bf DefaultFetcher) Fetch() iter.Seq2[Snippet, error] {
+	return Fetch(bf.Logger, bf.Enumerator.Enumerate())
 }
 
 // Fetch decodes enumerated YAML sources into snippets.

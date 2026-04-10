@@ -5,17 +5,15 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"maps"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/warpcondev/cuesix/cmd/sixpack/config"
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/cursor"
-	"github.com/warpcondev/cuesix/internal/dispatcher"
-	"github.com/warpcondev/cuesix/internal/plugin"
-	"github.com/warpcondev/cuesix/internal/plugin/ssl"
-	"github.com/warpcondev/cuesix/internal/serializer"
+	"github.com/warpcomdev/cuesix/cmd/sixpack/config"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/dispatcher"
+	"github.com/warpcomdev/cuesix/internal/plugin"
+	"github.com/warpcomdev/cuesix/internal/plugin/ssl"
+	"github.com/warpcomdev/cuesix/internal/serializer"
 )
 
 type SerializerFactory struct {
@@ -195,25 +193,6 @@ func (p *SerializerFactory) buildPostRender(cfg config.Apisix) error {
 	}
 	p.postCache = plugins
 	return nil
-}
-
-// BuildFilesystems creates read-only filesystems for the input paths.
-func BuildFilesystems(paths []string) ([]compiler.InputRoot, error) {
-	roots := make([]compiler.InputRoot, 0, len(paths))
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
-		clean := filepath.Clean(path)
-		if _, err := os.Stat(clean); err != nil {
-			return nil, err
-		}
-		roots = append(roots, compiler.InputRoot{
-			Name: clean,
-			FS:   os.DirFS(clean),
-		})
-	}
-	return roots, nil
 }
 
 // loop runs a periodic task using the factory scheduler.

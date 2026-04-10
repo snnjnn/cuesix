@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/cache"
+	"github.com/warpcomdev/cuesix/internal/cache"
 )
 
 func TestReplySetsCacheHeaders(t *testing.T) {

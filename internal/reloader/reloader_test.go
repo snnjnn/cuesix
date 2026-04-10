@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/compiler"
-	"github.com/warpcondev/cuesix/internal/reloader"
-	"github.com/warpcondev/cuesix/internal/testutil"
+	"github.com/warpcomdev/cuesix/internal/compiler"
+	"github.com/warpcomdev/cuesix/internal/reloader"
+	"github.com/warpcomdev/cuesix/internal/testutil"
 )
 
 type fakeFileInfo struct {

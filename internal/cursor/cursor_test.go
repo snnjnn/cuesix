@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/warpcondev/cuesix/internal/cursor"
+	"github.com/warpcomdev/cuesix/internal/cursor"
 )
 
 func TestChannelNextAndAll(t *testing.T) {
