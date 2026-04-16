@@ -241,6 +241,21 @@ sixpack client --listen :8080 --apisix-home /usr/local/apisix \
 
 ## Build
 
+Antes de ejecutar `just build`, instala las dependencias mínimas que la receta asume disponibles:
+
+```bash
+# CLI para generar OpenAPI docs
+go install github.com/swaggo/swag/cmd/swag@latest
+
+# Asegúrate de que `swag` queda en PATH
+export PATH="$(go env GOPATH)/bin:$PATH"
+
+# Dependencias del frontend
+npm --prefix internal/app/assets install --ignore-scripts
+```
+
+Con eso ya debería funcionar:
+
 ```bash
 just build
 ```
@@ -264,8 +279,8 @@ just app
 Prerrequisitos según tarea:
 
 - `just`: para ejecutar las recetas.
-- `just swagger`: requiere `swag` (`go install github.com/swaggo/swag/cmd/swag@latest`).
-- `just app`: requiere dependencias de frontend instaladas (`npm --prefix internal/app/assets install`).
+- `just swagger`: requiere `swag` instalado y disponible en `PATH`.
+- `just app`: requiere dependencias de frontend instaladas (`npm --prefix internal/app/assets install --ignore-scripts`).
 
 ## Imagen Docker
 
