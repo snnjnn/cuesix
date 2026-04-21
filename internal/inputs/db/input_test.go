@@ -188,3 +188,22 @@ func TestNamespaces(t *testing.T) {
 		}
 	})
 }
+
+func TestEnumerate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("if namespace do not exist, return empty slice", func(t *testing.T) {
+		db := openDB(t, "file:db-input-enum-empty?mode=memory&cache=shared")
+		defer db.Close()
+		mustCreateTable(t, db)
+
+		input := dbinput.NewInput(db)
+		var got []compiler.SourceRef
+		for ref := range input.Enumerate("na") {
+			got = append(got, ref)
+		}
+		if len(got) != 0 {
+			t.Errorf("Enumerate() = %v, want empty slice", got)
+		}
+	})
+}
