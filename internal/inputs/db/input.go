@@ -25,11 +25,14 @@ import (
 //   - Namespace = namespace
 //   - Path = "{virtualgw}/{name}"
 type Input struct {
+	db *sqlx.DB
 }
 
 // NewInput builds a database-backed compiler.Input.
+//
+// TODO: consider nil verification for db
 func NewInput(db *sqlx.DB) compiler.Input {
-	return nil
+	return &Input{db: db}
 }
 
 // Namespaces returns the list of available namespaces.
