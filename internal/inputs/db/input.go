@@ -1,12 +1,19 @@
 package db
 
 import (
+	"database/sql"
+	"errors"
 	"io"
 	"io/fs"
 	"iter"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/warpcomdev/cuesix/internal/compiler"
+)
+
+var (
+	ErrInvalidSourcePathFormat = errors.New("invalid source ref format, expected '{virtualgw}/{name}'")
 )
 
 // Input exposes database-backed snippets through compiler.Input.
@@ -51,5 +58,21 @@ func (i *Input) Enumerate(namespace string) iter.Seq2[compiler.SourceRef, error]
 
 // Open loads the snippet content identified by the provided SourceRef.
 func (i *Input) Open(ref compiler.SourceRef) (io.ReadCloser, error) {
-	return nil, fs.ErrNotExist
+	parts := strings.Split(ref.Path, "/")
+	if len(parts) != 2 {
+		return nil, ErrInvalidSourcePathFormat
+	}
+	virtualgw, name := parts[0], parts[1]
+
+	var content string
+	err := i.db.Get(&content,
+		"SELECT content FROM snippets WHERE namespace = ? AND virtualgw = ? AND name = ?",
+		ref.Namespace, virtualgw, name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fs.ErrNotExist
+		}
+		return nil, err
+	}
+	return io.NopCloser(strings.NewReader(content)), nil
 }
