@@ -115,7 +115,12 @@ func New(logger *slog.Logger, cfg Config) (*Dispatcher, error) {
 	if cfg.Filesystems == nil {
 		return nil, errors.New("filesystems are required")
 	}
-	if len(cfg.Filesystems.Namespaces()) == 0 {
+
+	namespaces, err := cfg.Filesystems.Namespaces()
+	if err != nil {
+		return nil, err
+	}
+	if len(namespaces) == 0 {
 		return nil, errors.New("filesystems are required")
 	}
 	gateways := make(map[string]*VirtualGateway)

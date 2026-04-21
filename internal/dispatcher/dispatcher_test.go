@@ -25,8 +25,8 @@ type stubInput struct {
 	namespaces []string
 }
 
-func (s stubInput) Namespaces() []string {
-	return s.namespaces
+func (s stubInput) Namespaces() ([]string, error) {
+	return s.namespaces, nil
 }
 
 func (s stubInput) Enumerate(string) iter.Seq2[compiler.SourceRef, error] {

@@ -43,15 +43,18 @@ func NewEnvInput(logger *slog.Logger, input compiler.Input, envFilename string) 
 }
 
 // Namespaces implements compiler.Input.
-func (e *envInput) Namespaces() []string {
-	namespaces := e.input.Namespaces()
+func (e *envInput) Namespaces() ([]string, error) {
+	namespaces, err := e.input.Namespaces()
+	if err != nil {
+		return nil, err
+	}
 	// Clear obsolete cache entries for namespaces that no longer exist in the input
 	for ns := range e.envCache {
 		if !slices.Contains(namespaces, ns) {
 			delete(e.envCache, ns)
 		}
 	}
-	return namespaces
+	return namespaces, nil
 }
 
 // Enumerate implements compiler.Input.

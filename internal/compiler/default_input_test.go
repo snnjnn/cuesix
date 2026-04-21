@@ -22,7 +22,9 @@ func TestNewDefaultInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDefaultInput() error = %v", err)
 	}
-	if namespaces := input.Namespaces(); len(namespaces) != 1 || namespaces[0] != dir {
+
+	// DefaultInput never return an error
+	if namespaces, _ := input.Namespaces(); len(namespaces) != 1 || namespaces[0] != dir {
 		t.Fatalf("unexpected namespaces %v", namespaces)
 	}
 	if _, err := compiler.InputFromPaths([]string{filepath.Join(dir, "missing")}); err == nil {
@@ -38,7 +40,7 @@ func TestNewDefaultInputSkipsEmptyPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDefaultInput() error = %v", err)
 	}
-	if namespaces := input.Namespaces(); len(namespaces) != 1 || namespaces[0] != dir {
+	if namespaces, _ := input.Namespaces(); len(namespaces) != 1 || namespaces[0] != dir {
 		t.Fatalf("unexpected namespaces %v", namespaces)
 	}
 }
@@ -78,7 +80,7 @@ func TestNewDefaultInputPreservesInputOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDefaultInput() error = %v", err)
 	}
-	namespaces := input.Namespaces()
+	namespaces, _ := input.Namespaces()
 	if len(namespaces) != 2 {
 		t.Fatalf("len(order) = %d", len(namespaces))
 	}
@@ -95,7 +97,7 @@ func TestNewDefaultInputFSUsesProvidedOrder(t *testing.T) {
 		"a": fstest.MapFS{},
 	}, []string{"b", "a"})
 
-	namespaces := input.Namespaces()
+	namespaces, _ := input.Namespaces()
 	if len(namespaces) != 2 {
 		t.Fatalf("len(order) = %d", len(namespaces))
 	}
@@ -113,7 +115,7 @@ func TestNewDefaultInputFSAppendsRemainingSorted(t *testing.T) {
 		"b": fstest.MapFS{},
 	}, []string{"c"})
 
-	namespaces := input.Namespaces()
+	namespaces, _ := input.Namespaces()
 	want := []string{"c", "a", "b"}
 	if len(namespaces) != len(want) {
 		t.Fatalf("len(order) = %d", len(namespaces))

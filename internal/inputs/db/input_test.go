@@ -89,8 +89,11 @@ func TestNewInputEnumeratesSnippetsFromSQLite(t *testing.T) {
 		}
 		got[source.Ref.Path] = source
 	}
-
-	if namespaces := input.Namespaces(); !slices.Equal(namespaces, []string{"team-a"}) {
+	namespaces, err := input.Namespaces()
+	if err != nil {
+		t.Fatalf("Namespaces() error = %v", err)
+	}
+	if !slices.Equal(namespaces, []string{"team-a"}) {
 		t.Fatalf("Namespaces() = %v", namespaces)
 	}
 	if len(got) != 2 {
@@ -127,7 +130,10 @@ func TestNamespaces(t *testing.T) {
 		mustCreateTable(t, db)
 
 		input := dbinput.NewInput(db)
-		got := input.Namespaces()
+		got, err := input.Namespaces()
+		if err != nil {
+			t.Fatalf("Namespaces() error = %v", err)
+		}
 		if len(got) != 0 {
 			t.Errorf("Namespaces() = %v, want empty list", got)
 		}
@@ -145,7 +151,10 @@ func TestNamespaces(t *testing.T) {
 				('team-b', 'edge.api', 'routes.yaml', '{}')
 		`)
 		input := dbinput.NewInput(db)
-		got := input.Namespaces()
+		got, err := input.Namespaces()
+		if err != nil {
+			t.Fatalf("Namespaces() error = %v", err)
+		}
 		want := []string{"team-a", "team-b"}
 		if !slices.Equal(got, want) {
 			t.Errorf("Namespaces() = %v, want %v", got, want)
@@ -165,7 +174,10 @@ func TestNamespaces(t *testing.T) {
 		`)
 
 		input := dbinput.NewInput(db)
-		got := input.Namespaces()
+		got, err := input.Namespaces()
+		if err != nil {
+			t.Fatalf("Namespaces() error = %v", err)
+		}
 		want := []string{"team-a", "team-b", "zz-a"}
 
 		for i := range got {

@@ -14,7 +14,7 @@ import (
 
 // Input manages namespaces and sources in those namespaces.
 type Input interface {
-	Namespaces() []string
+	Namespaces() ([]string, error)
 	Enumerate(namespace string) iter.Seq2[SourceRef, error]
 	Open(ref SourceRef) (io.ReadCloser, error)
 }
@@ -54,7 +54,12 @@ func (be InputEnumerator) Enumerate() iter.Seq2[Source, error] {
 			yield(Source{}, errors.New("resolver cannot be nil"))
 			return
 		}
-		for _, namespace := range be.Input.Namespaces() {
+		namespaces, err := be.Input.Namespaces()
+		if err != nil {
+			yield(Source{}, fmt.Errorf("enumerator namespaces: %w", err))
+			return
+		}
+		for _, namespace := range namespaces {
 			for ref, err := range be.Input.Enumerate(namespace) {
 				if err != nil {
 					if !yield(Source{}, fmt.Errorf("enumerator enumerate namespace %s: %w", namespace, err)) {
@@ -168,8 +173,8 @@ func InputFromPaths(paths []string) (DefaultInput, error) {
 }
 
 // Namespaces implements Input
-func (fi DefaultInput) Namespaces() []string {
-	return fi.order
+func (fi DefaultInput) Namespaces() ([]string, error) {
+	return fi.order, nil
 }
 
 func (fi DefaultInput) Filesystems() []fs.FS {
