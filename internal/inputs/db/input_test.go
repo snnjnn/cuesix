@@ -207,3 +207,52 @@ func TestEnumerate(t *testing.T) {
 		}
 	})
 }
+
+func TestOpen(t *testing.T) {
+	t.Parallel()
+
+	t.Run("expects error if source path format is invalid", func(t *testing.T) {
+		input := new(dbinput.Input)
+		_, err := input.Open(compiler.SourceRef{Namespace: "team-a"})
+		if err == nil {
+			t.Errorf("Open() = nil, want error")
+		}
+		_, err = input.Open(compiler.SourceRef{Namespace: "team-a", Path: "/onlyname"})
+		if err == nil {
+			t.Errorf("Open() = nil, want error")
+		}
+		_, err = input.Open(compiler.SourceRef{Namespace: "team-a", Path: "onlyvirtualgw/"})
+		if err == nil {
+			t.Errorf("Open() = nil, want error")
+		}
+	})
+
+	t.Run("expects to load content of existing snippet", func(t *testing.T) {
+		db := openDB(t, "file:db-input-open?mode=memory&cache=shared")
+		defer db.Close()
+		mustCreateTable(t, db)
+
+		want := "routes:\n\t- id: route-1\n\t\turi: /hello"
+		mustExec(t, db, fmt.Sprintf(`
+			INSERT INTO snippets(namespace, virtualgw, name, content) VALUES
+				('team-a', 'edge.api', 'routes.yaml', '%s')
+		`, want))
+		input := dbinput.NewInput(db)
+		ref := compiler.SourceRef{
+			Namespace: "team-a",
+			Path:      "edge.api/routes.yaml",
+		}
+		rc, err := input.Open(ref)
+		if err != nil {
+			t.Fatalf("Open() error = %v", err)
+		}
+		defer rc.Close()
+		content, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("ReadAll() error = %v", err)
+		}
+		if string(content) != want {
+			t.Errorf("Open() content = %q, want %q", string(content), want)
+		}
+	})
+}
