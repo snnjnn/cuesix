@@ -37,7 +37,10 @@ func NewInput(db *sqlx.DB) compiler.Input {
 
 // Namespaces returns the list of available namespaces.
 func (i *Input) Namespaces() []string {
-	return nil
+	var namespaces []string
+	// TODO: consider handling errors here
+	i.db.Select(&namespaces, "SELECT DISTINCT namespace FROM snippets ORDER BY namespace ASC")
+	return namespaces
 }
 
 // Enumerate lists all snippets for a namespace as SourceRef values.
