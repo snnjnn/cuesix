@@ -90,6 +90,9 @@ func (i *Input) Open(ref compiler.SourceRef) (io.ReadCloser, error) {
 		return nil, ErrInvalidSourcePathFormat
 	}
 	virtualgw, name := parts[0], parts[1]
+	if virtualgw == "" || name == "" {
+		return nil, ErrInvalidSourcePathFormat
+	}
 
 	var content string
 	err := i.db.Get(&content,
