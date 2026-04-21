@@ -53,6 +53,31 @@ func (i *Input) Namespaces() []string {
 // Enumerate lists all snippets for a namespace as SourceRef values.
 func (i *Input) Enumerate(namespace string) iter.Seq2[compiler.SourceRef, error] {
 	return func(yield func(compiler.SourceRef, error) bool) {
+		rows, err := i.db.Queryx(
+			"SELECT virtualgw, name FROM snippets WHERE namespace = ? ORDER BY virtualgw ASC, name ASC", namespace)
+		if err != nil {
+			yield(compiler.SourceRef{}, err)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var virtualgw, name string
+			if err := rows.Scan(&virtualgw, &name); err != nil {
+				yield(compiler.SourceRef{}, err)
+				return
+			}
+			if !yield(compiler.SourceRef{
+				Namespace: namespace,
+				Path:      virtualgw + "/" + name,
+			}, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(compiler.SourceRef{}, err)
+			return
+		}
 	}
 }
 
